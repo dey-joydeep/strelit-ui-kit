@@ -342,6 +342,7 @@ export class Tab {
                 this._contentItemDestroyListener,
             );
             this._dragListener.off('dragStart', this._dragStartListener);
+            this._dragListener.destroy();
             this._dragListener = undefined;
         }
     }

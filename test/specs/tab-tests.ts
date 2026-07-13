@@ -75,4 +75,39 @@ describe('Tabs configuration and behavior', function () {
         const stack = layout.rootItem as Stack;
         expect(stack.element.classList.contains('strelit_bottom')).toBe(true);
     });
+
+    it('assigns integer zIndex string (without px units) when tabOverlapAllowance is used', function () {
+        const config: LayoutConfig = {
+            settings: {
+                tabOverlapAllowance: 50,
+            },
+            root: {
+                type: 'stack',
+                content: [
+                    {
+                        type: 'component',
+                        componentType: 'testComponent',
+                        title: 'Tab 1',
+                    },
+                    {
+                        type: 'component',
+                        componentType: 'testComponent',
+                        title: 'Tab 2',
+                    },
+                ],
+            },
+        };
+
+        layout.loadLayout(config);
+        const stack = layout.rootItem as Stack;
+        const tabs = stack.header.tabs;
+        expect(tabs.length).toBe(2);
+        for (const tab of tabs) {
+            const zIndex = tab.element.style.zIndex;
+            if (zIndex && zIndex !== 'auto') {
+                expect(zIndex).not.toContain('px');
+                expect(Number.isInteger(Number(zIndex))).toBe(true);
+            }
+        }
+    });
 });

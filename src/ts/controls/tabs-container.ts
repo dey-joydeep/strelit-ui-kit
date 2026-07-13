@@ -272,8 +272,9 @@ export class TabsContainer {
                                     j !== activeIndex && j !== 0
                                         ? '-' + numberToPixels(overlap)
                                         : '';
-                                this._tabs[j].element.style.zIndex =
-                                    numberToPixels(i - j);
+                                this._tabs[j].element.style.zIndex = String(
+                                    i - j,
+                                );
                                 this._tabs[j].element.style.marginLeft =
                                     marginLeft;
                             }
