@@ -49,4 +49,23 @@ describe('Config Minifier (ResolvedLayoutConfig.minifyConfig / unminifyConfig)',
             JSON.parse(JSON.stringify(resolved)),
         );
     });
+
+    it("doesn't corrupt string values that naturally begin with ___", function () {
+        const conf: LayoutConfig = {
+            root: {
+                type: 'component',
+                componentType: '___token',
+                componentState: {
+                    marker: '___stateToken',
+                },
+            },
+        };
+        const resolved = LayoutConfig.resolve(conf);
+        const min = ResolvedLayoutConfig.minifyConfig(resolved);
+        const max = ResolvedLayoutConfig.unminifyConfig(min);
+
+        expect(JSON.parse(JSON.stringify(max))).toEqual(
+            JSON.parse(JSON.stringify(resolved)),
+        );
+    });
 });

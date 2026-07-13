@@ -73,4 +73,92 @@ describe('BrowserPopout functionality (item.popout())', function () {
 
         openSpy.mockRestore();
     });
+
+    it('keeps the item in the layout when popup creation is blocked', function () {
+        vi.spyOn(window, 'open').mockReturnValue(null);
+
+        layout.loadLayout({
+            root: {
+                type: 'stack',
+                content: [
+                    {
+                        type: 'component',
+                        id: 'blockedPopoutComponent',
+                        componentType: 'testComponent',
+                    },
+                ],
+            },
+            settings: {
+                blockedPopoutsThrowError: false,
+            },
+        });
+
+        const item = layout.findFirstComponentItemById(
+            'blockedPopoutComponent',
+        ) as ComponentItem;
+        item.popout();
+
+        expect(
+            layout.findFirstComponentItemById('blockedPopoutComponent'),
+        ).toBeDefined();
+        expect(
+            layout.findFirstComponentItemById('blockedPopoutComponent')?.id,
+        ).toBe(
+            item.id,
+        );
+        expect(layout.openPopouts.length).toBe(0);
+    });
+
+    it('restores incoming openPopouts when loading a new layout config', function () {
+        const mockWindow = {
+            closed: false,
+            close: vi.fn(),
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            document: {
+                createElement: () => document.createElement('div'),
+                body: document.createElement('body'),
+                head: document.createElement('head'),
+                write: vi.fn(),
+                close: vi.fn(),
+            },
+            location: { href: '' },
+        } as unknown as Window;
+        vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+
+        const createPopoutSpy = vi.spyOn(
+            layout as unknown as {
+                createPopoutFromPopoutLayoutConfig: (config: unknown) => unknown;
+            },
+            'createPopoutFromPopoutLayoutConfig',
+        );
+
+        layout.loadLayout({
+            root: {
+                type: 'stack',
+                content: [
+                    {
+                        type: 'component',
+                        componentType: 'testComponent',
+                    },
+                ],
+            },
+            openPopouts: [
+                {
+                    root: {
+                        type: 'component',
+                        componentType: 'testComponent',
+                    },
+                    parentId: null,
+                    indexInParent: null,
+                    window: {
+                        width: 320,
+                        height: 200,
+                    },
+                },
+            ],
+        });
+
+        expect(createPopoutSpy).toHaveBeenCalledTimes(1);
+    });
 });

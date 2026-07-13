@@ -484,9 +484,8 @@ export abstract class LayoutManager extends EventEmitter {
             if (this._groundItem === undefined) {
                 throw new UnexpectedUndefinedError('LMLL11119');
             } else {
-                this.createSubWindows(); // still needs to be tested
-
                 this.layoutConfig = LayoutConfig.resolve(layoutConfig);
+                this.createSubWindows(); // still needs to be tested
                 this._groundItem.loadRoot(this.layoutConfig.root);
                 this.checkLoadedLayoutMaximiseItem();
                 this.adjustColumnsResponsive();
@@ -1110,20 +1109,31 @@ export abstract class LayoutManager extends EventEmitter {
                 };
             }
 
-            const itemConfig = item.toConfig();
-            item.remove();
-
+            const itemConfig = child.toConfig();
             if (!isResolvedRootItemConfig(itemConfig)) {
                 throw new Error(
                     `${i18nStrings[I18nStringId.PopoutCannotBeCreatedWithGroundItemConfig]}`,
                 );
             } else {
-                return this.createPopoutFromItemConfig(
-                    itemConfig,
-                    window,
-                    parentId,
-                    indexInParent,
-                );
+                parent.removeChild(child, true);
+
+                try {
+                    const browserPopout = this.createPopoutFromItemConfig(
+                        itemConfig,
+                        window,
+                        parentId,
+                        indexInParent,
+                    );
+                    try {
+                        browserPopout.getWindow();
+                    } catch {
+                        parent.addChild(child, indexInParent);
+                    }
+                    return browserPopout;
+                } catch (error) {
+                    parent.addChild(child, indexInParent);
+                    throw error;
+                }
             }
         }
     }
@@ -1211,6 +1221,12 @@ export abstract class LayoutManager extends EventEmitter {
         };
 
         const browserPopout = new BrowserPopout(config, initialWindow, this);
+
+        try {
+            browserPopout.getWindow();
+        } catch {
+            return browserPopout;
+        }
 
         browserPopout.on('initialised', () =>
             this.emit('windowOpened', browserPopout),

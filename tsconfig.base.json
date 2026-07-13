@@ -1,7 +1,8 @@
 {
     "compileOnSave": false,
     "compilerOptions": {
-        "moduleResolution": "node",
+        "ignoreDeprecations": "5.0",
+        "moduleResolution": "node10",
         "target": "es2020",
         "downlevelIteration": true,
         "importHelpers": true,

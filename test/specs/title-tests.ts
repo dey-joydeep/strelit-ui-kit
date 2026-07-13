@@ -88,4 +88,37 @@ describe('Content item titles and dynamic updates', function () {
         );
         expect(stack.header.tabs[0].titleElement.children.length).toBe(0);
     });
+
+    it('bubbles title-driven stateChanged events to layout listeners', async function () {
+        const config: LayoutConfig = {
+            root: {
+                type: 'stack',
+                content: [
+                    {
+                        type: 'component',
+                        id: 'titleComponent',
+                        componentType: 'testComponent',
+                        title: 'Initial',
+                    },
+                ],
+            },
+        };
+
+        let stateChangedCount = 0;
+        layout.on('stateChanged', () => {
+            stateChangedCount++;
+        });
+
+        layout.loadLayout(config);
+
+        const item = layout.findFirstComponentItemById(
+            'titleComponent',
+        ) as ComponentItem;
+        item.setTitle('Updated');
+        await new Promise((resolve) => {
+            requestAnimationFrame(() => resolve(undefined));
+        });
+
+        expect(stateChangedCount).toBeGreaterThan(0);
+    });
 });

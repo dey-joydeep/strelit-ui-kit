@@ -310,24 +310,37 @@ export class ComponentContainer extends EventEmitter {
 
     /** Replaces component without affecting layout */
     replaceComponent(itemConfig: ComponentItemConfig): void {
-        this.releaseComponent();
-
         if (!ItemConfig.isComponent(itemConfig)) {
             throw new Error(
                 'ReplaceComponent not passed a component ItemConfig',
             );
         } else {
             const config = ComponentItemConfig.resolve(itemConfig, false);
+            const previousInitialState = this._initialState;
+            const previousState = this._state;
+            const previousComponentType = this._componentType;
+
+            let nextBoundComponent: ComponentContainerBindableComponent;
+            try {
+                nextBoundComponent = this.layoutManager.bindComponent(
+                    this,
+                    config,
+                );
+            } catch (error) {
+                this._initialState = previousInitialState;
+                this._state = previousState;
+                this._componentType = previousComponentType;
+                throw error;
+            }
+
+            this.releaseComponent();
             this._initialState = config.componentState;
             this._state = this._initialState;
             this._componentType = config.componentType;
 
             this._updateItemConfigEvent(config);
 
-            this._boundComponent = this.layoutManager.bindComponent(
-                this,
-                config,
-            );
+            this._boundComponent = nextBoundComponent;
             this.updateElementPositionPropertyFromBoundComponent();
 
             if (this._boundComponent.virtual) {

@@ -53,4 +53,26 @@ describe('Tabs configuration and behavior', function () {
         expect(stack.header.tabs[0].reorderEnabled).toBe(true);
         expect(stack.header.tabs[1].reorderEnabled).toBe(false);
     });
+
+    it('applies the bottom header class when header.show is bottom', function () {
+        const config: LayoutConfig = {
+            root: {
+                type: 'stack',
+                header: {
+                    show: 'bottom',
+                },
+                content: [
+                    {
+                        type: 'component',
+                        componentType: 'testComponent',
+                    },
+                ],
+            },
+        };
+
+        layout.loadLayout(config);
+
+        const stack = layout.rootItem as Stack;
+        expect(stack.element.classList.contains('strelit_bottom')).toBe(true);
+    });
 });

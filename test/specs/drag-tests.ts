@@ -39,6 +39,22 @@ describe('drag source', function () {
         doComponentDragTest();
     });
 
+    it('accepts legacy componentName configs from deferred drag sources', function () {
+        dragSourceElement = document.createElement('div');
+        document.body.appendChild(dragSourceElement);
+
+        layout.newDragSource(dragSourceElement, () => ({
+            type: 'component',
+            componentName: TestTools.TEST_COMPONENT_NAME,
+            componentState: {
+                html: `<div class="${createdFromDragSourceClass} legacy"></div>`,
+            },
+            title: 'legacy drag source',
+        }));
+
+        doComponentDragTest();
+    });
+
     function createDragSource(deferred: boolean): void {
         dragSourceElement = document.createElement('div');
         dragSourceElement.id = 'dragSrc';

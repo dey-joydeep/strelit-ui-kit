@@ -37,9 +37,64 @@ const ignoredDirectories = new Set([
 
 const replacements = [
     {
+        name: 'default import',
+        pattern: /import\s+([A-Za-z_$][\w$]*)\s+from\s+(['"])golden-layout\2/g,
+        replacement: "import { StrelitLayout as $1 } from 'strelit-ui-kit'",
+    },
+    {
+        name: 'commonjs require',
+        pattern: /const\s+([A-Za-z_$][\w$]*)\s*=\s*require\((['"])golden-layout\2\)/g,
+        replacement: "const { StrelitLayout: $1 } = require('strelit-ui-kit')",
+    },
+    {
+        name: 'css subpath import',
+        pattern: /(['"])golden-layout\/dist\/css\/((?:themes\/)?goldenlayout(?:-([a-z-]+)-theme|-base)\.css)\1/g,
+        replacement: (_match, quote, fileName, themeName) => {
+            if (themeName !== undefined) {
+                return `${quote}strelit-ui-kit/dist/css/themes/strelit-${themeName}-theme.css${quote}`;
+            }
+
+            if (fileName === 'goldenlayout-base.css') {
+                return `${quote}strelit-ui-kit/dist/css/strelit-base.css${quote}`;
+            }
+
+            return `${quote}strelit-ui-kit/dist/css/${fileName}${quote}`;
+        },
+    },
+    {
+        name: 'less subpath import',
+        pattern: /(['"])golden-layout\/dist\/less\/((?:themes\/)?goldenlayout(?:-([a-z-]+)-theme|-base)\.less)\1/g,
+        replacement: (_match, quote, fileName, themeName) => {
+            if (themeName !== undefined) {
+                return `${quote}strelit-ui-kit/dist/less/themes/strelit-${themeName}-theme.less${quote}`;
+            }
+
+            if (fileName === 'goldenlayout-base.less') {
+                return `${quote}strelit-ui-kit/dist/less/strelit-base.less${quote}`;
+            }
+
+            return `${quote}strelit-ui-kit/dist/less/${fileName}${quote}`;
+        },
+    },
+    {
+        name: 'scss subpath import',
+        pattern: /(['"])golden-layout\/dist\/scss\/((?:themes\/)?goldenlayout(?:-([a-z-]+)-theme|-base)\.scss)\1/g,
+        replacement: (_match, quote, fileName, themeName) => {
+            if (themeName !== undefined) {
+                return `${quote}strelit-ui-kit/dist/scss/themes/strelit-${themeName}-theme.scss${quote}`;
+            }
+
+            if (fileName === 'goldenlayout-base.scss') {
+                return `${quote}strelit-ui-kit/dist/scss/strelit-base.scss${quote}`;
+            }
+
+            return `${quote}strelit-ui-kit/dist/scss/${fileName}${quote}`;
+        },
+    },
+    {
         name: 'package import',
-        pattern: /(['"])golden-layout\1/g,
-        replacement: '$1strelit-ui-kit$1',
+        pattern: /(['"])golden-layout((?:\/[^'"]+)?)\1/g,
+        replacement: '$1strelit-ui-kit$2$1',
     },
     {
         name: 'main class',

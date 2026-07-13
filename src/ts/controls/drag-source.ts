@@ -19,7 +19,10 @@ export interface DragSourceComponentItemConfig {
 export function isDragSourceComponentItemConfig(
     config: DragSourceComponentItemConfig | ConfigComponentItemConfig,
 ): config is DragSourceComponentItemConfig {
-    return !('componentType' in config);
+    return (
+        !('componentType' in config) &&
+        !(config.type === 'component' && 'componentName' in config)
+    );
 }
 
 /**

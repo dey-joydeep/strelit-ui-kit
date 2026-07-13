@@ -351,9 +351,9 @@ export const HeaderedItemConfig = {
                 const idx = legacyId.findIndex(
                     (id) => id === headeredItemConfigLegacyMaximisedId,
                 );
-                if (idx > 0) {
+                if (idx >= 0) {
                     legacyMaximised = true;
-                    legacyId = legacyId.splice(idx, 1);
+                    legacyId.splice(idx, 1);
                 }
                 if (legacyId.length > 0) {
                     id = legacyId[0];
@@ -509,7 +509,7 @@ export interface ComponentItemConfig extends HeaderedItemConfig {
      * * {@link StrelitLayout.registerComponentConstructor}
      * * {@link StrelitLayout.registerComponentFactoryFunction}
      */
-    componentType: ComponentType;
+    componentType?: ComponentType;
     /**
      * The state information with which a component will be initialised with.
      * Will be passed to the component constructor function and will be the value returned by
@@ -577,7 +577,7 @@ export const ComponentItemConfig = {
                     itemConfig.hasHeaders,
                 ),
                 componentType,
-                componentState: itemConfig.componentState ?? {},
+                componentState: itemConfig.componentState,
             };
             return result;
         }
@@ -885,7 +885,7 @@ export const RootItemConfig = {
 
 /** @public */
 export interface LayoutConfig {
-    root: RootItemConfig | undefined;
+    root?: RootItemConfig | undefined;
     /** @deprecated Use `LayoutConfig.root` */
     content?: (RowOrColumnItemConfig | StackItemConfig | ComponentItemConfig)[];
     openPopouts?: PopoutLayoutConfig[];
@@ -1234,6 +1234,13 @@ export const LayoutConfig = {
         ): SizeWithUnit {
             const height = dimensions?.defaultMinItemHeight;
             if (height === undefined) {
+                const legacyHeight = dimensions?.minItemHeight;
+                if (legacyHeight !== undefined) {
+                    return {
+                        size: legacyHeight,
+                        sizeUnit: SizeUnitEnum.Pixel,
+                    };
+                }
                 return {
                     size: ResolvedLayoutConfig.Dimensions.defaults
                         .defaultMinItemHeight,
@@ -1251,6 +1258,13 @@ export const LayoutConfig = {
         ): SizeWithUnit {
             const width = dimensions?.defaultMinItemWidth;
             if (width === undefined) {
+                const legacyWidth = dimensions?.minItemWidth;
+                if (legacyWidth !== undefined) {
+                    return {
+                        size: legacyWidth,
+                        sizeUnit: SizeUnitEnum.Pixel,
+                    };
+                }
                 return {
                     size: ResolvedLayoutConfig.Dimensions.defaults
                         .defaultMinItemWidth,
@@ -1590,7 +1604,7 @@ export function parseSize(
         numericPart: digitsPart,
         firstNonNumericCharPart: firstNonDigitPart,
     } = splitStringAtFirstNonNumericChar(sizeString);
-    const size = Number.parseInt(digitsPart, 10);
+    const size = Number.parseFloat(digitsPart);
     if (isNaN(size)) {
         throw new ConfigurationError(
             `${i18nStrings[I18nStringId.InvalidNumberPartInSizeString]}: ${sizeString}`,

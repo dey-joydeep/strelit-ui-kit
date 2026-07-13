@@ -243,7 +243,7 @@ export class DragProxy extends EventEmitter {
              * content item to its original position if a original parent is provided.
              * (Which is not the case if the drag had been initiated by createDragSource)
              */
-        } else if (this._originalParent) {
+        } else if (this._originalParent && !this._originalParent.isGround) {
             droppedComponentItem = this._componentItem;
             this._originalParent.addChild(droppedComponentItem);
 
@@ -258,7 +258,9 @@ export class DragProxy extends EventEmitter {
 
         this._element.remove();
 
-        this._layoutManager.emit('itemDropped', this._componentItem);
+        if (droppedComponentItem !== undefined) {
+            this._layoutManager.emit('itemDropped', this._componentItem);
+        }
 
         if (this._componentItemFocused && droppedComponentItem !== undefined) {
             droppedComponentItem.focus();

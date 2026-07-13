@@ -19,7 +19,13 @@
         "dist/**/*",
         "src/**/*"
     ],
-    "sideEffects": false,
+    "sideEffects": [
+        "dist/**/*.css",
+        "dist/**/*.less",
+        "dist/**/*.scss",
+        "src/**/*.less",
+        "src/**/*.scss"
+    ],
     "dependencies": {
         "tslib": "^2.8.1"
     },

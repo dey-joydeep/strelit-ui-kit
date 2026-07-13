@@ -1042,18 +1042,20 @@ export class Stack extends ComponentParentableItem {
             DomConstants.ClassName.Right,
             DomConstants.ClassName.Bottom,
         );
-        if (this._header.leftRightSided) {
-            switch (this._header.side) {
-                case Side.left:
+        switch (this._header.side) {
+            case Side.left:
+                if (this._header.leftRightSided) {
                     this.element.classList.add(DomConstants.ClassName.Left);
-                    break;
-                case Side.right:
+                }
+                break;
+            case Side.right:
+                if (this._header.leftRightSided) {
                     this.element.classList.add(DomConstants.ClassName.Right);
-                    break;
-                case Side.bottom:
-                    this.element.classList.add(DomConstants.ClassName.Bottom);
-                    break;
-            }
+                }
+                break;
+            case Side.bottom:
+                this.element.classList.add(DomConstants.ClassName.Bottom);
+                break;
         }
 
         //if ([Side.right, Side.bottom].includes(this._header.side)) {

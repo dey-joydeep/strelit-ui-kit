@@ -130,10 +130,10 @@ export class BrowserPopout extends EventEmitter {
      * parent isn't available anymore it falls back to the layout's topmost element
      */
     popIn(): void {
-        let parentItem: ContentItem;
+        let parentItem: ContentItem | undefined;
         let index = this._config.indexInParent;
 
-        if (!this._config.parentId) {
+        if (this._config.parentId === undefined) {
             return;
         }
 
@@ -159,15 +159,17 @@ export class BrowserPopout extends EventEmitter {
         if (groundItem === undefined) {
             throw new UnexpectedUndefinedError('BPPIG34972');
         }
-        parentItem = groundItem.getItemsByPopInParentId(
-            this._config.parentId,
-        )[0];
+        if (this._config.parentId !== null) {
+            parentItem = groundItem.getItemsByPopInParentId(
+                this._config.parentId,
+            )[0];
+        }
 
         /*
          * Fallback if parentItem is not available. Either add it to the topmost
          * item or make it the topmost item if the layout is empty
          */
-        if (!parentItem) {
+        if (parentItem === undefined) {
             if (groundItem.contentItems.length > 0) {
                 parentItem = groundItem.contentItems[0];
             } else {

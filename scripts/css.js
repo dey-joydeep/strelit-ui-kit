@@ -32,7 +32,7 @@ const buildFile = async (filePath) => {
     console.log(`[INFO] ${filePath} => copy => ${lessRawOutputFile}`);
 
     const lessFile = fs.readFileSync(filePath, 'utf8');
-    const lessOutput = await less.render(lessFile);
+    const lessOutput = await less.render(lessFile, { filename: filePath });
     const prefixedOutput = await postcss([autoprefixer]).process(
         lessOutput.css,
         { from: filePath },

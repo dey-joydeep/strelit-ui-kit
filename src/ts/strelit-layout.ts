@@ -462,10 +462,10 @@ export class StrelitLayout extends VirtualLayout {
         virtual: boolean,
         component: ComponentContainerComponent | undefined,
     ): void {
-        const registeredComponent = this._registeredComponentMap.get(container);
-        if (registeredComponent === undefined) {
+        if (!this._registeredComponentMap.has(container)) {
             super.unbindComponent(container, virtual, component); // was not created from registration so use virtual unbind events
         } else {
+            this._registeredComponentMap.delete(container);
             const virtuableComponent =
                 this._virtuableComponentMap.get(container);
             if (virtuableComponent !== undefined) {

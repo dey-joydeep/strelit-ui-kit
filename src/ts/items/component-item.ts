@@ -215,7 +215,7 @@ export class ComponentItem extends ContentItem {
     setTitle(title: string): void {
         this._title = title;
         this.emit('titleChanged', title);
-        this.emit('stateChanged');
+        this.emitBaseBubblingEvent('stateChanged');
     }
 
     setTab(tab: Tab): void {
