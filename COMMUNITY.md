@@ -8,6 +8,7 @@ The Strelit UI project adopts the following community policy to assist maintaine
 - Major releases can have breaking changes. While these will be documented, it will probably be as dot points. Examination of source code may be necessary for application developers.
 - Developers should discuss PRs with maintainers before submitting. This will reduce the review effort because PRs will be developed in line with maintainer expectations.
 - PRs must use the same coding style. Consistency is important for readability and maintainability.
+- PRs are expected to use the repository PR template and pass contribution-governance checks for PR metadata and commit message quality.
 - PRs with new feature releases **must** include updates to the apitest app **and** the documentation. In addition, the code base needs to be satisfactorily refactored so that the code implementing the feature is properly integrated.
 - Submitters of PRs are expected to thoroughly test their changes before submitting.
 - All maintainers need to be actively involved in community.

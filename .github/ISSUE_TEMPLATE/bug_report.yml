@@ -1,0 +1,55 @@
+name: Bug report
+description: Report a defect in runtime behavior, API, docs, or tooling.
+title: '[Bug]: '
+labels:
+    - bug
+body:
+    - type: markdown
+      attributes:
+          value: |
+              Use this form for concrete defects. Include the smallest reproducible case you can.
+    - type: textarea
+      id: summary
+      attributes:
+          label: Summary
+          description: What is broken?
+          placeholder: A concise description of the defect.
+      validations:
+          required: true
+    - type: textarea
+      id: reproduction
+      attributes:
+          label: Reproduction
+          description: Steps, sample config, code, or screenshots needed to reproduce.
+      validations:
+          required: true
+    - type: textarea
+      id: expected
+      attributes:
+          label: Expected behavior
+      validations:
+          required: true
+    - type: dropdown
+      id: area
+      attributes:
+          label: Affected area
+          options:
+              - Core runtime
+              - Config or persistence
+              - Drag or docking
+              - Popouts
+              - Styling or CSS
+              - Build or tooling
+              - Docs
+      validations:
+          required: true
+    - type: input
+      id: version
+      attributes:
+          label: Version or commit
+          placeholder: e.g. 0.1.0 or 105b7db
+    - type: textarea
+      id: environment
+      attributes:
+          label: Environment
+          description: Browser, OS, framework, package manager, and other relevant environment details.

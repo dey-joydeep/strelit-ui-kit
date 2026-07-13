@@ -1,0 +1,36 @@
+name: Feature request
+description: Propose a new capability or a migration-oriented improvement.
+title: '[Feature]: '
+labels:
+    - enhancement
+body:
+    - type: textarea
+      id: problem
+      attributes:
+          label: Problem statement
+          description: What limitation, pain point, or missing use-case should this address?
+      validations:
+          required: true
+    - type: textarea
+      id: proposal
+      attributes:
+          label: Proposed direction
+          description: Describe the desired capability and any API, config, or UI expectations.
+      validations:
+          required: true
+    - type: textarea
+      id: migration
+      attributes:
+          label: Migration or compatibility impact
+          description: Explain whether this is additive, breaking, or intended to restore a prior behavior.
+    - type: dropdown
+      id: priority
+      attributes:
+          label: Priority
+          options:
+              - Nice to have
+              - Useful
+              - Important
+              - Migration blocker
+      validations:
+          required: true
