@@ -1,0 +1,15 @@
+node_modules
+.idea
+.vscode
+*.tgz
+npm-debug.log
+/dist
+/.generated-docs
+debug.log
+/debug.log
+/lib
+/apitest/dist
+/temp
+/test/dist
+/.verification
+.codex

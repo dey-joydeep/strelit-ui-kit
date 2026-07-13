@@ -1,0 +1,22 @@
+{
+    "compilerOptions": {
+        "target": "es2020",
+        "module": "esnext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "noImplicitAny": true,
+        "noImplicitOverride": true,
+        "strictNullChecks": true,
+        "strictBindCallApply": true,
+        "noImplicitReturns": true,
+        "strictFunctionTypes": true,
+        "noFallthroughCasesInSwitch": true,
+        "forceConsistentCasingInFileNames": true,
+        "strictPropertyInitialization": true,
+        "noUnusedLocals": true,
+        "allowSyntheticDefaultImports": true,
+        "sourceMap": true,
+        "lib": ["dom", "es2020"]
+    },
+    "include": ["./**/*.ts"]
+}

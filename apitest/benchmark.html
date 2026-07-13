@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>
+            Strelit UI Kit vs Golden Layout v1 & v2 — DOM Benchmark Harness
+        </title>
+        <style>
+            :root {
+                --bg-color: #0f172a;
+                --panel-bg: #1e293b;
+                --text-main: #f8fafc;
+                --text-muted: #94a3b8;
+                --accent: #3b82f6;
+                --accent-hover: #2563eb;
+                --border: #334155;
+                --success: #10b981;
+            }
+
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+
+            body {
+                font-family:
+                    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                    sans-serif;
+                background-color: var(--bg-color);
+                color: var(--text-main);
+                display: flex;
+                flex-direction: column;
+                height: 100vh;
+                overflow: hidden;
+            }
+
+            header {
+                background-color: var(--panel-bg);
+                border-bottom: 1px solid var(--border);
+                padding: 12px 20px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                flex-wrap: wrap;
+                gap: 12px;
+            }
+
+            .header-title {
+                font-size: 1.1rem;
+                font-weight: 700;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .badge {
+                background-color: var(--accent);
+                color: white;
+                font-size: 0.75rem;
+                padding: 2px 8px;
+                border-radius: 9999px;
+                font-weight: 600;
+            }
+
+            .controls {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }
+
+            select,
+            button {
+                background-color: var(--bg-color);
+                color: var(--text-main);
+                border: 1px solid var(--border);
+                padding: 6px 12px;
+                border-radius: 6px;
+                font-size: 0.85rem;
+                cursor: pointer;
+            }
+
+            button.primary {
+                background-color: var(--accent);
+                border-color: var(--accent);
+                font-weight: 600;
+            }
+
+            button.primary:hover {
+                background-color: var(--accent-hover);
+            }
+
+            .metrics-bar {
+                background-color: #0b1120;
+                border-bottom: 1px solid var(--border);
+                padding: 10px 20px;
+                display: flex;
+                gap: 24px;
+                font-size: 0.85rem;
+            }
+
+            .metric-item {
+                display: flex;
+                flex-direction: column;
+            }
+
+            .metric-label {
+                color: var(--text-muted);
+                font-size: 0.75rem;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }
+
+            .metric-value {
+                font-weight: 700;
+                font-size: 1.1rem;
+                color: var(--success);
+                font-family: monospace;
+            }
+
+            #benchmark-stage {
+                flex: 1;
+                position: relative;
+                background-color: #020617;
+                overflow: hidden;
+            }
+
+            .component-demo {
+                padding: 10px;
+                color: #e2e8f0;
+                font-size: 0.8rem;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100%;
+                background: #1e293b;
+                border: 1px solid #334155;
+            }
+        </style>
+        <!-- Strelit UI Kit CSS -->
+        <link rel="stylesheet" href="../dist/css/strelit-base.css" />
+        <link
+            rel="stylesheet"
+            href="../dist/css/themes/strelit-dark-theme.css"
+        />
+
+        <!-- jQuery for v1 fallback testing -->
+        <script src="https://code.jquery.com/jquery-1.11.1.min.js"></script>
+        <!-- Golden Layout v1 CDN -->
+        <script src="https://cdn.jsdelivr.net/npm/golden-layout@1.5.9/dist/goldenlayout.min.js"></script>
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/golden-layout@1.5.9/src/css/goldenlayout-base.css"
+        />
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/golden-layout@1.5.9/src/css/goldenlayout-dark-theme.css"
+        />
+    </head>
+    <body>
+        <header>
+            <div class="header-title">
+                Strelit UI Kit Benchmark Runner
+                <span class="badge">v0.1.0</span>
+            </div>
+            <div class="controls">
+                <label for="targetSelect">Engine:</label>
+                <select id="targetSelect">
+                    <option value="strelit">
+                        Strelit UI Kit (v0.1.0 - Local ES Module)
+                    </option>
+                    <option value="v2">Golden Layout v2.6.0 (CDN ESM)</option>
+                    <option value="v1">
+                        Golden Layout v1.5.9 (CDN Legacy jQuery)
+                    </option>
+                </select>
+
+                <label for="scenarioSelect">Scenario:</label>
+                <select id="scenarioSelect">
+                    <option value="init-100">
+                        Cold Init — 10x10 Grid (100 Components)
+                    </option>
+                    <option value="resize-100">
+                        Reflow Stress — 100 Rapid Resizes
+                    </option>
+                    <option value="churn-50">
+                        Create & Destroy Churn — 50 Components
+                    </option>
+                </select>
+
+                <button class="primary" id="runBtn">Run Benchmark</button>
+            </div>
+        </header>
+
+        <div class="metrics-bar">
+            <div class="metric-item">
+                <span class="metric-label">Last Operation Duration</span>
+                <span class="metric-value" id="valDuration">-- ms</span>
+            </div>
+            <div class="metric-item">
+                <span class="metric-label">DOM Node Count</span>
+                <span class="metric-value" id="valDomNodes">--</span>
+            </div>
+            <div class="metric-item">
+                <span class="metric-label">JS Heap Size</span>
+                <span class="metric-value" id="valHeap">-- MB</span>
+            </div>
+            <div class="metric-item">
+                <span class="metric-label">Throughput / Speedup</span>
+                <span class="metric-value" id="valSpeedup">Ready</span>
+            </div>
+        </div>
+
+        <div id="benchmark-stage"></div>
+
+        <script type="module">
+            import { StrelitLayout } from '../dist/esm/index.mjs';
+
+            const stage = document.getElementById('benchmark-stage');
+            const valDuration = document.getElementById('valDuration');
+            const valDomNodes = document.getElementById('valDomNodes');
+            const valHeap = document.getElementById('valHeap');
+            const valSpeedup = document.getElementById('valSpeedup');
+
+            let activeLayout = null;
+
+            function updateMetrics(durationMs) {
+                valDuration.textContent = `${durationMs.toFixed(2)} ms`;
+                const nodeCount = stage.getElementsByTagName('*').length;
+                valDomNodes.textContent = nodeCount;
+
+                if (window.performance && window.performance.memory) {
+                    const heapMb =
+                        window.performance.memory.usedJSHeapSize /
+                        (1024 * 1024);
+                    valHeap.textContent = `${heapMb.toFixed(2)} MB`;
+                } else {
+                    valHeap.textContent = 'N/A (Use Chrome)';
+                }
+            }
+
+            function buildGridConfig(rows, cols) {
+                const rowContents = [];
+                for (let r = 0; r < rows; r++) {
+                    const colContents = [];
+                    for (let c = 0; c < cols; c++) {
+                        colContents.push({
+                            type: 'stack',
+                            content: [
+                                {
+                                    type: 'component',
+                                    componentType: 'benchComp',
+                                    componentName: 'benchComp',
+                                    title: `R${r}C${c}`,
+                                },
+                            ],
+                        });
+                    }
+                    rowContents.push({
+                        type: 'column',
+                        content: colContents,
+                    });
+                }
+                return {
+                    root: {
+                        type: 'row',
+                        content: rowContents,
+                    },
+                };
+            }
+
+            async function runStrelitScenario(scenario) {
+                if (activeLayout) {
+                    activeLayout.destroy();
+                    activeLayout = null;
+                }
+                stage.innerHTML = '';
+
+                const start = performance.now();
+
+                if (scenario === 'init-100') {
+                    const layout = new StrelitLayout(stage);
+                    layout.registerComponentFactoryFunction(
+                        'benchComp',
+                        (container) => {
+                            const div = document.createElement('div');
+                            div.className = 'component-demo';
+                            div.innerText = container.title;
+                            container.element.appendChild(div);
+                        },
+                    );
+                    layout.loadLayout(buildGridConfig(10, 10));
+                    activeLayout = layout;
+                } else if (scenario === 'resize-100') {
+                    const layout = new StrelitLayout(stage);
+                    layout.registerComponentFactoryFunction(
+                        'benchComp',
+                        (container) => {
+                            const div = document.createElement('div');
+                            div.className = 'component-demo';
+                            div.innerText = container.title;
+                            container.element.appendChild(div);
+                        },
+                    );
+                    layout.loadLayout(buildGridConfig(5, 5));
+                    for (let i = 0; i < 100; i++) {
+                        layout.updateSize(
+                            stage.clientWidth - (i % 10),
+                            stage.clientHeight - (i % 10),
+                        );
+                    }
+                    activeLayout = layout;
+                } else if (scenario === 'churn-50') {
+                    for (let cycle = 0; cycle < 10; cycle++) {
+                        const layout = new StrelitLayout(stage);
+                        layout.registerComponentFactoryFunction(
+                            'benchComp',
+                            (container) => {
+                                const div = document.createElement('div');
+                                div.innerText = container.title;
+                                container.element.appendChild(div);
+                            },
+                        );
+                        layout.loadLayout(buildGridConfig(3, 3));
+                        layout.destroy();
+                    }
+                }
+
+                const duration = performance.now() - start;
+                updateMetrics(duration);
+                valSpeedup.textContent = 'Strelit Native DOM';
+                return duration;
+            }
+
+            async function runV1Scenario(scenario) {
+                stage.innerHTML = '';
+                const start = performance.now();
+
+                if (scenario === 'init-100') {
+                    const gl = new window.GoldenLayout(
+                        {
+                            content: [buildGridConfig(10, 10).root],
+                        },
+                        $(stage),
+                    );
+                    gl.registerComponent(
+                        'benchComp',
+                        function (container, state) {
+                            container
+                                .getElement()
+                                .html(
+                                    '<div class="component-demo">GL v1</div>',
+                                );
+                        },
+                    );
+                    gl.init();
+                }
+
+                const duration = performance.now() - start;
+                updateMetrics(duration);
+                valSpeedup.textContent = 'GL v1 Legacy jQuery';
+                return duration;
+            }
+
+            async function runV2Scenario(scenario) {
+                stage.innerHTML = '';
+                const start = performance.now();
+
+                const glV2Module =
+                    await import('https://cdn.jsdelivr.net/npm/golden-layout@2.6.0/+esm');
+                const GoldenLayoutV2 = glV2Module.GoldenLayout;
+
+                if (scenario === 'init-100') {
+                    const layout = new GoldenLayoutV2(stage);
+                    layout.registerComponentFactoryFunction(
+                        'benchComp',
+                        (container) => {
+                            const div = document.createElement('div');
+                            div.className = 'component-demo';
+                            div.innerText = container.title;
+                            container.element.appendChild(div);
+                        },
+                    );
+                    layout.loadLayout(buildGridConfig(10, 10));
+                    activeLayout = layout;
+                }
+
+                const duration = performance.now() - start;
+                updateMetrics(duration);
+                valSpeedup.textContent = 'GL v2.6.0 ESM';
+                return duration;
+            }
+
+            document
+                .getElementById('runBtn')
+                .addEventListener('click', async () => {
+                    const target =
+                        document.getElementById('targetSelect').value;
+                    const scenario =
+                        document.getElementById('scenarioSelect').value;
+
+                    if (target === 'strelit') {
+                        await runStrelitScenario(scenario);
+                    } else if (target === 'v2') {
+                        await runV2Scenario(scenario);
+                    } else if (target === 'v1') {
+                        await runV1Scenario(scenario);
+                    }
+                });
+
+            // Expose to window for automated Playwright / CDP script runner
+            window.runAutomatedBench = async function (target, scenario) {
+                if (target === 'strelit')
+                    return await runStrelitScenario(scenario);
+                if (target === 'v2') return await runV2Scenario(scenario);
+                if (target === 'v1') return await runV1Scenario(scenario);
+            };
+        </script>
+    </body>
+</html>

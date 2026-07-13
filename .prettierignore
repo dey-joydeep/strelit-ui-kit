@@ -1,0 +1,8 @@
+dist
+lib
+temp
+test/dist
+.generated-docs
+etc/*.api.md
+.verification
+package-lock.json

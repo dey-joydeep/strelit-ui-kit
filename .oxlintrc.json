@@ -1,0 +1,49 @@
+{
+    "$schema": "./node_modules/oxlint/configuration_schema.json",
+    "env": {
+        "builtin": true,
+        "browser": true
+    },
+    "options": {
+        "typeAware": true
+    },
+    "ignorePatterns": [
+        ".codex/**",
+        ".generated-docs/**",
+        ".verification/**",
+        "dist/**",
+        "lib/**",
+        "temp/**",
+        "test/dist/**"
+    ],
+    "overrides": [
+        {
+            "files": ["scripts/**/*.js"],
+            "env": {
+                "node": true,
+                "commonjs": true
+            }
+        },
+        {
+            "files": [
+                "tsup.config.ts",
+                "vite.apitest.config.ts",
+                "vitest.config.ts"
+            ],
+            "env": {
+                "node": true
+            }
+        },
+        {
+            "files": ["test/**/*.ts", "test/**/*.js"],
+            "env": {
+                "vitest": true
+            }
+        }
+    ],
+    "rules": {
+        "unicorn/no-new-array": "off",
+        "typescript/unbound-method": "off",
+        "typescript/restrict-template-expressions": "off"
+    }
+}
