@@ -1,0 +1,48 @@
+const classNameValues = {
+    LayoutRoot: 'strelit_layout',
+    Focused: 'strelit_focused',
+    Item: 'strelit_item',
+    Items: 'strelit_items',
+    Stack: 'strelit_stack',
+    MaximisePlace: 'strelit_maximise_placeholder',
+    DropTabPlaceholder: 'strelit_drop_tab_placeholder',
+    DragHandle: 'strelit_drag_handle',
+    Splitter: 'strelit_splitter',
+    Vertical: 'strelit_vertical',
+    Horizontal: 'strelit_horizontal',
+    Dragging: 'strelit_dragging',
+    DragProxy: 'strelit_dragProxy',
+    Header: 'strelit_header',
+    Tabs: 'strelit_tabs',
+    Tab: 'strelit_tab',
+    CloseTab: 'strelit_close_tab',
+    Controls: 'strelit_controls',
+    TabDropdown: 'strelit_tabdropdown',
+    TabDropdownList: 'strelit_tabdropdown_list',
+    Title: 'strelit_title',
+    Popout: 'strelit_popout',
+    Popin: 'strelit_popin',
+    Maximise: 'strelit_maximise',
+    Close: 'strelit_close',
+    Active: 'strelit_active',
+    Maximised: 'strelit_maximised',
+    Content: 'strelit_content',
+    Left: 'strelit_left',
+    Right: 'strelit_right',
+    Bottom: 'strelit_bottom',
+    Column: 'strelit_column',
+    Row: 'strelit_row',
+    Root: 'strelit_root',
+    Icon: 'strelit_icon',
+    Bg: 'strelit_bg',
+    DropTargetIndicator: 'strelit_dropTargetIndicator',
+    Inner: 'strelit_inner',
+    TransitionIndicator: 'strelit_transition_indicator',
+} as const;
+
+export type DomClassName =
+    (typeof classNameValues)[keyof typeof classNameValues];
+
+export const DomConstants = {
+    ClassName: classNameValues,
+} as const;

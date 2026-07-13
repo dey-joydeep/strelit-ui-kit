@@ -1,0 +1,223 @@
+// Color variables (appears count calculates by raw css)
+@color0: #e1e1e1; // Appears 3 times
+@color1: #000000; // Appears 4 times
+@color2: #cccccc; // Appears 3 times
+@color3: #777777; // Appears 2 times
+
+@color4: #ffffff; // Appears 1 time
+@color5: #555555; // Appears 1 time
+@color6: #452500; // Appears 1 time
+@color7: #fafafa; // Appears 1 time
+@color8: #999999; // Appears 1 time
+@color9: #bbbbbb; // Appears 1 time
+@color10: #888888; // Appears 1 time
+@color11: #f4f4f4; // Appears 1 time
+
+// ".strelit_dragging" is applied to BODY tag during Drag and is also directly applied to the root of the object being dragged
+
+// Entire Strelit Layout container, if a background is set, it is visible as color of "pane header" and "splitters" (if these latest has opacity very low)
+.strelit_layout {
+    background: @color11;
+}
+
+// Single Pane content (area in which final dragged content is contained)
+.strelit_content {
+    background: @color0;
+    border: 1px solid @color2;
+}
+
+// Single Pane content during Drag (style of moving window following mouse)
+.strelit_dragProxy {
+    .strelit_content {
+        box-shadow: 2px 2px 4px fade(@color1, 20%);
+    }
+}
+
+// Placeholder Container of target position
+.strelit_dropTargetIndicator {
+    box-shadow: inset 0 0 30px fade(@color1, 40%);
+    outline: 1px dashed @color2;
+
+    // Inner Placeholder
+    .strelit_inner {
+        background: @color1;
+        opacity: 0.1;
+    }
+}
+
+// Separator line (handle to change pane size)
+.strelit_splitter {
+    background: @color8;
+    opacity: 0.001;
+    transition: opacity 200ms ease;
+
+    &:hover, // When hovered by mouse...
+  &.strelit_dragging {
+        background: @color9;
+        opacity: 1;
+    }
+}
+
+// Pane Header (container of Tabs for each pane)
+.strelit_header {
+    height: 20px;
+
+    // Single Tab container. A single Tab is set for each pane, a group of Tabs are contained in ".strelit_header"
+    .strelit_tab {
+        font-family: Arial, sans-serif;
+        font-size: 12px;
+        color: @color10;
+        background: @color7;
+        margin-right: 2px;
+        padding-bottom: 4px;
+        border: 1px solid @color2;
+        border-bottom: none;
+
+        .strelit_title {
+            padding-top: 1px;
+        }
+
+        // Close Tab Icon
+        .strelit_close_tab {
+            width: 11px;
+            height: 11px;
+            background-image: data-uri('../../img/strelit-close-black.png');
+            background-position: center center;
+            background-repeat: no-repeat;
+            top: 4px;
+            right: 6px;
+            opacity: 0.4;
+
+            &:hover {
+                opacity: 1;
+            }
+        }
+
+        // If Tab is active, so if it's in foreground
+        &.strelit_active {
+            border-bottom: none;
+            box-shadow: 2px -2px 2px -2px fade(@color1, 20%);
+            padding-bottom: 5px;
+
+            .strelit_close_tab {
+                opacity: 1;
+            }
+        }
+    }
+}
+
+.strelit_dragProxy,
+.strelit_stack {
+    &.strelit_right {
+        .strelit_header .strelit_tab {
+            &.strelit_active {
+                box-shadow: 2px -2px 2px -2px fade(@color1, 20%);
+            }
+        }
+    }
+
+    &.strelit_bottom {
+        .strelit_header .strelit_tab {
+            &.strelit_active {
+                box-shadow: 2px 2px 2px -2px fade(@color1, 20%);
+            }
+        }
+    }
+}
+
+// If Pane Header (container of Tabs for each pane) is selected (used only if addition of new Contents is made "by selection" and not "by drag")
+.strelit_selected {
+    .strelit_header {
+        background-color: @color6;
+    }
+}
+
+.strelit_tab {
+    &:hover, // If Tab is hovered
+  &.strelit_active // If Tab is active, so if it's in foreground
+    {
+        background: @color0;
+        color: @color3;
+    }
+}
+
+// Dropdown arrow for additional tabs when too many to be displayed
+.strelit_header .strelit_controls .strelit_tabdropdown:before {
+    color: @color1;
+}
+
+// Pane controls (popout, maximize, minimize, close)
+.strelit_controls {
+    // All Pane controls shares these
+    > * {
+        position: relative;
+        background-position: center center;
+        background-repeat: no-repeat;
+        opacity: 0.4;
+        transition: opacity 300ms ease;
+
+        &:hover {
+            opacity: 1;
+        }
+    }
+
+    // Icon to PopOut Pane, so move it to a different Browser Window
+    .strelit_popout {
+        background-image: data-uri('../../img/strelit-popout-black.png');
+    }
+
+    // Icon to Maximize Pane, so it will fill the entire Strelit Layout container
+    .strelit_maximise {
+        background-image: data-uri('../../img/strelit-maximise-black.png');
+    }
+
+    // Icon to Close Pane and so remove it from Strelit Layout container
+    .strelit_close {
+        background-image: data-uri('../../img/strelit-close-black.png');
+    }
+}
+
+// If a specific Pane is maximized
+.strelit_maximised {
+    // Pane Header (container of Tabs for each pane) can have different style when is Maximized
+    .strelit_header {
+        background-color: @color4;
+    }
+
+    // Pane controls are different in Maximized Mode, especially the old Icon "Maximise" that now has a different meaning, so "Minimize" (even if CSS Class did not change)
+    .strelit_controls {
+        .strelit_maximise {
+            background-image: data-uri('../../img/strelit-minimize-black.png');
+        }
+    }
+}
+
+.strelit_transition_indicator {
+    background-color: @color1;
+    border: 1px dashed @color5;
+}
+
+// If a specific Pane is Popped Out, so move it to a different Browser Window, Icon to restore original position is:
+.strelit_popin {
+    cursor: pointer;
+
+    // Background of Icon
+    .strelit_bg {
+        background: @color1;
+        opacity: 0.7;
+    }
+
+    // Icon to Restore original position in Strelit Layout container
+    .strelit_icon {
+        background-image: data-uri('../../img/strelit-popin-black.png');
+        background-position: center center;
+        background-repeat: no-repeat;
+        opacity: 0.7;
+    }
+
+    &:hover {
+        .strelit_icon {
+            opacity: 1;
+        }
+    }
+}
