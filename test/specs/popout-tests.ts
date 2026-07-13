@@ -103,9 +103,7 @@ describe('BrowserPopout functionality (item.popout())', function () {
         ).toBeDefined();
         expect(
             layout.findFirstComponentItemById('blockedPopoutComponent')?.id,
-        ).toBe(
-            item.id,
-        );
+        ).toBe(item.id);
         expect(layout.openPopouts.length).toBe(0);
     });
 
@@ -128,7 +126,9 @@ describe('BrowserPopout functionality (item.popout())', function () {
 
         const createPopoutSpy = vi.spyOn(
             layout as unknown as {
-                createPopoutFromPopoutLayoutConfig: (config: unknown) => unknown;
+                createPopoutFromPopoutLayoutConfig: (
+                    config: unknown,
+                ) => unknown;
             },
             'createPopoutFromPopoutLayoutConfig',
         );

@@ -43,12 +43,14 @@ const replacements = [
     },
     {
         name: 'commonjs require',
-        pattern: /const\s+([A-Za-z_$][\w$]*)\s*=\s*require\((['"])golden-layout\2\)/g,
+        pattern:
+            /const\s+([A-Za-z_$][\w$]*)\s*=\s*require\((['"])golden-layout\2\)/g,
         replacement: "const { StrelitLayout: $1 } = require('strelit-ui-kit')",
     },
     {
         name: 'css subpath import',
-        pattern: /(['"])golden-layout\/dist\/css\/((?:themes\/)?goldenlayout(?:-([a-z-]+)-theme|-base)\.css)\1/g,
+        pattern:
+            /(['"])golden-layout\/dist\/css\/((?:themes\/)?goldenlayout(?:-([a-z-]+)-theme|-base)\.css)\1/g,
         replacement: (_match, quote, fileName, themeName) => {
             if (themeName !== undefined) {
                 return `${quote}strelit-ui-kit/dist/css/themes/strelit-${themeName}-theme.css${quote}`;
@@ -63,7 +65,8 @@ const replacements = [
     },
     {
         name: 'less subpath import',
-        pattern: /(['"])golden-layout\/dist\/less\/((?:themes\/)?goldenlayout(?:-([a-z-]+)-theme|-base)\.less)\1/g,
+        pattern:
+            /(['"])golden-layout\/dist\/less\/((?:themes\/)?goldenlayout(?:-([a-z-]+)-theme|-base)\.less)\1/g,
         replacement: (_match, quote, fileName, themeName) => {
             if (themeName !== undefined) {
                 return `${quote}strelit-ui-kit/dist/less/themes/strelit-${themeName}-theme.less${quote}`;
@@ -78,7 +81,8 @@ const replacements = [
     },
     {
         name: 'scss subpath import',
-        pattern: /(['"])golden-layout\/dist\/scss\/((?:themes\/)?goldenlayout(?:-([a-z-]+)-theme|-base)\.scss)\1/g,
+        pattern:
+            /(['"])golden-layout\/dist\/scss\/((?:themes\/)?goldenlayout(?:-([a-z-]+)-theme|-base)\.scss)\1/g,
         replacement: (_match, quote, fileName, themeName) => {
             if (themeName !== undefined) {
                 return `${quote}strelit-ui-kit/dist/scss/themes/strelit-${themeName}-theme.scss${quote}`;
