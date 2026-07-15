@@ -1821,7 +1821,9 @@ export abstract class LayoutManager extends EventEmitter {
       throw new UnexpectedUndefinedError('LMACR20883');
     } else {
       const useResponsive = this.useResponsiveLayout();
-      this._firstLoad = false;
+      if (this._groundItem.contentItems.length > 0) {
+        this._firstLoad = false;
+      }
       // If there is no min width set, or not content items, do nothing.
       if (
         useResponsive &&

@@ -380,7 +380,7 @@ export class ComponentContainer extends EventEmitter {
    */
   extendState(state: Record<string, unknown>): void {
     const extendedState = deepExtend(
-      this._state as Record<string, unknown>,
+      (this._state ?? {}) as Record<string, unknown>,
       state,
     );
     this.setState(extendedState as SerializableValue);

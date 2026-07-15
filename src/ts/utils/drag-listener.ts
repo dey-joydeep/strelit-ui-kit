@@ -76,6 +76,7 @@ export class DragListener extends EventEmitter {
   }
 
   destroy(): void {
+    this.cancelDrag();
     this.checkRemovePointerTrackingEventListeners();
 
     this._eElement.removeEventListener(

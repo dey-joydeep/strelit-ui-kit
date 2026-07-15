@@ -344,15 +344,16 @@ export const HeaderedItemConfig = {
       id = resolvedItemConfigDefaults.id;
     } else {
       if (Array.isArray(legacyId)) {
-        const idx = legacyId.findIndex(
+        const legacyIdCopy = legacyId.slice();
+        const idx = legacyIdCopy.findIndex(
           (id) => id === headeredItemConfigLegacyMaximisedId,
         );
         if (idx >= 0) {
           legacyMaximised = true;
-          legacyId.splice(idx, 1);
+          legacyIdCopy.splice(idx, 1);
         }
-        if (legacyId.length > 0) {
-          id = legacyId[0];
+        if (legacyIdCopy.length > 0) {
+          id = legacyIdCopy[0];
         } else {
           id = resolvedItemConfigDefaults.id;
         }

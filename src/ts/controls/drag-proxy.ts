@@ -30,6 +30,13 @@ export class DragProxy extends EventEmitter {
   private _proxyContainerElement: HTMLElement;
   private _componentItemFocused: boolean;
 
+  private readonly _onDragHandler = (
+    offsetX: number,
+    offsetY: number,
+    event: PointerEvent,
+  ) => this.onDrag(offsetX, offsetY, event);
+  private readonly _onDragStopHandler = () => this.onDrop();
+
   get element(): HTMLElement {
     return this._element;
   }
@@ -49,10 +56,8 @@ export class DragProxy extends EventEmitter {
   ) {
     super();
 
-    this._dragListener.on('drag', (offsetX, offsetY, event) =>
-      this.onDrag(offsetX, offsetY, event),
-    );
-    this._dragListener.on('dragStop', () => this.onDrop());
+    this._dragListener.on('drag', this._onDragHandler);
+    this._dragListener.on('dragStop', this._onDragStopHandler);
 
     this.createDragProxyElements(x, y);
 
@@ -209,6 +214,9 @@ export class DragProxy extends EventEmitter {
       dropTargetIndicator.hide();
     }
 
+    this._dragListener.off('drag', this._onDragHandler);
+    this._dragListener.off('dragStop', this._onDragStopHandler);
+
     this._componentItem.exitDragMode();
 
     /*
@@ -235,7 +243,21 @@ export class DragProxy extends EventEmitter {
        */
     } else if (this._originalParent && !this._originalParent.isGround) {
       droppedComponentItem = this._componentItem;
-      this._originalParent.addChild(droppedComponentItem);
+      if (this.isParentAttached(this._originalParent)) {
+        this._originalParent.addChild(droppedComponentItem);
+      } else {
+        const rootItem = this._layoutManager.rootItem;
+        if (rootItem !== undefined) {
+          rootItem.addChild(droppedComponentItem);
+        } else {
+          const groundItem = (this._layoutManager as unknown as { _groundItem?: ContentItem })._groundItem;
+          if (groundItem !== undefined) {
+            groundItem.addChild(droppedComponentItem);
+          } else {
+            this._originalParent.addChild(droppedComponentItem);
+          }
+        }
+      }
 
       /**
        * The drag didn't ultimately end up with adding the content item to
@@ -285,5 +307,13 @@ export class DragProxy extends EventEmitter {
     this._proxyContainerElement.style.height = numberToPixels(height);
     this._componentItem.enterDragMode(width, height);
     this._componentItem.show();
+  }
+
+  private isParentAttached(parent: ContentItem): boolean {
+    let current: ContentItem | null = parent;
+    while (current !== null && !current.isGround) {
+      current = current.parent;
+    }
+    return current !== null && current.isGround;
   }
 }

@@ -578,11 +578,10 @@ export class RowOrColumn extends ContentItem {
   private respectMinItemSize() {
     interface Entry {
       size: number;
+      minSize: number;
     }
 
-    const minItemSize = this.calculateContentItemMinSize(this);
-
-    if (minItemSize <= 0 || this.contentItems.length <= 1) {
+    if (this.contentItems.length <= 1) {
       return;
     } else {
       let totalOverMin = 0;
@@ -597,17 +596,22 @@ export class RowOrColumn extends ContentItem {
        */
       for (let i = 0; i < absoluteSizes.itemSizes.length; i++) {
         const itemSize = absoluteSizes.itemSizes[i];
+        const childMinSize = this.calculateContentItemMinSize(
+          this.contentItems[i],
+        );
 
         let entry: Entry;
-        if (itemSize < minItemSize) {
-          totalUnderMin += minItemSize - itemSize;
+        if (itemSize < childMinSize) {
+          totalUnderMin += childMinSize - itemSize;
           entry = {
-            size: minItemSize,
+            size: childMinSize,
+            minSize: childMinSize,
           };
         } else {
-          totalOverMin += itemSize - minItemSize;
+          totalOverMin += itemSize - childMinSize;
           entry = {
             size: itemSize,
+            minSize: childMinSize,
           };
           entriesOverMin.push(entry);
         }
@@ -629,7 +633,7 @@ export class RowOrColumn extends ContentItem {
         for (let i = 0; i < entriesOverMin.length; i++) {
           const entry = entriesOverMin[i];
           const reducedSize = Math.round(
-            (entry.size - minItemSize) * reducePercent,
+            (entry.size - entry.minSize) * reducePercent,
           );
           remainingSize -= reducedSize;
           entry.size -= reducedSize;
@@ -638,7 +642,7 @@ export class RowOrColumn extends ContentItem {
         /**
          * Take anything remaining from the last item.
          */
-        if (remainingSize !== 0) {
+        if (remainingSize !== 0 && allEntries.length > 0) {
           allEntries[allEntries.length - 1].size -= remainingSize;
         }
 
