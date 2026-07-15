@@ -2,68 +2,68 @@ import { ComponentContainer, SerializableValue } from '../src';
 import { ComponentBase } from './component-base';
 
 type TextComponentState = {
-    text: string;
+  text: string;
 };
 
 export class TextComponent extends ComponentBase {
-    private static readonly undefinedTextValue = '<undefined>';
-    static readonly typeName = 'text';
+  private static readonly undefinedTextValue = '<undefined>';
+  static readonly typeName = 'text';
 
-    private _inputElement: HTMLInputElement;
+  private _inputElement: HTMLInputElement;
 
-    private _containerClickListener = () => this.handleClickFocusEvent();
-    private _containerFocusinListener = () => this.handleClickFocusEvent();
+  private _containerClickListener = () => this.handleClickFocusEvent();
+  private _containerFocusinListener = () => this.handleClickFocusEvent();
 
-    constructor(
-        container: ComponentContainer,
-        state: SerializableValue | undefined,
-        virtual: boolean,
-    ) {
-        super(container, virtual);
+  constructor(
+    container: ComponentContainer,
+    state: SerializableValue | undefined,
+    virtual: boolean,
+  ) {
+    super(container, virtual);
 
-        let textValue: string;
-        if (state === undefined) {
-            textValue = TextComponent.undefinedTextValue;
-        } else {
-            if (!SerializableValue.isSerializableRecord(state)) {
-                textValue = '<Unexpect type>';
-            } else {
-                const textState = state as TextComponentState;
-                textValue = textState.text;
-            }
-        }
-
-        this._inputElement = document.createElement('input');
-        this._inputElement.type = 'text';
-        this._inputElement.value = textValue;
-        this._inputElement.style.display = 'block';
-        this.rootHtmlElement.appendChild(this._inputElement);
-
-        this.container.stateRequestEvent = () =>
-            this.handleContainerStateRequestEvent();
-
-        this.rootHtmlElement.addEventListener(
-            'click',
-            this._containerClickListener,
-        );
-        this.rootHtmlElement.addEventListener(
-            'focusin',
-            this._containerFocusinListener,
-        );
+    let textValue: string;
+    if (state === undefined) {
+      textValue = TextComponent.undefinedTextValue;
+    } else {
+      if (!SerializableValue.isSerializableRecord(state)) {
+        textValue = '<Unexpect type>';
+      } else {
+        const textState = state as TextComponentState;
+        textValue = textState.text;
+      }
     }
 
-    handleContainerStateRequestEvent(): TextComponentState | undefined {
-        const text = this._inputElement.value;
-        if (text === TextComponent.undefinedTextValue) {
-            return undefined;
-        } else {
-            return {
-                text,
-            };
-        }
-    }
+    this._inputElement = document.createElement('input');
+    this._inputElement.type = 'text';
+    this._inputElement.value = textValue;
+    this._inputElement.style.display = 'block';
+    this.rootHtmlElement.appendChild(this._inputElement);
 
-    private handleClickFocusEvent(): void {
-        this.container.focus();
+    this.container.stateRequestEvent = () =>
+      this.handleContainerStateRequestEvent();
+
+    this.rootHtmlElement.addEventListener(
+      'click',
+      this._containerClickListener,
+    );
+    this.rootHtmlElement.addEventListener(
+      'focusin',
+      this._containerFocusinListener,
+    );
+  }
+
+  handleContainerStateRequestEvent(): TextComponentState | undefined {
+    const text = this._inputElement.value;
+    if (text === TextComponent.undefinedTextValue) {
+      return undefined;
+    } else {
+      return {
+        text,
+      };
     }
+  }
+
+  private handleClickFocusEvent(): void {
+    this.container.focus();
+  }
 }

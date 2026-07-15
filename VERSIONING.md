@@ -11,15 +11,15 @@ The repository is currently in the `0.x` phase. This phase allows intentional cl
 ## Release policy
 
 - `0.x`
-    - Used while APIs, configuration contracts, CSS class namespaces, and compatibility layers are still being modernized.
-    - Breaking changes are allowed when they are intentional and documented.
+  - Used while APIs, configuration contracts, CSS class namespaces, and compatibility layers are still being modernized.
+  - Breaking changes are allowed when they are intentional and documented.
 - `1.0.0`
-    - Use for the first stable Strelit release with an explicitly supported public API and styling/config contract.
+  - Use for the first stable Strelit release with an explicitly supported public API and styling/config contract.
 - `1.x+`
-    - Follow semantic versioning.
-    - Major: breaking API, config, CSS namespace, or behavior changes.
-    - Minor: backward-compatible features and additive API changes.
-    - Patch: backward-compatible fixes only.
+  - Follow semantic versioning.
+  - Major: breaking API, config, CSS namespace, or behavior changes.
+  - Minor: backward-compatible features and additive API changes.
+  - Patch: backward-compatible fixes only.
 
 ## Practical guidance
 

@@ -3,9 +3,9 @@ import './strelit-layout.less';
 import { App } from './app';
 
 declare global {
-    interface Window {
-        goldenLayoutApiTestApp: App;
-    }
+  interface Window {
+    goldenLayoutApiTestApp: App;
+  }
 }
 
 if (document.readyState !== 'loading') run();
@@ -13,7 +13,7 @@ if (document.readyState !== 'loading') run();
 else document.addEventListener('DOMContentLoaded', run, { passive: true });
 
 function run() {
-    const app = new App();
-    window.goldenLayoutApiTestApp = app;
-    app.start();
+  const app = new App();
+  window.goldenLayoutApiTestApp = app;
+  app.start();
 }

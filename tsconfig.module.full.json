@@ -1,6 +1,6 @@
 {
-    "extends": "./tsconfig.module.json",
-    "compilerOptions": {
-        "stripInternal": false
-    }
+  "extends": "./tsconfig.module.json",
+  "compilerOptions": {
+    "stripInternal": false
+  }
 }

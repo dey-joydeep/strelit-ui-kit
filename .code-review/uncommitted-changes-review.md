@@ -15,9 +15,9 @@ This detailed code review evaluates the uncommitted changes and repository state
 
 - **Current Repository State:** The repository `strelit-ui-kit` was initialized as a fresh Git repository derived from the modernized Golden Layout v2 working tree. Currently, all **275+ source, test, script, configuration, and documentation files** are untracked (`??`) under branch `feature/strelit-modernization` with zero commits (`No commits yet`).
 - **Build & Quality Verification:**
-    - **Build (`npm run build`):** **PASSED (100%)** — CommonJS (`dist/cjs`), ES Module (`dist/esm`), rolled-up TypeScript declarations (`dist/types`), compiled CSS themes (`dist/css`), and API Extractor reports (`etc/strelit-ui-kit.api.md`) build cleanly.
-    - **Test Suite (`npm run test`):** **PASSED (100%)** — All **16 tests across 6 test files** pass in **~6.08s** using **Vitest**.
-    - **Type-Aware Linting (`npm run lint`):** **PASSED (100%)** — **0 errors and 0 warnings** across 57 TypeScript files checked via **Oxlint**.
+  - **Build (`npm run build`):** **PASSED (100%)** — CommonJS (`dist/cjs`), ES Module (`dist/esm`), rolled-up TypeScript declarations (`dist/types`), compiled CSS themes (`dist/css`), and API Extractor reports (`etc/strelit-ui-kit.api.md`) build cleanly.
+  - **Test Suite (`npm run test`):** **PASSED (100%)** — All **16 tests across 6 test files** pass in **~6.08s** using **Vitest**.
+  - **Type-Aware Linting (`npm run lint`):** **PASSED (100%)** — **0 errors and 0 warnings** across 57 TypeScript files checked via **Oxlint**.
 - **Modernization Quality:** The transition from legacy Golden Layout v2 to Strelit UI Kit represents a massive leap in maintainability, build execution speed, framework integration (Angular/Vue/React virtual components), and API cleanliness.
 
 ---
@@ -46,13 +46,13 @@ When comparing `strelit-ui-kit` against the upstream Golden Layout v2 source rep
 ### 3.1 Product Rebranding & Governance (`Strelit UI Kit` / `CTHub`)
 
 - **Package Identity (`package.json`)**:
-    - Package name modernized to `"strelit-ui-kit"` at `"version": "0.1.0"` (`"private": true`).
-    - Clear entry points: CJS (`dist/cjs/index.js`), ESM (`dist/esm/index.mjs`), and bundled declarations (`dist/types/index.d.ts`).
+  - Package name modernized to `"strelit-ui-kit"` at `"version": "0.1.0"` (`"private": true`).
+  - Clear entry points: CJS (`dist/cjs/index.js`), ESM (`dist/esm/index.mjs`), and bundled declarations (`dist/types/index.d.ts`).
 - **Versioning Strategy (`VERSIONING.md`)**:
-    - Explicitly establishes that Strelit UI Kit follows its own product release line (`0.x` during active public contract cleanup, targeting `1.0.0` for stable contract lock-in), disassociating from upstream "v2" confusion.
+  - Explicitly establishes that Strelit UI Kit follows its own product release line (`0.x` during active public contract cleanup, targeting `1.0.0` for stable contract lock-in), disassociating from upstream "v2" confusion.
 - **Licensing & Commercial Architecture (`LICENSING-PLAN.md`)**:
-    - Adopts an **Open Core (MIT)** foundation for the core workspace/layout engine while preserving required upstream copyright notices.
-    - Documents structural separation guidance so future proprietary add-ons (e.g., visual builder tools, enterprise adapters) reside in separate packages (`packages/pro` or `packages/enterprise`).
+  - Adopts an **Open Core (MIT)** foundation for the core workspace/layout engine while preserving required upstream copyright notices.
+  - Documents structural separation guidance so future proprietary add-ons (e.g., visual builder tools, enterprise adapters) reside in separate packages (`packages/pro` or `packages/enterprise`).
 
 ### 3.2 Toolchain & Build Infrastructure
 
@@ -67,30 +67,30 @@ When comparing `strelit-ui-kit` against the upstream Golden Layout v2 source rep
 ### 3.3 Core Source Code Modernization (`src/`)
 
 1. **Entry Point & Layout Controller (`src/ts/strelit-layout.ts`, `src/index.ts`)**:
-    - Introduces `StrelitLayout` as a clean modernized entry point alongside legacy `GoldenLayout` compatibility shims.
-    - Standardizes on clean lifecycle verbs: `loadLayout(config)` (replacing constructor-bound auto-init), `saveLayout()` (with deprecated alias `toConfig()`), and `setSize()` (alias `updateSize()`).
+   - Introduces `StrelitLayout` as a clean modernized entry point alongside legacy `GoldenLayout` compatibility shims.
+   - Standardizes on clean lifecycle verbs: `loadLayout(config)` (replacing constructor-bound auto-init), `saveLayout()` (with deprecated alias `toConfig()`), and `setSize()` (alias `updateSize()`).
 2. **Configuration & Resolution Layer (`src/ts/config/config.ts`, `resolved-config.ts`)**:
-    - Refactored legacy TypeScript namespace exports into clean standard ES modules.
-    - Added robust type safety around `ItemConfigType`, `ComponentItemConfig`, and layout tree resolution.
-    - Retains backward-compatible migration shims for `componentName` -> `componentType`.
+   - Refactored legacy TypeScript namespace exports into clean standard ES modules.
+   - Added robust type safety around `ItemConfigType`, `ComponentItemConfig`, and layout tree resolution.
+   - Retains backward-compatible migration shims for `componentName` -> `componentType`.
 3. **Component Container & Framework Virtualization (`src/ts/container/component-container.ts`, `virtual-layout.ts`)**:
-    - Strengthened virtual component architecture (`bindComponentEvent` / `unbindComponentEvent`) enabling framework adapters (Angular, Vue, React) to retain full ownership of DOM hierarchy and component lifecycles.
-    - Added explicit lifecycle teardown hooks (`beforeComponentRelease`) and state retrieval hooks (`stateRequestEvent`, `initialState`).
+   - Strengthened virtual component architecture (`bindComponentEvent` / `unbindComponentEvent`) enabling framework adapters (Angular, Vue, React) to retain full ownership of DOM hierarchy and component lifecycles.
+   - Added explicit lifecycle teardown hooks (`beforeComponentRelease`) and state retrieval hooks (`stateRequestEvent`, `initialState`).
 
 ### 3.4 Theme & Styling Architecture (`src/less/`, `src/scss/`, `scripts/css.js`)
 
 - Completely modernized base stylesheets (`strelit-base.less` / `strelit-base.scss`) and curated themes:
-    - `strelit-dark-theme.css`
-    - `strelit-light-theme.css`
-    - `strelit-soda-theme.css`
-    - `strelit-translucent-theme.css`
-    - `strelit-borderless-dark-theme.css`
+  - `strelit-dark-theme.css`
+  - `strelit-light-theme.css`
+  - `strelit-soda-theme.css`
+  - `strelit-translucent-theme.css`
+  - `strelit-borderless-dark-theme.css`
 - All UI image assets (`src/img/`) cleanly rebranded to `strelit-*` prefixes (`strelit-close-*.png`, `strelit-maximise-*.png`, `strelit-minimize-*.png`, `strelit-popin-*.png`, `strelit-popout-*.png`).
 
 ### 3.5 Automated Adoption & Codemod Tooling (`scripts/`)
 
 - Includes **`scripts/migrate-golden-layout-to-strelit.js`**:
-    - An automated migration script (`npm run migrate:golden-layout -- --target <path> --dry-run`) that scans adopter codebases and rewrites legacy imports, CSS class selectors, and deprecated method calls to Strelit UI Kit equivalents.
+  - An automated migration script (`npm run migrate:golden-layout -- --target <path> --dry-run`) that scans adopter codebases and rewrites legacy imports, CSS class selectors, and deprecated method calls to Strelit UI Kit equivalents.
 
 ---
 
@@ -148,13 +148,13 @@ Writing package typings: dist\types\index.d.ts
 
 1. **Initial Git Commit Structuring:**
    Since all files are currently untracked (`??`) under branch `feature/strelit-modernization`, we recommend staging and committing the changes in logical atomic commits rather than a single monolithic commit:
-    - `chore: initialize Strelit UI Kit governance, licensing, and versioning guidelines`
-    - `build: replace legacy toolchain with Vitest, tsup, Vite, Oxlint, and API Extractor`
-    - `refactor(core): modernize layout controller, config modules, and virtual component bindings`
-    - `feat(migration): add automated Golden Layout to Strelit codemod script`
+   - `chore: initialize Strelit UI Kit governance, licensing, and versioning guidelines`
+   - `build: replace legacy toolchain with Vitest, tsup, Vite, Oxlint, and API Extractor`
+   - `refactor(core): modernize layout controller, config modules, and virtual component bindings`
+   - `feat(migration): add automated Golden Layout to Strelit codemod script`
 2. **Cross-Platform Line Ending Normalization (`.gitattributes`):**
    During Git diff inspection on Windows, Git reported `LF will be replaced by CRLF the next time Git touches it` across source and test files.
-    - **Recommendation:** Add a `.gitattributes` file at the repository root enforcing text normalization (`* text=auto eol=lf`) to prevent cross-platform newline noise on CI servers.
+   - **Recommendation:** Add a `.gitattributes` file at the repository root enforcing text normalization (`* text=auto eol=lf`) to prevent cross-platform newline noise on CI servers.
 
 ### 5.2 Architectural & API Recommendations
 
@@ -170,22 +170,22 @@ Writing package typings: dist\types\index.d.ts
 All **14 legacy JavaScript test files** (`test/disabled/*.js`) have been fully audited, categorized, migrated to TypeScript + Vitest, or replaced with modern v2 API equivalents:
 
 - **Migrated to `test/specs/*.ts` (9 files):**
-    - [create-config-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/create-config-tests.ts) (from `create-config.tests.js`)
-    - [create-from-config-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/create-from-config-tests.ts) (from `create-from-config-tests.js`)
-    - [tree-manipulation-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/tree-manipulation-tests.ts) (from `tree-manipulation-tests.js`)
-    - [component-state-save-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/component-state-save-tests.ts) (from `component-state-save-tests.js`)
-    - [event-bubble-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/event-bubble-tests.ts) (from `event-bubble-tests.js`)
-    - [minifier-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/minifier-tests.ts) (from `minifier-tests.js`)
-    - [popout-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/popout-tests.ts) (from `popout-tests.js`)
-    - [tab-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/tab-tests.ts) (from `tab-tests.js`)
-    - [title-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/title-tests.ts) (from `title-tests.js`)
+  - [create-config-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/create-config-tests.ts) (from `create-config.tests.js`)
+  - [create-from-config-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/create-from-config-tests.ts) (from `create-from-config-tests.js`)
+  - [tree-manipulation-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/tree-manipulation-tests.ts) (from `tree-manipulation-tests.js`)
+  - [component-state-save-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/component-state-save-tests.ts) (from `component-state-save-tests.js`)
+  - [event-bubble-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/event-bubble-tests.ts) (from `event-bubble-tests.js`)
+  - [minifier-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/minifier-tests.ts) (from `minifier-tests.js`)
+  - [popout-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/popout-tests.ts) (from `popout-tests.js`)
+  - [tab-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/tab-tests.ts) (from `tab-tests.js`)
+  - [title-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/title-tests.ts) (from `title-tests.js`)
 - **Merged into Existing Specs (2 files):**
-    - `item-creation-events-tests.js` → merged into [component-creation-events-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/component-creation-events-tests.ts)
-    - `selector-tests.js` → merged into [query-helpers-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/query-helpers-tests.ts)
+  - `item-creation-events-tests.js` → merged into [component-creation-events-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/component-creation-events-tests.ts)
+  - `selector-tests.js` → merged into [query-helpers-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/query-helpers-tests.ts)
 - **Modernized Replacement (2 files):**
-    - `disabled-selection-tests.js` / `enabled-selection-tests.js` → legacy v1 item selection was replaced in v2 by the Focus API, now comprehensively tested in [component-focus-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/component-focus-tests.ts).
+  - `disabled-selection-tests.js` / `enabled-selection-tests.js` → legacy v1 item selection was replaced in v2 by the Focus API, now comprehensively tested in [component-focus-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/component-focus-tests.ts).
 - **Obsolete / Deleted (1 file):**
-    - `xss_tests.js` → legacy jQuery `.html()` XSS regex helper (`filterXss`) was removed in v2 since Strelit UI Kit uses safe native DOM `innerText`. Safe title rendering is tested in [title-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/title-tests.ts).
+  - `xss_tests.js` → legacy jQuery `.html()` XSS regex helper (`filterXss`) was removed in v2 since Strelit UI Kit uses safe native DOM `innerText`. Safe title rendering is tested in [title-tests.ts](file:///E:/workspace/project-golden-layout/strelit-ui-kit/test/specs/title-tests.ts).
 
 All obsolete `.js` test files and the `test/disabled/` directory have been removed.
 

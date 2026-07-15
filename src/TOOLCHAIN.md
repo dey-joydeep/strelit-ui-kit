@@ -27,28 +27,28 @@
 ---
 
 - root
-    - src (input code)
-        - js
-            - LayoutManager.js
-        - less
-            - base.less
-            - theme-dark.less
-            - theme-light.less
-        - index.js
-    - dist (output products)
-        - css
-            - strelit.css
-        - umd (completely bundled variant)
-            - strelit.min.js
-            - strelit.min.js.map
-            - strelit.js
-        - module (ES5 code, ESM modules)
-            - index.js
-            - js
-                - LayoutManager.js
-        - es2015 (ES6 code, ESM modules)
-            - index.js
-            - js
-                - LayoutManager.js
+  - src (input code)
+    - js
+      - LayoutManager.js
+    - less
+      - base.less
+      - theme-dark.less
+      - theme-light.less
+    - index.js
+  - dist (output products)
+    - css
+      - strelit.css
+    - umd (completely bundled variant)
+      - strelit.min.js
+      - strelit.min.js.map
+      - strelit.js
+    - module (ES5 code, ESM modules)
+      - index.js
+      - js
+        - LayoutManager.js
+    - es2015 (ES6 code, ESM modules)
+      - index.js
+      - js
+        - LayoutManager.js
 
 ---

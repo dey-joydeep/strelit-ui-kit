@@ -155,11 +155,11 @@ Several properties and functions have been renamed in `header.ts` and `tab.ts`. 
 1. preventDefault() is not called by any event listeners.
 1. Bubbling Events are now emitted with the parameter EventEmitter.BubblingEvent (or descendant)
 1. New EventEmitter events:
-    - beforeComponentRelease
-    - stackHeaderClick - Bubbling event. Fired when stack header is clicked - but not tab.
-    - stackHeaderTouchStart - Bubbling event. Fired when stack header is touched - but not tab.
-    - focus - Bubbling event. Fired when a component gets focus.
-    - blur - Bubbling event. Fired when a component loses focus.
+   - beforeComponentRelease
+   - stackHeaderClick - Bubbling event. Fired when stack header is clicked - but not tab.
+   - stackHeaderTouchStart - Bubbling event. Fired when stack header is touched - but not tab.
+   - focus - Bubbling event. Fired when a component gets focus.
+   - blur - Bubbling event. Fired when a component loses focus.
 
 ## Other
 

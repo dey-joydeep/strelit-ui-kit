@@ -1,19 +1,19 @@
 export * from './ts/config/config';
 export * from './ts/config/resolved-config';
 export {
-    ComponentContainer,
-    type ComponentContainerBindableComponent,
-    type ComponentContainerComponent,
-    type ComponentContainerStateRequestEventHandler,
-    type ComponentContainerVirtualRectingRequiredEvent,
-    type ComponentContainerVirtualVisibilityChangeRequiredEvent,
-    type ComponentContainerVirtualZIndexChangeRequiredEvent,
+  ComponentContainer,
+  type ComponentContainerBindableComponent,
+  type ComponentContainerComponent,
+  type ComponentContainerStateRequestEventHandler,
+  type ComponentContainerVirtualRectingRequiredEvent,
+  type ComponentContainerVirtualVisibilityChangeRequiredEvent,
+  type ComponentContainerVirtualZIndexChangeRequiredEvent,
 } from './ts/container/component-container';
 export { BrowserPopout } from './ts/controls/browser-popout';
 export {
-    DragSource,
-    type DragSourceComponentItemConfig,
-    isDragSourceComponentItemConfig,
+  DragSource,
+  type DragSourceComponentItemConfig,
+  isDragSourceComponentItemConfig,
 } from './ts/controls/drag-source';
 export { Header } from './ts/controls/header';
 export { Tab } from './ts/controls/tab';

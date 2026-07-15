@@ -48,157 +48,157 @@ With Virtual Components the following events need to be handled:
 
 - `VirtualLayout.bindComponentEvent: (container, itemConfig) => ComponentContainer.BindableComponent`\
   Fired whenever a StrelitLayout wants to bind to a new component. The handler is passed the container and the item's resolved config. Typically, the handler would:
-    - create or fetch the component using `itemConfig`,
-    - get the the component's top level HTML component,
-    - ensure this element has `absolute` position,
-    - make the element a child of Strelit Layout's root HTML element,
-    - store the component in a map using `container` as the key,
-    - add handlers to the container's `virtualRectingRequiredEvent` and `virtualVisibilityChangeRequiredEvent` events,
-    - return the component in an `BindableComponent` interface with `virtual: true`.
+  - create or fetch the component using `itemConfig`,
+  - get the the component's top level HTML component,
+  - ensure this element has `absolute` position,
+  - make the element a child of Strelit Layout's root HTML element,
+  - store the component in a map using `container` as the key,
+  - add handlers to the container's `virtualRectingRequiredEvent` and `virtualVisibilityChangeRequiredEvent` events,
+  - return the component in an `BindableComponent` interface with `virtual: true`.
 
-    Example:
+  Example:
 
-    ```typescript
-    private handleBindComponentEvent(container: ComponentContainer, itemConfig: ResolvedComponentItemConfig) {
-        // Use ResolvedComponentItemConfig.resolveComponentTypeName() to resolve component types to a unique name
-        const componentTypeName = ResolvedComponentItemConfig.resolveComponentTypeName(itemConfig);
-        if (componentTypeName === undefined) {
-            throw new Error('handleBindComponentEvent: Undefined componentTypeName');
-        }
-        const component = this.createVirtualComponent(container, componentTypeName, itemConfig.componentState);
-        const componentRootElement = component.rootHtmlElement;
-        this._layoutElement.appendChild(componentRootElement);
-        this._boundComponentMap.set(container, component);
-        container.virtualRectingRequiredEvent = (container, width, height) => this.handleContainerVirtualRectingRequiredEvent(container, width, height);
-        container.virtualVisibilityChangeRequiredEvent = (container, visible) => this.handleContainerVisibilityChangeRequiredEvent(container, visible);
-        return {
-            component,
-            virtual: true,
-        };
-    }
-    ```
+  ```typescript
+  private handleBindComponentEvent(container: ComponentContainer, itemConfig: ResolvedComponentItemConfig) {
+      // Use ResolvedComponentItemConfig.resolveComponentTypeName() to resolve component types to a unique name
+      const componentTypeName = ResolvedComponentItemConfig.resolveComponentTypeName(itemConfig);
+      if (componentTypeName === undefined) {
+          throw new Error('handleBindComponentEvent: Undefined componentTypeName');
+      }
+      const component = this.createVirtualComponent(container, componentTypeName, itemConfig.componentState);
+      const componentRootElement = component.rootHtmlElement;
+      this._layoutElement.appendChild(componentRootElement);
+      this._boundComponentMap.set(container, component);
+      container.virtualRectingRequiredEvent = (container, width, height) => this.handleContainerVirtualRectingRequiredEvent(container, width, height);
+      container.virtualVisibilityChangeRequiredEvent = (container, visible) => this.handleContainerVisibilityChangeRequiredEvent(container, visible);
+      return {
+          component,
+          virtual: true,
+      };
+  }
+  ```
 
 - `VirtualLayout.unbindComponentEvent: (container) => void`\
   Fired when a component is removed from Strelit Layout. The handler is passed the container. Typically, the handler would:
-    - find the component in the map using `container` as the key,
-    - remove it as a child from Strelit Layout's root HTML element,
-    - remove it from the map.
+  - find the component in the map using `container` as the key,
+  - remove it as a child from Strelit Layout's root HTML element,
+  - remove it from the map.
 
-    Example:
+  Example:
 
-    ```typescript
-    private handleUnbindComponentEvent(container: ComponentContainer) {
-        const component = this._boundComponentMap.get(container);
-        if (component === undefined) {
-            throw new Error('handleUnbindComponentEvent: Component not found');
-        }
+  ```typescript
+  private handleUnbindComponentEvent(container: ComponentContainer) {
+      const component = this._boundComponentMap.get(container);
+      if (component === undefined) {
+          throw new Error('handleUnbindComponentEvent: Component not found');
+      }
 
-        const componentRootElement = component.rootHtmlElement;
-        if (componentRootElement === undefined) {
-            throw new Error('handleUnbindComponentEvent: Component does not have a root HTML element');
-        }
+      const componentRootElement = component.rootHtmlElement;
+      if (componentRootElement === undefined) {
+          throw new Error('handleUnbindComponentEvent: Component does not have a root HTML element');
+      }
 
-        this._layoutElement.removeChild(componentRootElement);
-        this._boundComponentMap.delete(container);
-    }
-    ```
+      this._layoutElement.removeChild(componentRootElement);
+      this._boundComponentMap.delete(container);
+  }
+  ```
 
 - `LayoutManager.beforeVirtualRectingEvent: () => void`\
   This event does not need to be handled. However it can be used to optimise positioning of components. Whenever a layout is changed, it may be that several components need to be repositioned. This event will be fired whenever one or more components need to be positioned as the result of one layout change. Typically it is used to get the position of Strelit Layout's root HTML element, using `getBoundingClientRect()`. This can then be cached for use when each component's position needs to be calculated.
 
-    Example:
+  Example:
 
-    ```typescript
-    private handleBeforeVirtualRectingEvent(count: number) {
-        this._strelitLayoutBoundingClientRect = this._layoutElement.getBoundingClientRect();
-    }
-    ```
+  ```typescript
+  private handleBeforeVirtualRectingEvent(count: number) {
+      this._strelitLayoutBoundingClientRect = this._layoutElement.getBoundingClientRect();
+  }
+  ```
 
 - `ComponentContainer.virtualRectingRequiredEvent: (container, width, height) => void;`\
   Fired when a component's position and/or size need to be changed. The handler is passed the container and the component's required width and height. Typically, the handler would:
-    - find the component in the map using `container` as the key,
-    - get the Strelit Layout's root HTML element's position using `getBoundingClientRect()`, (Alternatively, it can used the position calculated by the handler for the `virtualRectingRequiredEvent` event.)
-    - get the container's position using `getBoundingClientRect()`,
-    - calculate the container's position relative to Strelit Layout's root HTML element position.
-    - accordingly, update the following properties in the component's top level HTML element:
-        - `left`
-        - `top`
-        - `width`
-        - `height`
+  - find the component in the map using `container` as the key,
+  - get the Strelit Layout's root HTML element's position using `getBoundingClientRect()`, (Alternatively, it can used the position calculated by the handler for the `virtualRectingRequiredEvent` event.)
+  - get the container's position using `getBoundingClientRect()`,
+  - calculate the container's position relative to Strelit Layout's root HTML element position.
+  - accordingly, update the following properties in the component's top level HTML element:
+    - `left`
+    - `top`
+    - `width`
+    - `height`
 
-    Example:
+  Example:
 
-    ```typescript
-    private handleContainerVirtualRectingRequiredEvent(container: ComponentContainer, width: number, height: number) {
-        const component = this._boundComponentMap.get(container);
-        if (component === undefined) {
-            throw new Error('handleContainerVirtualRectingRequiredEvent: Component not found');
-        }
+  ```typescript
+  private handleContainerVirtualRectingRequiredEvent(container: ComponentContainer, width: number, height: number) {
+      const component = this._boundComponentMap.get(container);
+      if (component === undefined) {
+          throw new Error('handleContainerVirtualRectingRequiredEvent: Component not found');
+      }
 
-        const rootElement = component.rootHtmlElement;
-        if (rootElement === undefined) {
-            throw new Error('handleContainerVirtualRectingRequiredEvent: Component does not have a root HTML element');
-        }
+      const rootElement = component.rootHtmlElement;
+      if (rootElement === undefined) {
+          throw new Error('handleContainerVirtualRectingRequiredEvent: Component does not have a root HTML element');
+      }
 
-        const containerBoundingClientRect = container.element.getBoundingClientRect();
-        const left = containerBoundingClientRect.left - this._strelitLayoutBoundingClientRect.left;
-        rootElement.style.left = this.numberToPixels(left);
-        const top = containerBoundingClientRect.top - this._strelitLayoutBoundingClientRect.top;
-        rootElement.style.top = this.numberToPixels(top);
-        rootElement.style.width = this.numberToPixels(width);
-        rootElement.style.height = this.numberToPixels(height);
-    }
-    ```
+      const containerBoundingClientRect = container.element.getBoundingClientRect();
+      const left = containerBoundingClientRect.left - this._strelitLayoutBoundingClientRect.left;
+      rootElement.style.left = this.numberToPixels(left);
+      const top = containerBoundingClientRect.top - this._strelitLayoutBoundingClientRect.top;
+      rootElement.style.top = this.numberToPixels(top);
+      rootElement.style.width = this.numberToPixels(width);
+      rootElement.style.height = this.numberToPixels(height);
+  }
+  ```
 
 - `ComponentContainer.virtualVisibilityChangeRequiredEvent: (container, visible) => void;`\
   Fired when a component's visibility needs to be changed. The handler is passed the container and a boolean specifying visibility. Typically, the handler would:
-    - find the component in the map using `container` as the key,
-    - change its visibility using the `display` property in the component's top level HTML element.
+  - find the component in the map using `container` as the key,
+  - change its visibility using the `display` property in the component's top level HTML element.
 
-    Example:
+  Example:
 
-    ```typescript
-    private handleContainerVisibilityChangeRequiredEvent(container: ComponentContainer, visible: boolean) {
-        const component = this._boundComponentMap.get(container);
-        if (component === undefined) {
-            throw new Error('handleContainerVisibilityChangeRequiredEvent: Component not found');
-        }
+  ```typescript
+  private handleContainerVisibilityChangeRequiredEvent(container: ComponentContainer, visible: boolean) {
+      const component = this._boundComponentMap.get(container);
+      if (component === undefined) {
+          throw new Error('handleContainerVisibilityChangeRequiredEvent: Component not found');
+      }
 
-        const componentRootElement = component.rootHtmlElement;
-        if (componentRootElement === undefined) {
-            throw new Error('handleContainerVisibilityChangeRequiredEvent: Component does not have a root HTML element');
-        }
+      const componentRootElement = component.rootHtmlElement;
+      if (componentRootElement === undefined) {
+          throw new Error('handleContainerVisibilityChangeRequiredEvent: Component does not have a root HTML element');
+      }
 
-        if (visible) {
-            componentRootElement.style.display = '';
-        } else {
-            componentRootElement.style.display = 'none';
-        }
-    }
-    ```
+      if (visible) {
+          componentRootElement.style.display = '';
+      } else {
+          componentRootElement.style.display = 'none';
+      }
+  }
+  ```
 
 - `ComponentContainer.virtualZIndexChangeRequiredEvent: (container, logicalZIndex, defaultZIndex) => void`\
   Fired when a component's z-index needs to be changed. The handler is passed the container and a logical z-index and the default style z-index. Typically, the handler would:
-    - find the component in the map using `container` as the key,
-    - change its z-index to the default style z-index specified in `defaultZIndex`.
+  - find the component in the map using `container` as the key,
+  - change its z-index to the default style z-index specified in `defaultZIndex`.
 
-    Example:
+  Example:
 
-    ```typescript
-    private handleContainerVirtualZIndexChangeRequiredEvent(container: ComponentContainer, logicalZIndex: LogicalZIndex, defaultZIndex: string) {
-        const component = this._boundComponentMap.get(container);
-        if (component === undefined) {
-            throw new Error('handleContainerVirtualZIndexChangeRequiredEvent: Component not found');
-        }
+  ```typescript
+  private handleContainerVirtualZIndexChangeRequiredEvent(container: ComponentContainer, logicalZIndex: LogicalZIndex, defaultZIndex: string) {
+      const component = this._boundComponentMap.get(container);
+      if (component === undefined) {
+          throw new Error('handleContainerVirtualZIndexChangeRequiredEvent: Component not found');
+      }
 
-        const componentRootElement = component.rootHtmlElement;
-        if (componentRootElement === undefined) {
-            throw new Error('handleContainerVirtualZIndexChangeRequiredEvent: Component does not have a root HTML element');
-        }
+      const componentRootElement = component.rootHtmlElement;
+      if (componentRootElement === undefined) {
+          throw new Error('handleContainerVirtualZIndexChangeRequiredEvent: Component does not have a root HTML element');
+      }
 
-        componentRootElement.style.zIndex = defaultZIndex;
-    }
-    ```
+      componentRootElement.style.zIndex = defaultZIndex;
+  }
+  ```
 
 The apitest application demonstrates how virtual components are implemented.
 

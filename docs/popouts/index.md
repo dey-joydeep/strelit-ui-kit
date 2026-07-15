@@ -10,10 +10,10 @@ EventHub can be used to broadcast messages and events to all windows. The Layout
 
 ```typescript
 layoutManager.eventHub.on(
-    'userBroadcast',
-    (...ev: EventEmitter.UnknownParams) => {
-        // respond to user broadcast event
-    },
+  'userBroadcast',
+  (...ev: EventEmitter.UnknownParams) => {
+    // respond to user broadcast event
+  },
 );
 ```
 

@@ -66,7 +66,7 @@ Run the narrowest relevant verification after changes. For non-trivial refactors
 ## Coding Style
 
 - TypeScript strict mode
-- 4-space indentation
+- 2-space indentation
 - single quotes
 - semicolons
 - ASCII by default

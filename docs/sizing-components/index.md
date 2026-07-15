@@ -24,8 +24,8 @@ The basic idea of the sizing a `RowOrColumn`'s children is as follows:
 1. Subtract the size of all the splitters from the `RowOrColumn` pixel size.
 1. For each child whose size is specified in percentage, allocate it a portion of the pixels as per its percentage.
 1. If there are any children with fractional sizes then:
-    - if not all pixels have been allocated, allocate the remaining pixels to these children according to their fractional size.
-    - if all pixels or more have been allocated have been allocated, then allocate another 50% and distribute it to these children according to their fractional size.
+   - if not all pixels have been allocated, allocate the remaining pixels to these children according to their fractional size.
+   - if all pixels or more have been allocated have been allocated, then allocate another 50% and distribute it to these children according to their fractional size.
 1. Adjust allocations so that they total to 100%.
 1. Redistribute pixels as best as possible to respect children which specify a minimum size (see below).
 

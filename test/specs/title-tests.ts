@@ -1,124 +1,120 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-    ComponentContainer,
-    StrelitLayout,
-    LayoutConfig,
-    Stack,
-    ComponentItem,
+  ComponentContainer,
+  StrelitLayout,
+  LayoutConfig,
+  Stack,
+  ComponentItem,
 } from '../../src';
 
 describe('Content item titles and dynamic updates', function () {
-    let layout: StrelitLayout;
+  let layout: StrelitLayout;
 
-    beforeEach(function () {
-        layout = new StrelitLayout();
-        layout.registerComponentFactoryFunction(
-            'testComponent',
-            (container: ComponentContainer) => {
-                const span = document.createElement('span');
-                span.innerText = 'content';
-                container.element.appendChild(span);
-            },
-        );
+  beforeEach(function () {
+    layout = new StrelitLayout();
+    layout.registerComponentFactoryFunction(
+      'testComponent',
+      (container: ComponentContainer) => {
+        const span = document.createElement('span');
+        span.innerText = 'content';
+        container.element.appendChild(span);
+      },
+    );
+  });
+
+  afterEach(function () {
+    layout.destroy();
+  });
+
+  it('applies titles from config, falls back to componentType, and updates dynamically', function () {
+    const config: LayoutConfig = {
+      root: {
+        type: 'stack',
+        content: [
+          {
+            type: 'component',
+            id: 'hasTitle',
+            componentType: 'testComponent',
+            title: 'First Title',
+          },
+          {
+            type: 'component',
+            id: 'noTitle',
+            componentType: 'testComponent',
+          },
+        ],
+      },
+    };
+
+    layout.loadLayout(config);
+
+    const stack = layout.rootItem as Stack;
+    expect(stack.header.tabs.length).toBe(2);
+
+    expect(stack.header.tabs[0].titleElement.innerText).toBe('First Title');
+    expect(stack.header.tabs[1].titleElement.innerText).toBe('testComponent');
+
+    const itemWithTitle = layout.findFirstComponentItemById(
+      'hasTitle',
+    ) as ComponentItem;
+    itemWithTitle.setTitle('Updated Title');
+
+    expect(stack.header.tabs[0].titleElement.innerText).toBe('Updated Title');
+  });
+
+  it('safely sets titles containing HTML symbols via native innerText (preventing XSS)', function () {
+    const config: LayoutConfig = {
+      root: {
+        type: 'stack',
+        content: [
+          {
+            type: 'component',
+            componentType: 'testComponent',
+            title: '<script>alert(1)</script>',
+          },
+        ],
+      },
+    };
+
+    layout.loadLayout(config);
+
+    const stack = layout.rootItem as Stack;
+    expect(stack.header.tabs[0].titleElement.innerText).toBe(
+      '<script>alert(1)</script>',
+    );
+    expect(stack.header.tabs[0].titleElement.children.length).toBe(0);
+  });
+
+  it('bubbles title-driven stateChanged events to layout listeners', async function () {
+    const config: LayoutConfig = {
+      root: {
+        type: 'stack',
+        content: [
+          {
+            type: 'component',
+            id: 'titleComponent',
+            componentType: 'testComponent',
+            title: 'Initial',
+          },
+        ],
+      },
+    };
+
+    let stateChangedCount = 0;
+    layout.on('stateChanged', () => {
+      stateChangedCount++;
     });
 
-    afterEach(function () {
-        layout.destroy();
+    layout.loadLayout(config);
+
+    const item = layout.findFirstComponentItemById(
+      'titleComponent',
+    ) as ComponentItem;
+    item.setTitle('Updated');
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => resolve(undefined));
     });
 
-    it('applies titles from config, falls back to componentType, and updates dynamically', function () {
-        const config: LayoutConfig = {
-            root: {
-                type: 'stack',
-                content: [
-                    {
-                        type: 'component',
-                        id: 'hasTitle',
-                        componentType: 'testComponent',
-                        title: 'First Title',
-                    },
-                    {
-                        type: 'component',
-                        id: 'noTitle',
-                        componentType: 'testComponent',
-                    },
-                ],
-            },
-        };
-
-        layout.loadLayout(config);
-
-        const stack = layout.rootItem as Stack;
-        expect(stack.header.tabs.length).toBe(2);
-
-        expect(stack.header.tabs[0].titleElement.innerText).toBe('First Title');
-        expect(stack.header.tabs[1].titleElement.innerText).toBe(
-            'testComponent',
-        );
-
-        const itemWithTitle = layout.findFirstComponentItemById(
-            'hasTitle',
-        ) as ComponentItem;
-        itemWithTitle.setTitle('Updated Title');
-
-        expect(stack.header.tabs[0].titleElement.innerText).toBe(
-            'Updated Title',
-        );
-    });
-
-    it('safely sets titles containing HTML symbols via native innerText (preventing XSS)', function () {
-        const config: LayoutConfig = {
-            root: {
-                type: 'stack',
-                content: [
-                    {
-                        type: 'component',
-                        componentType: 'testComponent',
-                        title: '<script>alert(1)</script>',
-                    },
-                ],
-            },
-        };
-
-        layout.loadLayout(config);
-
-        const stack = layout.rootItem as Stack;
-        expect(stack.header.tabs[0].titleElement.innerText).toBe(
-            '<script>alert(1)</script>',
-        );
-        expect(stack.header.tabs[0].titleElement.children.length).toBe(0);
-    });
-
-    it('bubbles title-driven stateChanged events to layout listeners', async function () {
-        const config: LayoutConfig = {
-            root: {
-                type: 'stack',
-                content: [
-                    {
-                        type: 'component',
-                        id: 'titleComponent',
-                        componentType: 'testComponent',
-                        title: 'Initial',
-                    },
-                ],
-            },
-        };
-
-        let stateChangedCount = 0;
-        layout.on('stateChanged', () => {
-            stateChangedCount++;
-        });
-
-        layout.loadLayout(config);
-
-        const item = layout.findFirstComponentItemById(
-            'titleComponent',
-        ) as ComponentItem;
-        item.setTitle('Updated');
-        await new Promise((resolve) => {
-            requestAnimationFrame(() => resolve(undefined));
-        });
-
-        expect(stateChangedCount).toBeGreaterThan(0);
-    });
+    expect(stateChangedCount).toBeGreaterThan(0);
+  });
 });

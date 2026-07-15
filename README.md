@@ -20,9 +20,9 @@ This repository uses Strelit's own version line. It is not a continuation of an 
 - `0.x` is used while public API, configuration, and styling contracts are still being intentionally modernized.
 - `1.0.0` should be used for the first stable Strelit release with an explicitly supported public contract.
 - After `1.0.0`, semantic versioning applies normally:
-    - major for breaking API, config, or styling changes
-    - minor for backward-compatible features
-    - patch for backward-compatible fixes
+  - major for breaking API, config, or styling changes
+  - minor for backward-compatible features
+  - patch for backward-compatible fixes
 
 See [VERSIONING.md](./VERSIONING.md) for the repo policy.
 

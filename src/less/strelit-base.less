@@ -25,326 +25,326 @@
 @height6: 15px; // Appears 1 time
 
 .strelit_root {
-    position: relative;
+  position: relative;
 }
 
 .strelit_row > .strelit_item {
-    float: left;
+  float: left;
 }
 
 // Single Pane content (area in which final dragged content is contained)
 .strelit_content {
-    overflow: hidden;
-    position: relative;
+  overflow: hidden;
+  position: relative;
 }
 
 // ".strelit_dragging" is applied to BODY tag during Drag and is also directly applied to the root of the object being dragged
 .strelit_dragging,
 .strelit_dragging * {
-    cursor: move !important;
-    user-select: none;
+  cursor: move !important;
+  user-select: none;
 }
 
 // If a specific Pane is maximized
 .strelit_maximised {
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 40;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 40;
 }
 
 .strelit_maximise_placeholder {
-    display: none;
+  display: none;
 }
 
 // Separator line (handle to change pane size)
 .strelit_splitter {
-    position: relative;
-    z-index: 2;
-    touch-action: none;
+  position: relative;
+  z-index: 2;
+  touch-action: none;
 
-    &.strelit_vertical {
-        .strelit_drag_handle {
-            width: @width0;
-            position: absolute;
-            cursor: ns-resize;
-            touch-action: none;
-            user-select: none;
-        }
+  &.strelit_vertical {
+    .strelit_drag_handle {
+      width: @width0;
+      position: absolute;
+      cursor: ns-resize;
+      touch-action: none;
+      user-select: none;
     }
+  }
 
-    &.strelit_horizontal {
-        float: left;
-        height: @height0;
+  &.strelit_horizontal {
+    float: left;
+    height: @height0;
 
-        .strelit_drag_handle {
-            height: @height0;
-            position: absolute;
-            cursor: ew-resize;
-            touch-action: none;
-            user-select: none;
-        }
+    .strelit_drag_handle {
+      height: @height0;
+      position: absolute;
+      cursor: ew-resize;
+      touch-action: none;
+      user-select: none;
     }
+  }
 }
 
 // Pane Header (container of Tabs for each pane)
 .strelit_header {
-    overflow: visible;
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+  user-select: none;
+
+  [class^='strelit_'] {
+    box-sizing: content-box !important;
+  }
+
+  // Pane controls (popout, maximize, minimize, close)
+  .strelit_controls {
+    position: absolute;
+    right: 3px;
+    display: flex;
+
+    > * {
+      cursor: pointer;
+      float: left;
+      width: @width4;
+      height: @height5;
+      text-align: center;
+    }
+  }
+
+  .strelit_tabs {
+    position: absolute;
+    display: flex;
+  }
+
+  // Single Tab container. A single Tab is set for each pane, a group of Tabs are contained in ".strelit_header"
+  .strelit_tab {
+    cursor: pointer;
+    float: left;
+    height: @height2;
+    margin-top: 1px;
+    padding: 0px 10px 5px;
+    padding-right: 25px;
     position: relative;
-    z-index: 1;
-    user-select: none;
+    touch-action: none;
 
-    [class^='strelit_'] {
-        box-sizing: content-box !important;
+    i {
+      width: @width6;
+      height: @height4;
+      position: absolute;
+
+      &.strelit_left {
+        top: 0;
+        left: -2px;
+      }
+
+      &.strelit_right {
+        top: 0;
+        right: -2px;
+      }
     }
 
-    // Pane controls (popout, maximize, minimize, close)
-    .strelit_controls {
-        position: absolute;
-        right: 3px;
-        display: flex;
-
-        > * {
-            cursor: pointer;
-            float: left;
-            width: @width4;
-            height: @height5;
-            text-align: center;
-        }
+    .strelit_title {
+      display: inline-block;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
-    .strelit_tabs {
-        position: absolute;
-        display: flex;
+    // Close Tab Icon
+    .strelit_close_tab {
+      width: @width3;
+      height: @height2;
+      position: absolute;
+      top: 0;
+      right: 0;
+      text-align: center;
     }
-
-    // Single Tab container. A single Tab is set for each pane, a group of Tabs are contained in ".strelit_header"
-    .strelit_tab {
-        cursor: pointer;
-        float: left;
-        height: @height2;
-        margin-top: 1px;
-        padding: 0px 10px 5px;
-        padding-right: 25px;
-        position: relative;
-        touch-action: none;
-
-        i {
-            width: @width6;
-            height: @height4;
-            position: absolute;
-
-            &.strelit_left {
-                top: 0;
-                left: -2px;
-            }
-
-            &.strelit_right {
-                top: 0;
-                right: -2px;
-            }
-        }
-
-        .strelit_title {
-            display: inline-block;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        // Close Tab Icon
-        .strelit_close_tab {
-            width: @width3;
-            height: @height2;
-            position: absolute;
-            top: 0;
-            right: 0;
-            text-align: center;
-        }
-    }
+  }
 }
 
 // Change stack style to absolute positioning for docking transition ability
 .strelit_stack {
-    position: relative;
+  position: relative;
 
+  > .strelit_items {
+    overflow: hidden;
+  }
+
+  &.strelit_left {
     > .strelit_items {
-        overflow: hidden;
+      position: absolute;
+      left: 20px;
+      top: 0;
+    }
+  }
+  &.strelit_right {
+    > .strelit_items {
+      position: absolute;
+      right: 20px;
+      top: 0;
     }
 
-    &.strelit_left {
-        > .strelit_items {
-            position: absolute;
-            left: 20px;
-            top: 0;
-        }
+    > .strelit_header {
+      position: absolute;
+      right: 0;
+      top: 0;
     }
-    &.strelit_right {
-        > .strelit_items {
-            position: absolute;
-            right: 20px;
-            top: 0;
-        }
+  }
+  &.strelit_bottom {
+    > .strelit_items {
+      position: absolute;
+      bottom: 20px;
+    }
 
-        > .strelit_header {
-            position: absolute;
-            right: 0;
-            top: 0;
-        }
+    > .strelit_header {
+      position: absolute;
+      bottom: 0;
     }
-    &.strelit_bottom {
-        > .strelit_items {
-            position: absolute;
-            bottom: 20px;
-        }
-
-        > .strelit_header {
-            position: absolute;
-            bottom: 0;
-        }
-    }
+  }
 }
 
 // Headers positions
 .strelit_left,
 .strelit_right {
-    &.strelit_stack {
-        .strelit_header {
-            height: 100%;
-        }
+  &.strelit_stack {
+    .strelit_header {
+      height: 100%;
     }
+  }
 
-    &.strelit_dragProxy {
-        .strelit_header,
-        .strelit_items {
-            float: left;
-        }
+  &.strelit_dragProxy {
+    .strelit_header,
+    .strelit_items {
+      float: left;
     }
+  }
 
-    &.strelit_dragProxy,
-    &.strelit_stack {
-        .strelit_header {
-            width: 20px;
-            vertical-align: top;
+  &.strelit_dragProxy,
+  &.strelit_stack {
+    .strelit_header {
+      width: 20px;
+      vertical-align: top;
 
-            .strelit_tabs {
-                transform-origin: left top;
-                top: 0;
-                width: 1000px; /*hack*/
-            }
+      .strelit_tabs {
+        transform-origin: left top;
+        top: 0;
+        width: 1000px; /*hack*/
+      }
 
-            .strelit_controls {
-                bottom: 0;
-                flex-flow: column;
-            }
-        }
+      .strelit_controls {
+        bottom: 0;
+        flex-flow: column;
+      }
     }
+  }
 }
 
 .strelit_dragProxy.strelit_left,
 .strelit_stack.strelit_left {
-    .strelit_header {
-        .strelit_tabs {
-            transform: rotate(-90deg) scaleX(-1);
-            left: 0;
-            .strelit_tab {
-                transform: scaleX(-1);
-                margin-top: 1px;
-            }
-        }
-
-        .strelit_tabdropdown_list {
-            top: initial;
-            right: initial;
-            left: 20px;
-        }
+  .strelit_header {
+    .strelit_tabs {
+      transform: rotate(-90deg) scaleX(-1);
+      left: 0;
+      .strelit_tab {
+        transform: scaleX(-1);
+        margin-top: 1px;
+      }
     }
+
+    .strelit_tabdropdown_list {
+      top: initial;
+      right: initial;
+      left: 20px;
+    }
+  }
 }
 
 .strelit_dragProxy.strelit_right .strelit_content {
-    float: left;
+  float: left;
 }
 
 .strelit_dragProxy.strelit_right,
 .strelit_stack.strelit_right {
-    .strelit_header {
-        .strelit_tabs {
-            transform: rotate(90deg) scaleX(1);
-            left: 100%;
-            margin-left: 0;
-        }
-
-        .strelit_controls {
-            left: 3px;
-        }
-
-        .strelit_tabdropdown_list {
-            top: initial;
-            right: 20px;
-        }
+  .strelit_header {
+    .strelit_tabs {
+      transform: rotate(90deg) scaleX(1);
+      left: 100%;
+      margin-left: 0;
     }
+
+    .strelit_controls {
+      left: 3px;
+    }
+
+    .strelit_tabdropdown_list {
+      top: initial;
+      right: 20px;
+    }
+  }
 }
 
 .strelit_dragProxy.strelit_bottom,
 .strelit_stack.strelit_bottom {
-    .strelit_header {
-        width: 100%;
-        .strelit_tab {
-            margin-top: 0;
-            border-top: none;
-        }
-
-        .strelit_controls {
-            top: 3px;
-        }
-
-        .strelit_tabdropdown_list {
-            top: initial;
-            bottom: 20px;
-        }
+  .strelit_header {
+    width: 100%;
+    .strelit_tab {
+      margin-top: 0;
+      border-top: none;
     }
+
+    .strelit_controls {
+      top: 3px;
+    }
+
+    .strelit_tabdropdown_list {
+      top: initial;
+      bottom: 20px;
+    }
+  }
 }
 
 .strelit_drop_tab_placeholder {
-    float: left;
-    width: @width2;
-    visibility: hidden;
+  float: left;
+  width: @width2;
+  visibility: hidden;
 }
 
 // Dropdown arrow for additional tabs when too many to be displayed
 .strelit_header {
-    .strelit_controls .strelit_tabdropdown:before {
-        content: '';
-        width: 0;
-        height: 0;
-        vertical-align: middle;
-        display: inline-block;
-        border-top: 5px dashed;
-        border-right: 5px solid transparent;
-        border-left: 5px solid transparent;
-        color: white; // Overriden in specific Themes
+  .strelit_controls .strelit_tabdropdown:before {
+    content: '';
+    width: 0;
+    height: 0;
+    vertical-align: middle;
+    display: inline-block;
+    border-top: 5px dashed;
+    border-right: 5px solid transparent;
+    border-left: 5px solid transparent;
+    color: white; // Overriden in specific Themes
+  }
+
+  .strelit_tabdropdown_list {
+    position: absolute;
+    top: 20px;
+    right: 0;
+    z-index: 5;
+    overflow: hidden;
+
+    .strelit_tab {
+      clear: both;
+      padding-right: 10px;
+      margin: 0;
+
+      .strelit_title {
+        width: 100px;
+      }
     }
 
-    .strelit_tabdropdown_list {
-        position: absolute;
-        top: 20px;
-        right: 0;
-        z-index: 5;
-        overflow: hidden;
-
-        .strelit_tab {
-            clear: both;
-            padding-right: 10px;
-            margin: 0;
-
-            .strelit_title {
-                width: 100px;
-            }
-        }
-
-        .strelit_close_tab {
-            display: none !important;
-        }
+    .strelit_close_tab {
+      display: none !important;
     }
+  }
 }
 
 /***********************************
@@ -353,70 +353,70 @@
 
 // Single Pane content during Drag (style of moving window following mouse)
 .strelit_dragProxy {
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 30;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 30;
 
-    .strelit_header {
-        background: transparent;
-    }
+  .strelit_header {
+    background: transparent;
+  }
 
-    .strelit_content {
-        border-top: none;
-        overflow: hidden;
-    }
+  .strelit_content {
+    border-top: none;
+    overflow: hidden;
+  }
 }
 
 // Placeholder Container of target position
 .strelit_dropTargetIndicator {
-    display: none;
-    position: absolute;
-    z-index: 35;
-    transition: all 200ms ease;
+  display: none;
+  position: absolute;
+  z-index: 35;
+  transition: all 200ms ease;
 
-    // Inner Placeholder
-    .strelit_inner {
-        width: @width0;
-        height: @height0;
-        position: relative;
-        top: 0;
-        left: 0;
-    }
+  // Inner Placeholder
+  .strelit_inner {
+    width: @width0;
+    height: @height0;
+    position: relative;
+    top: 0;
+    left: 0;
+  }
 }
 
 .strelit_transition_indicator {
-    display: none;
-    width: @width1;
-    height: @height1;
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 20;
+  display: none;
+  width: @width1;
+  height: @height1;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 20;
 }
 
 // If a specific Pane is Popped Out, so move it to a different Browser Window, Icon to restore original position is:
 .strelit_popin {
-    width: @width1;
-    height: @height1;
+  width: @width1;
+  height: @height1;
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  z-index: 9999;
+
+  > * {
+    width: @width0;
+    height: @height0;
     position: absolute;
-    bottom: 0;
-    right: 0;
-    z-index: 9999;
+    top: 0;
+    left: 0;
+  }
 
-    > * {
-        width: @width0;
-        height: @height0;
-        position: absolute;
-        top: 0;
-        left: 0;
-    }
+  > .strelit_bg {
+    z-index: 10;
+  }
 
-    > .strelit_bg {
-        z-index: 10;
-    }
-
-    > .strelit_icon {
-        z-index: 20;
-    }
+  > .strelit_icon {
+    z-index: 20;
+  }
 }

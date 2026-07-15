@@ -14,4 +14,4 @@ The Strelit UI project adopts the following community policy to assist maintaine
 - All maintainers need to be actively involved in community.
 - Features, fixes, and PRs will not be actioned if no maintainer is interested in addressing them.
 - Maintainers can enter into paid agreements with users to implement features, fixes or review pull requests.
-    - Such agreements **must** be declared publicly and **cannot** override community processes or be binding on the community.
+  - Such agreements **must** be declared publicly and **cannot** override community processes or be binding on the community.

@@ -1,81 +1,81 @@
 name: Contribution Governance
 
 on:
-    pull_request_target:
-        types:
-            - opened
-            - edited
-            - synchronize
-            - reopened
-            - ready_for_review
+  pull_request_target:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+      - ready_for_review
 
 permissions:
-    contents: read
-    pull-requests: read
+  contents: read
+  pull-requests: read
 
 jobs:
-    pr-metadata:
-        runs-on: ubuntu-latest
-        steps:
-            - name: Validate PR title and body
-              uses: actions/github-script@v7
-              with:
-                  script: |
-                      const pr = context.payload.pull_request;
-                      const errors = [];
+  pr-metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title and body
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const errors = [];
 
-                      const title = (pr.title ?? '').trim();
-                      const body = pr.body ?? '';
+            const title = (pr.title ?? '').trim();
+            const body = pr.body ?? '';
 
-                      if (title.length < 12) {
-                        errors.push('PR title is too short. Use a descriptive title.');
-                      }
+            if (title.length < 12) {
+              errors.push('PR title is too short. Use a descriptive title.');
+            }
 
-                      const requiredSections = [
-                        '## Summary',
-                        '## What Changed',
-                        '## Why',
-                        '## Verification'
-                      ];
+            const requiredSections = [
+              '## Summary',
+              '## What Changed',
+              '## Why',
+              '## Verification'
+            ];
 
-                      for (const section of requiredSections) {
-                        if (!body.includes(section)) {
-                          errors.push(`PR body must include section: ${section}`);
-                        }
-                      }
+            for (const section of requiredSections) {
+              if (!body.includes(section)) {
+                errors.push(`PR body must include section: ${section}`);
+              }
+            }
 
-                      if (errors.length > 0) {
-                        core.setFailed(errors.join('\n'));
-                      }
+            if (errors.length > 0) {
+              core.setFailed(errors.join('\n'));
+            }
 
-    commit-messages:
-        runs-on: ubuntu-latest
-        steps:
-            - name: Validate commit messages in PR
-              uses: actions/github-script@v7
-              with:
-                  script: |
-                      const { owner, repo } = context.repo;
-                      const pull_number = context.payload.pull_request.number;
-                      const commits = await github.paginate(
-                        github.rest.pulls.listCommits,
-                        { owner, repo, pull_number, per_page: 100 }
-                      );
+  commit-messages:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate commit messages in PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pull_number = context.payload.pull_request.number;
+            const commits = await github.paginate(
+              github.rest.pulls.listCommits,
+              { owner, repo, pull_number, per_page: 100 }
+            );
 
-                      const commitPattern = /^(?:[A-Z][^.\n]{4,100}\.|(?:build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(?:\([^)]+\))?!?: .{3,100})$/;
-                      const invalid = commits
-                        .map((commit) => commit.commit.message.split('\n')[0])
-                        .filter((message) => !commitPattern.test(message));
+            const commitPattern = /^(?:[A-Z][^.\n]{4,100}\.|(?:build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(?:\([^)]+\))?!?: .{3,100})$/;
+            const invalid = commits
+              .map((commit) => commit.commit.message.split('\n')[0])
+              .filter((message) => !commitPattern.test(message));
 
-                      if (invalid.length > 0) {
-                        core.setFailed(
-                          [
-                            'Commit messages must use either:',
-                            '- a short imperative sentence ending with a period, or',
-                            '- a conventional-commit style subject.',
-                            '',
-                            'Invalid commit subjects:',
-                            ...invalid.map((message) => `- ${message}`)
-                          ].join('\n')
-                        );
-                      }
+            if (invalid.length > 0) {
+              core.setFailed(
+                [
+                  'Commit messages must use either:',
+                  '- a short imperative sentence ending with a period, or',
+                  '- a conventional-commit style subject.',
+                  '',
+                  'Invalid commit subjects:',
+                  ...invalid.map((message) => `- ${message}`)
+                ].join('\n')
+              );
+            }
