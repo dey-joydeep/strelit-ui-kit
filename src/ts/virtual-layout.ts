@@ -207,10 +207,10 @@ export class VirtualLayout extends LayoutManager {
   }
 
   override destroy(): void {
+    super.destroy();
+
     this.bindComponentEvent = undefined;
     this.unbindComponentEvent = undefined;
-
-    super.destroy();
   }
 
   /**

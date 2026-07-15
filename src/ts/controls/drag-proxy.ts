@@ -226,6 +226,14 @@ export class DragProxy extends EventEmitter {
     if (this._area !== null) {
       droppedComponentItem = this._componentItem;
       this._area.contentItem.onDrop(droppedComponentItem, this._area);
+      if (
+        this._originalParent &&
+        (this._originalParent.isRow || this._originalParent.isColumn)
+      ) {
+        (
+          this._originalParent as unknown as { checkCollapse(): void }
+        ).checkCollapse();
+      }
 
       /**
        * No valid drop area available at present, but one has been found before.
@@ -235,6 +243,14 @@ export class DragProxy extends EventEmitter {
       droppedComponentItem = this._componentItem;
       const newParentContentItem = this._lastValidArea.contentItem;
       newParentContentItem.onDrop(droppedComponentItem, this._lastValidArea);
+      if (
+        this._originalParent &&
+        (this._originalParent.isRow || this._originalParent.isColumn)
+      ) {
+        (
+          this._originalParent as unknown as { checkCollapse(): void }
+        ).checkCollapse();
+      }
 
       /**
        * No valid drop area found during the duration of the drag. Return

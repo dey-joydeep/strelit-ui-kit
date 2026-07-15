@@ -84,7 +84,7 @@ const replacements = [
     pattern:
       /(['"])golden-layout\/(?:dist|src)\/scss\/((?:themes\/)?goldenlayout(?:-([a-z-]+)-theme|-base)\.scss)\1/g,
     replacement: (_match, quote, fileName, themeName) => {
-      if (themeName !== undefined) {
+      if (themeName !== undefined || fileName.includes('-theme.scss')) {
         // Leave SCSS theme imports for manual review since only _strelit-var-theme.scss exists
         return _match;
       }
@@ -99,7 +99,30 @@ const replacements = [
   {
     name: 'package import',
     pattern: /(['"])golden-layout((?:\/[^'"]+)?)\1/g,
-    replacement: '$1strelit-ui-kit$2$1',
+    replacement: (_match, quote, subpath) => {
+      if (subpath) {
+        if (
+          subpath.includes('/scss/themes/') ||
+          subpath.includes('/src/scss/themes/') ||
+          subpath.includes('/dist/scss/themes/') ||
+          (subpath.includes('/scss/') && subpath.includes('-theme.scss'))
+        ) {
+          return _match;
+        }
+        if (subpath.startsWith('/src/css/')) {
+          const fileName = subpath.split('/').pop();
+          if (fileName === 'goldenlayout-base.css' || fileName === 'base.css') {
+            return `${quote}strelit-ui-kit/dist/css/strelit-base.css${quote}`;
+          }
+          if (fileName && fileName.includes('-theme')) {
+            const themeName = fileName.replace(/^goldenlayout-/, '').replace(/-theme\.css$/, '');
+            return `${quote}strelit-ui-kit/dist/css/themes/strelit-${themeName}-theme.css${quote}`;
+          }
+          return `${quote}strelit-ui-kit/dist/css/${fileName}${quote}`;
+        }
+      }
+      return `${quote}strelit-ui-kit${subpath}${quote}`;
+    },
   },
   {
     name: 'main class',

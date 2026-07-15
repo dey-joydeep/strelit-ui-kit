@@ -344,9 +344,9 @@ export const HeaderedItemConfig = {
       id = resolvedItemConfigDefaults.id;
     } else {
       if (Array.isArray(legacyId)) {
-        const legacyIdCopy = legacyId.slice();
+        const legacyIdCopy = (legacyId as string[]).slice();
         const idx = legacyIdCopy.findIndex(
-          (id) => id === headeredItemConfigLegacyMaximisedId,
+          (item: string) => item === headeredItemConfigLegacyMaximisedId,
         );
         if (idx >= 0) {
           legacyMaximised = true;

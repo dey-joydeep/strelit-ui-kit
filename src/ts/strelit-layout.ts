@@ -182,7 +182,7 @@ export class StrelitLayout extends VirtualLayout {
         'registerComponent() componentConstructorOrFactoryFtn parameter is not a function',
       );
     } else {
-      if (componentConstructorOrFactoryFtn.hasOwnProperty('prototype')) {
+      if (Object.prototype.hasOwnProperty.call(componentConstructorOrFactoryFtn, 'prototype')) {
         const componentConstructor =
           componentConstructorOrFactoryFtn as StrelitLayoutComponentConstructor;
         this.registerComponentConstructor(name, componentConstructor, virtual);
@@ -452,6 +452,9 @@ export class StrelitLayout extends VirtualLayout {
         } else {
           this.container.removeChild(componentRootElement);
           this._virtuableComponentMap.delete(container);
+          container.virtualRectingRequiredEvent = undefined;
+          container.virtualVisibilityChangeRequiredEvent = undefined;
+          container.virtualZIndexChangeRequiredEvent = undefined;
         }
       }
     }
