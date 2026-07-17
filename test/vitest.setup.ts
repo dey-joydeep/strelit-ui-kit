@@ -38,7 +38,7 @@ function getDimensionFromStyle(
   }
 
   if (
-    element.classList.contains('strelit_layout') ||
+    element.classList.contains('lm_strelit') ||
     element.id === 'layoutContainer'
   ) {
     return property === 'width' ? 960 : 640;

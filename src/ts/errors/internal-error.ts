@@ -18,7 +18,7 @@ export class UnreachableCaseError extends InternalError {
     super(
       'UnreachableCase',
       code,
-      `${variableValue}${message === undefined ? '' : ': ' + message}`,
+      `${String(variableValue)}${message === undefined ? '' : ': ' + message}`,
     );
   }
 }

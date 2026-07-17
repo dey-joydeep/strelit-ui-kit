@@ -4,7 +4,7 @@ import { App } from './app';
 
 declare global {
   interface Window {
-    goldenLayoutApiTestApp: App;
+    strelitApiTestApp: App;
   }
 }
 
@@ -14,6 +14,6 @@ else document.addEventListener('DOMContentLoaded', run, { passive: true });
 
 function run() {
   const app = new App();
-  window.goldenLayoutApiTestApp = app;
+  window.strelitApiTestApp = app;
   app.start();
 }

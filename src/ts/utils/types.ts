@@ -86,15 +86,69 @@ export interface SerializableObject {
 export type SerializableValueArray = SerializableValue[];
 
 /** @public */
-export const SerializableValue = {
-  isSerializableObject(value: SerializableValue): value is SerializableObject {
-    return !Array.isArray(value) && value !== null && typeof value === 'object';
-  },
+export function isSerializableObject(
+  value: unknown,
+): value is SerializableObject {
+  return (
+    !Array.isArray(value) &&
+    value !== null &&
+    typeof value === 'object' &&
+    isSerializableValueInternal(value, new WeakSet())
+  );
+}
 
-  isSerializableRecord(value: SerializableValue): value is SerializableObject {
-    return SerializableValue.isSerializableObject(value);
-  },
-} as const;
+/** @public */
+export function isSerializableRecord(
+  value: unknown,
+): value is SerializableObject {
+  return isSerializableObject(value);
+}
+
+/** @public */
+export function isSerializableValue(
+  value: unknown,
+): value is SerializableValue {
+  return isSerializableValueInternal(value, new WeakSet());
+}
+
+function isSerializableValueInternal(
+  value: unknown,
+  seen: WeakSet<object>,
+): value is SerializableValue {
+  if (
+    value === null ||
+    typeof value === 'boolean' ||
+    typeof value === 'string'
+  ) {
+    return true;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value);
+  }
+  if (Array.isArray(value)) {
+    if (seen.has(value)) {
+      return false;
+    }
+    seen.add(value);
+    const result = value.every((entry) =>
+      isSerializableValueInternal(entry, seen),
+    );
+    seen.delete(value);
+    return result;
+  }
+  if (value !== null && typeof value === 'object') {
+    if (seen.has(value)) {
+      return false;
+    }
+    seen.add(value);
+    const result = Object.values(value).every((entry) =>
+      isSerializableValueInternal(entry, seen),
+    );
+    seen.delete(value);
+    return result;
+  }
+  return false;
+}
 
 /** @public */
 export type ComponentType = SerializableValue;
@@ -129,42 +183,41 @@ export type ResponsiveMode =
 export type SizeUnit = 'px' | '%' | 'fr' | 'em';
 
 /** @public */
-export type SizeUnitEnum = 'px' | '%' | 'fr' | 'em';
-
-/** @public */
-export const SizeUnitEnum = {
+export const SizeUnit = {
   Pixel: 'px',
   Percent: '%',
   Fractional: 'fr',
   Em: 'em',
-
-  tryParse(value: string): SizeUnitEnum | undefined {
-    switch (value) {
-      case SizeUnitEnum.Pixel:
-        return SizeUnitEnum.Pixel;
-      case SizeUnitEnum.Percent:
-        return SizeUnitEnum.Percent;
-      case SizeUnitEnum.Fractional:
-        return SizeUnitEnum.Fractional;
-      case SizeUnitEnum.Em:
-        return SizeUnitEnum.Em;
-      default:
-        return undefined;
-    }
-  },
-
-  format(value: SizeUnitEnum): string {
-    switch (value) {
-      case SizeUnitEnum.Pixel:
-        return SizeUnitEnum.Pixel;
-      case SizeUnitEnum.Percent:
-        return SizeUnitEnum.Percent;
-      case SizeUnitEnum.Fractional:
-        return SizeUnitEnum.Fractional;
-      case SizeUnitEnum.Em:
-        return SizeUnitEnum.Em;
-      default:
-        throw new UnreachableCaseError('SUEF44998', value);
-    }
-  },
 } as const;
+
+/** @public */
+export function tryParseSizeUnit(value: string): SizeUnit | undefined {
+  switch (value) {
+    case SizeUnit.Pixel:
+      return SizeUnit.Pixel;
+    case SizeUnit.Percent:
+      return SizeUnit.Percent;
+    case SizeUnit.Fractional:
+      return SizeUnit.Fractional;
+    case SizeUnit.Em:
+      return SizeUnit.Em;
+    default:
+      return undefined;
+  }
+}
+
+/** @public */
+export function formatSizeUnit(value: SizeUnit): string {
+  switch (value) {
+    case SizeUnit.Pixel:
+      return SizeUnit.Pixel;
+    case SizeUnit.Percent:
+      return SizeUnit.Percent;
+    case SizeUnit.Fractional:
+      return SizeUnit.Fractional;
+    case SizeUnit.Em:
+      return SizeUnit.Em;
+    default:
+      throw new UnreachableCaseError('SUEF44998', value);
+  }
+}

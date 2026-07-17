@@ -1,4 +1,8 @@
-import { ComponentContainer, SerializableValue } from '../src';
+import {
+  ComponentContainer,
+  SerializableValue,
+  isSerializableRecord,
+} from '../src';
 import { ComponentBase } from './component-base';
 
 type TextComponentState = {
@@ -25,7 +29,7 @@ export class TextComponent extends ComponentBase {
     if (state === undefined) {
       textValue = TextComponent.undefinedTextValue;
     } else {
-      if (!SerializableValue.isSerializableRecord(state)) {
+      if (!isSerializableRecord(state)) {
         textValue = '<Unexpect type>';
       } else {
         const textState = state as TextComponentState;

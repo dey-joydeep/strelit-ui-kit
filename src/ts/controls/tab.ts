@@ -62,10 +62,6 @@ export class Tab {
   get componentItem(): ComponentItem {
     return this._componentItem;
   }
-  /** @deprecated use {@link Tab.componentItem} */
-  get contentItem(): ComponentItem {
-    return this._componentItem;
-  }
   get element(): HTMLElement {
     return this._element;
   }

@@ -1,23 +1,23 @@
 import {
-  ComponentItemConfig,
-  ItemConfig,
-  RowOrColumnItemConfig,
-  StackItemConfig,
+  type ComponentItemConfig,
+  type RowOrColumnItemConfig,
+  type StackItemConfig,
+  resolveItemConfig,
 } from '../config/config';
 import {
-  ResolvedComponentItemConfig,
+  type ResolvedComponentItemConfig,
   createResolvedHeaderedItemConfigHeaderCopy,
-  ResolvedItemConfig,
-  ResolvedRootItemConfig,
-  ResolvedStackItemConfig,
+  type ResolvedItemConfig,
+  type ResolvedRootItemConfig,
   createResolvedGroundItemConfig,
   createResolvedItemConfigDefault,
+  createResolvedStackItemConfigDefault,
   isResolvedRootItemConfig,
 } from '../config/resolved-config';
 import { AssertError, UnexpectedNullError } from '../errors/internal-error';
 import { LayoutManager } from '../layout-manager';
 import { DomConstants } from '../utils/dom-constants';
-import { AreaLinkedRect, ItemType, SizeUnitEnum } from '../utils/types';
+import { AreaLinkedRect, ItemType, SizeUnit } from '../utils/types';
 import {
   getElementWidthAndHeight,
   setElementHeight,
@@ -162,7 +162,7 @@ export class GroundItem extends ComponentParentableItem {
   ): number {
     this.layoutManager.checkMinimiseMaximisedStack();
 
-    const resolvedItemConfig = ItemConfig.resolve(itemConfig, false);
+    const resolvedItemConfig = resolveItemConfig(itemConfig);
     let parent: ContentItem;
     if (this.contentItems.length > 0) {
       parent = this.contentItems[0];
@@ -186,9 +186,8 @@ export class GroundItem extends ComponentParentableItem {
     // Remove existing root if it exists
     this.clearRoot();
 
-    const resolvedItemConfig = ItemConfig.resolve(
+    const resolvedItemConfig = resolveItemConfig(
       itemConfig,
-      false,
     ) as ResolvedComponentItemConfig;
 
     if (resolvedItemConfig.maximised) {
@@ -227,7 +226,7 @@ export class GroundItem extends ComponentParentableItem {
   override calculateConfigContent(): ResolvedRootItemConfig[] {
     const contentItems = this.contentItems;
     const count = contentItems.length;
-    const result = new Array<ResolvedRootItemConfig>(count);
+    const result = Array<ResolvedRootItemConfig>(count);
     for (let i = 0; i < count; i++) {
       const item = contentItems[i];
       const itemConfig = item.toConfig();
@@ -243,7 +242,7 @@ export class GroundItem extends ComponentParentableItem {
   /** @internal */
   setSize(width: number, height: number): void {
     if (width === undefined || height === undefined) {
-      this.updateSize(false); // For backwards compatibility with v1.x API
+      this.updateSize(false);
     } else {
       setElementWidth(this.element, width);
       setElementHeight(this.element, height);
@@ -276,7 +275,7 @@ export class GroundItem extends ComponentParentableItem {
     const areaSize = 50;
 
     const oppositeSides = groundItemAreaOppositeSides;
-    const result = new Array<GroundItemArea>(Object.keys(oppositeSides).length);
+    const result = Array<GroundItemArea>(Object.keys(oppositeSides).length);
     let idx = 0;
 
     for (const key in oppositeSides) {
@@ -304,7 +303,7 @@ export class GroundItem extends ComponentParentableItem {
 
   override onDrop(contentItem: ContentItem, area: GroundItemArea): void {
     if (contentItem.isComponent) {
-      const itemConfig = ResolvedStackItemConfig.createDefault();
+      const itemConfig = createResolvedStackItemConfigDefault();
       // since ResolvedItemConfig.contentItems not set up, we need to add header from Component
       const component = contentItem as ComponentItem;
       itemConfig.header = createResolvedHeaderedItemConfigHeaderCopy(
@@ -330,7 +329,7 @@ export class GroundItem extends ComponentParentableItem {
         contentItem.type === ItemType.row ||
         contentItem.type === ItemType.column
       ) {
-        const itemConfig = ResolvedStackItemConfig.createDefault();
+        const itemConfig = createResolvedStackItemConfigDefault();
         const stack = this.layoutManager.createContentItem(itemConfig, this);
         stack.addChild(contentItem);
         contentItem = stack;
@@ -350,7 +349,7 @@ export class GroundItem extends ComponentParentableItem {
         rowOrColumn.addChild(column, insertBefore ? undefined : 0, true);
         column.size = 50;
         contentItem.size = 50;
-        contentItem.sizeUnit = SizeUnitEnum.Percent;
+        contentItem.sizeUnit = SizeUnit.Percent;
         rowOrColumn.updateSize(false);
       } else {
         const sibling =
@@ -360,7 +359,7 @@ export class GroundItem extends ComponentParentableItem {
         column.addChild(contentItem, insertBefore ? 0 : undefined, true);
         sibling.size *= 0.5;
         contentItem.size = sibling.size;
-        contentItem.sizeUnit = SizeUnitEnum.Percent;
+        contentItem.sizeUnit = SizeUnit.Percent;
         column.updateSize(false);
       }
     }

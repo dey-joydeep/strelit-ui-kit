@@ -11,7 +11,7 @@ import {
   ComponentType,
   ItemType,
   SerializableObject,
-  SizeUnitEnum,
+  SizeUnit,
 } from '../utils/types';
 import { getUniqueId, setElementDisplayVisibility } from '../utils/utils';
 import { ComponentItem } from './component-item';
@@ -119,11 +119,11 @@ export abstract class ContentItem extends EventEmitter {
   /** @internal */
   size: number;
   /** @internal */
-  sizeUnit: SizeUnitEnum;
+  sizeUnit: SizeUnit;
   /** @internal */
   minSize: number | undefined;
   /** @internal */
-  minSizeUnit: SizeUnitEnum;
+  minSizeUnit: SizeUnit;
 
   isGround: boolean;
   isRow: boolean;
@@ -410,20 +410,13 @@ export abstract class ContentItem extends EventEmitter {
     ) as ComponentItem[];
   }
 
-  /**
-   * @deprecated use `getComponentItemsByType()` instead
-   */
-  getComponentsByName(componentName: string): ComponentItem[] {
-    return this.getComponentItemsByType(componentName);
-  }
-
   abstract toConfig(): ResolvedItemConfig;
 
   /** @internal */
   calculateConfigContent(): ResolvedItemConfig[] {
     const contentItems = this._contentItems;
     const count = contentItems.length;
-    const result = new Array<ResolvedItemConfig>(count);
+    const result = Array<ResolvedItemConfig>(count);
     for (let i = 0; i < count; i++) {
       const item = contentItems[i];
       result[i] = item.toConfig();
@@ -562,7 +555,7 @@ export abstract class ContentItem extends EventEmitter {
    */
   private createContentItems(content: readonly ResolvedItemConfig[]) {
     const count = content.length;
-    const result = new Array<ContentItem>(count);
+    const result = Array<ContentItem>(count);
     for (let i = 0; i < content.length; i++) {
       result[i] = this.layoutManager.createContentItem(content[i], this);
     }
@@ -683,6 +676,3 @@ export abstract class ContentItem extends EventEmitter {
     }
   }
 }
-
-/** @public @deprecated Use `ContentItem` */
-export type AbstractContentItem = ContentItem;

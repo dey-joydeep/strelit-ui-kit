@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { ResolvedLayoutConfig, LayoutConfig } from '../../src';
+import {
+  type LayoutConfig,
+  minifyResolvedLayoutConfig,
+  resolveLayoutConfig,
+  unminifyResolvedLayoutConfig,
+} from '../../src';
 
-describe('Config Minifier (ResolvedLayoutConfig.minifyConfig / unminifyConfig)', function () {
+describe('resolved layout config minifier', function () {
   it('minifies and unminifies a resolved configuration object accurately', function () {
     const config: LayoutConfig = {
       root: {
@@ -21,13 +26,13 @@ describe('Config Minifier (ResolvedLayoutConfig.minifyConfig / unminifyConfig)',
       },
     };
 
-    const resolved = LayoutConfig.resolve(config);
-    const minified = ResolvedLayoutConfig.minifyConfig(resolved);
+    const resolved = resolveLayoutConfig(config);
+    const minified = minifyResolvedLayoutConfig(resolved);
 
     expect(minified).not.toBe(resolved);
     expect(typeof minified).toBe('object');
 
-    const unminified = ResolvedLayoutConfig.unminifyConfig(minified);
+    const unminified = unminifyResolvedLayoutConfig(minified);
     expect(JSON.parse(JSON.stringify(unminified))).toEqual(
       JSON.parse(JSON.stringify(resolved)),
     );
@@ -41,9 +46,9 @@ describe('Config Minifier (ResolvedLayoutConfig.minifyConfig / unminifyConfig)',
         title: 'b',
       },
     };
-    const resolved = LayoutConfig.resolve(conf);
-    const min = ResolvedLayoutConfig.minifyConfig(resolved);
-    const max = ResolvedLayoutConfig.unminifyConfig(min);
+    const resolved = resolveLayoutConfig(conf);
+    const min = minifyResolvedLayoutConfig(resolved);
+    const max = unminifyResolvedLayoutConfig(min);
 
     expect(JSON.parse(JSON.stringify(max))).toEqual(
       JSON.parse(JSON.stringify(resolved)),
@@ -57,15 +62,27 @@ describe('Config Minifier (ResolvedLayoutConfig.minifyConfig / unminifyConfig)',
         componentType: '___token',
         componentState: {
           marker: '___stateToken',
+          ___a: '___a',
+          '~10': 'prefixed key',
         },
       },
     };
-    const resolved = LayoutConfig.resolve(conf);
-    const min = ResolvedLayoutConfig.minifyConfig(resolved);
-    const max = ResolvedLayoutConfig.unminifyConfig(min);
+    const resolved = resolveLayoutConfig(conf);
+    const min = minifyResolvedLayoutConfig(resolved);
+    const max = unminifyResolvedLayoutConfig(min);
 
     expect(JSON.parse(JSON.stringify(max))).toEqual(
       JSON.parse(JSON.stringify(resolved)),
     );
+  });
+
+  it('round-trips config keys beyond the single-character index range', function () {
+    const resolved = resolveLayoutConfig({
+      settings: { closePopoutsOnUnload: false },
+    });
+
+    const minified = minifyResolvedLayoutConfig(resolved);
+    expect(JSON.stringify(minified)).toContain('"~10":"1"');
+    expect(unminifyResolvedLayoutConfig(minified)).toEqual(resolved);
   });
 });

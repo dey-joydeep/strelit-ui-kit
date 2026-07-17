@@ -1,19 +1,24 @@
 import {
-  ComponentItemConfig,
-  ItemConfig,
-  LayoutConfig,
-  RowOrColumnItemConfig,
-  StackItemConfig,
+  type ComponentItemConfig,
+  type LayoutConfig,
+  type RowOrColumnItemConfig,
+  type StackItemConfig,
+  isComponentItemConfig,
+  resolveLayoutConfig,
 } from './config/config';
 import {
-  ResolvedComponentItemConfig,
-  ResolvedItemConfig,
-  ResolvedLayoutConfig,
-  ResolvedPopoutLayoutConfig,
+  createResolvedLayoutConfigDefault,
+  createResolvedLayoutConfigDimensionsCopy,
+  createResolvedLayoutConfigHeaderCopy,
+  createResolvedLayoutConfigSettingsCopy,
+  type ResolvedComponentItemConfig,
+  type ResolvedItemConfig,
+  type ResolvedLayoutConfig,
+  type ResolvedPopoutLayoutConfig,
   type ResolvedPopoutLayoutConfigWindow,
-  ResolvedRootItemConfig,
-  ResolvedRowOrColumnItemConfig,
-  ResolvedStackItemConfig,
+  type ResolvedRootItemConfig,
+  type ResolvedRowOrColumnItemConfig,
+  type ResolvedStackItemConfig,
   isResolvedRootItemConfig,
   isResolvedComponentItemConfig,
 } from './config/resolved-config';
@@ -24,10 +29,7 @@ import {
 } from './container/component-container';
 import { BrowserPopout } from './controls/browser-popout';
 import { DragProxy } from './controls/drag-proxy';
-import {
-  DragSource,
-  DragSourceComponentItemConfig,
-} from './controls/drag-source';
+import { DragSource } from './controls/drag-source';
 import { DropTargetIndicator } from './controls/drop-target-indicator';
 import { TransitionIndicator } from './controls/transition-indicator';
 import { ConfigurationError } from './errors/external-error';
@@ -70,7 +72,7 @@ import {
 /** @internal */
 declare global {
   interface Window {
-    __glInstance: LayoutManager;
+    __strelitInstance: LayoutManager;
   }
 }
 
@@ -84,7 +86,7 @@ export type LayoutManagerAfterVirtualRectingEvent = (this: void) => void;
 
 /** @internal */
 export interface LayoutManagerConstructorParameters {
-  constructorOrSubWindowLayoutConfig: LayoutConfig | undefined;
+  subWindowLayoutConfig: LayoutConfig | undefined;
   isSubWindow: boolean;
   containerElement: HTMLElement | undefined;
 }
@@ -149,6 +151,24 @@ export const layoutManagerDefaultLocationSelectors: readonly LayoutManagerLocati
     { typeId: LayoutManagerLocationSelectorTypeId.Root, index: undefined },
   ];
 
+/** Location selectors that prefer placement after the focused item. @public */
+export const layoutManagerAfterFocusedItemIfPossibleLocationSelectors: readonly LayoutManagerLocationSelector[] =
+  [
+    {
+      typeId: LayoutManagerLocationSelectorTypeId.FocusedItem,
+      index: 1,
+    },
+    {
+      typeId: LayoutManagerLocationSelectorTypeId.FirstStack,
+      index: undefined,
+    },
+    {
+      typeId: LayoutManagerLocationSelectorTypeId.FirstRowOrColumn,
+      index: undefined,
+    },
+    { typeId: LayoutManagerLocationSelectorTypeId.Root, index: undefined },
+  ];
+
 /**
  * The main class that will be exposed as StrelitLayout.
  */
@@ -169,7 +189,7 @@ export abstract class LayoutManager extends EventEmitter {
   resizeDebounceExtendedWhenPossible = true;
 
   /** @internal */
-  private _containerElement: HTMLElement;
+  private _containerElement!: HTMLElement;
   /** @internal */
   private _isInitialised = false;
   /** @internal */
@@ -213,15 +233,15 @@ export abstract class LayoutManager extends EventEmitter {
   /** @internal */
   private _sizeInvalidationBeginCount = 0;
   /** @internal */
-  protected _constructorOrSubWindowLayoutConfig: LayoutConfig | undefined; // protected for backwards compatibility
+  protected _subWindowLayoutConfig: LayoutConfig | undefined;
 
   /** @internal */
   private _resizeObserver = new ResizeObserver(() =>
     this.handleContainerResize(),
   );
-  /** @internal @deprecated to be removed in version 3 */
+  /** @internal */
   private _windowBeforeUnloadListener = () => this.onBeforeUnload();
-  /** @internal @deprecated to be removed in version 3 */
+  /** @internal */
   private _windowBeforeUnloadListening = false;
   /** @internal */
   private _maximisedStackBeforeDestroyedListener = (
@@ -229,7 +249,7 @@ export abstract class LayoutManager extends EventEmitter {
   ) => this.cleanupBeforeMaximisedStackDestroyed(ev);
 
   readonly isSubWindow: boolean;
-  layoutConfig: ResolvedLayoutConfig;
+  layoutConfig!: ResolvedLayoutConfig;
 
   beforeVirtualRectingEvent: LayoutManagerBeforeVirtualRectingEvent | undefined;
   afterVirtualRectingEvent: LayoutManagerAfterVirtualRectingEvent | undefined;
@@ -244,10 +264,6 @@ export abstract class LayoutManager extends EventEmitter {
   get groundItem(): GroundItem | undefined {
     return this._groundItem;
   }
-  /** @internal @deprecated use {@link LayoutManager.groundItem} instead */
-  get root(): GroundItem | undefined {
-    return this._groundItem;
-  }
   get openPopouts(): BrowserPopout[] {
     return this._openPopouts;
   }
@@ -255,7 +271,7 @@ export abstract class LayoutManager extends EventEmitter {
   get dropTargetIndicator(): DropTargetIndicator | null {
     return this._dropTargetIndicator;
   }
-  /** @internal @deprecated To be removed */
+  /** @internal */
   get transitionIndicator(): TransitionIndicator | null {
     return this._transitionIndicator;
   }
@@ -296,14 +312,6 @@ export abstract class LayoutManager extends EventEmitter {
     return this._maximisedStack;
   }
 
-  /** @deprecated indicates deprecated constructor use */
-  get deprecatedConstructor(): boolean {
-    return (
-      !this.isSubWindow &&
-      this._constructorOrSubWindowLayoutConfig !== undefined
-    );
-  }
-
   /**
    * @param container - A Dom HTML element. Defaults to body
    * @internal
@@ -313,8 +321,7 @@ export abstract class LayoutManager extends EventEmitter {
 
     this.isSubWindow = parameters.isSubWindow;
 
-    this._constructorOrSubWindowLayoutConfig =
-      parameters.constructorOrSubWindowLayoutConfig;
+    this._subWindowLayoutConfig = parameters.subWindowLayoutConfig;
 
     checkI18nStringsInitialise();
     checkConfigMinifierInitialise();
@@ -370,25 +377,6 @@ export abstract class LayoutManager extends EventEmitter {
     }
   }
 
-  /**
-   * Takes a StrelitLayout configuration object and
-   * replaces its keys and values recursively with
-   * one letter codes
-   * @deprecated use `ResolvedLayoutConfig.minifyConfig()` instead
-   */
-  minifyConfig(config: ResolvedLayoutConfig): ResolvedLayoutConfig {
-    return ResolvedLayoutConfig.minifyConfig(config);
-  }
-
-  /**
-   * Takes a configuration Object that was previously minified
-   * using minifyConfig and returns its original version
-   * @deprecated use `ResolvedLayoutConfig.unminifyConfig()` instead
-   */
-  unminifyConfig(config: ResolvedLayoutConfig): ResolvedLayoutConfig {
-    return ResolvedLayoutConfig.unminifyConfig(config);
-  }
-
   /** @internal */
   abstract bindComponent(
     container: ComponentContainer,
@@ -413,17 +401,17 @@ export abstract class LayoutManager extends EventEmitter {
 
     let subWindowRootConfig: ResolvedRootItemConfig | undefined;
     if (this.isSubWindow) {
-      if (this._constructorOrSubWindowLayoutConfig === undefined) {
+      if (this._subWindowLayoutConfig === undefined) {
         // SubWindow LayoutConfig should have been generated by constructor
         throw new UnexpectedUndefinedError('LMIU07155');
       } else {
-        const root = this._constructorOrSubWindowLayoutConfig.root;
+        const root = this._subWindowLayoutConfig.root;
         if (root === undefined) {
           // SubWindow LayoutConfig must not be empty
           throw new AssertError('LMIC07156');
         }
-        const resolvedLayoutConfig = LayoutConfig.resolve(
-          this._constructorOrSubWindowLayoutConfig,
+        const resolvedLayoutConfig = resolveLayoutConfig(
+          this._subWindowLayoutConfig,
         );
         subWindowRootConfig = resolvedLayoutConfig.root;
         // remove root from layoutConfig
@@ -433,14 +421,7 @@ export abstract class LayoutManager extends EventEmitter {
         };
       }
     } else {
-      if (this._constructorOrSubWindowLayoutConfig === undefined) {
-        this.layoutConfig = ResolvedLayoutConfig.createDefault(); // will overwritten be loaded via loadLayout
-      } else {
-        // backwards compatibility
-        this.layoutConfig = LayoutConfig.resolve(
-          this._constructorOrSubWindowLayoutConfig,
-        );
-      }
+      this.layoutConfig = createResolvedLayoutConfigDefault();
     }
     const layoutConfig = this.layoutConfig;
     this._groundItem = new GroundItem(
@@ -469,16 +450,13 @@ export abstract class LayoutManager extends EventEmitter {
    */
   loadLayout(layoutConfig: LayoutConfig): void {
     if (!this.isInitialised) {
-      // In case application not correctly using legacy constructor
-      throw new Error(
-        'StrelitLayout: Need to call init() if LayoutConfig with defined root passed to constructor',
-      );
+      throw new Error('Cannot load a layout before initialization');
     } else {
       if (this._groundItem === undefined) {
         throw new UnexpectedUndefinedError('LMLL11119');
       } else {
         this.closeAllOpenPopouts();
-        this.layoutConfig = LayoutConfig.resolve(layoutConfig);
+        this.layoutConfig = resolveLayoutConfig(layoutConfig);
         this.createSubWindows(); // still needs to be tested
         this._groundItem.loadRoot(this.layoutConfig.root);
         this.checkLoadedLayoutMaximiseItem();
@@ -528,13 +506,13 @@ export abstract class LayoutManager extends EventEmitter {
         const config: ResolvedLayoutConfig = {
           root: rootItemConfig,
           openPopouts,
-          settings: ResolvedLayoutConfig.Settings.createCopy(
+          settings: createResolvedLayoutConfigSettingsCopy(
             this.layoutConfig.settings,
           ),
-          dimensions: ResolvedLayoutConfig.Dimensions.createCopy(
+          dimensions: createResolvedLayoutConfigDimensionsCopy(
             this.layoutConfig.dimensions,
           ),
-          header: ResolvedLayoutConfig.Header.createCopy(
+          header: createResolvedLayoutConfigHeaderCopy(
             this.layoutConfig.header,
           ),
           resolved: true,
@@ -555,13 +533,6 @@ export abstract class LayoutManager extends EventEmitter {
     } else {
       this._groundItem.clearRoot();
     }
-  }
-
-  /**
-   * @deprecated Use {@link LayoutManager.saveLayout}
-   */
-  toConfig(): ResolvedLayoutConfig {
-    return this.saveLayout();
   }
 
   /**
@@ -774,7 +745,7 @@ export abstract class LayoutManager extends EventEmitter {
             break;
           }
           case ItemType.stack: {
-            if (!ItemConfig.isComponent(itemConfig)) {
+            if (!isComponentItemConfig(itemConfig)) {
               throw Error(
                 i18nStrings[I18nStringId.ItemConfigIsNotTypeComponent],
               );
@@ -791,7 +762,7 @@ export abstract class LayoutManager extends EventEmitter {
             throw new UnreachableCaseError('LMAIALU98881733', parentItem.type);
         }
 
-        if (ItemConfig.isComponent(itemConfig)) {
+        if (isComponentItemConfig(itemConfig)) {
           // see if stack was inserted
           const item = parentItem.contentItems[addIdx];
           if (ContentItem.isStack(item)) {
@@ -818,11 +789,6 @@ export abstract class LayoutManager extends EventEmitter {
     } else {
       this._groundItem.loadComponentAsRoot(itemConfig);
     }
-  }
-
-  /** @deprecated Use {@link LayoutManager.setSize} */
-  updateSize(width: number, height: number): void {
-    this.setSize(width, height);
   }
 
   /**
@@ -990,13 +956,6 @@ export abstract class LayoutManager extends EventEmitter {
   }
 
   /**
-   * @deprecated use {@link LayoutManager.getComponentItemsByType} instead
-   */
-  getComponentsByName(componentName: string): ComponentItem[] {
-    return this.getComponentItemsByType(componentName);
-  }
-
-  /**
    * Creates a popout window with the specified content at the specified position
    *
    * @param itemConfigOrContentItem - The content of the popout window's layout manager derived from either
@@ -1071,7 +1030,6 @@ export abstract class LayoutManager extends EventEmitter {
         const windowTop = globalThis.screenY || globalThis.screenTop;
         const offsetLeft = item.element.offsetLeft;
         const offsetTop = item.element.offsetTop;
-        // const { left: offsetLeft, top: offsetTop } = getJQueryLeftAndTop(item.element);
         const { width, height } = getElementWidthAndHeight(item.element);
 
         window = {
@@ -1165,7 +1123,7 @@ export abstract class LayoutManager extends EventEmitter {
     parentId: string | null,
     indexInParent: number | null,
   ) {
-    const layoutConfig = this.toConfig();
+    const layoutConfig = this.saveLayout();
 
     const popoutLayoutConfig: ResolvedPopoutLayoutConfig = {
       root: rootItemConfig,
@@ -1261,35 +1219,9 @@ export abstract class LayoutManager extends EventEmitter {
    */
   newDragSource(
     element: HTMLElement,
-    itemConfigCallback: () =>
-      DragSourceComponentItemConfig | ComponentItemConfig,
-  ): DragSource;
-  /** @deprecated will be replaced in version 3 with newDragSource(element: HTMLElement, itemConfig: ComponentItemConfig) */
-  newDragSource(
-    element: HTMLElement,
-    componentType: ComponentType,
-    componentState?: SerializableValue,
-    title?: string,
-    id?: string,
-  ): DragSource;
-  newDragSource(
-    element: HTMLElement,
-    componentTypeOrItemConfigCallback:
-      | ComponentType
-      | (() => DragSourceComponentItemConfig | ComponentItemConfig),
-    componentState?: SerializableValue,
-    title?: string,
-    id?: string,
+    itemConfigCallback: () => ComponentItemConfig,
   ): DragSource {
-    const dragSource = new DragSource(
-      this,
-      element,
-      [],
-      componentTypeOrItemConfigCallback,
-      componentState,
-      title,
-      id,
-    );
+    const dragSource = new DragSource(this, element, [], itemConfigCallback);
     this._dragSources.push(dragSource);
 
     return dragSource;
@@ -1800,12 +1732,6 @@ export abstract class LayoutManager extends EventEmitter {
     this._containerElement = containerElement;
   }
 
-  /**
-   * Called when the window is closed or the user navigates away
-   * from the page
-   * @internal
-   * @deprecated to be removed in version 3
-   */
   private onBeforeUnload(): void {
     this.destroy();
   }

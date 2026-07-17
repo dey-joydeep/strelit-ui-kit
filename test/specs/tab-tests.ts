@@ -73,7 +73,7 @@ describe('Tabs configuration and behavior', function () {
     layout.loadLayout(config);
 
     const stack = layout.rootItem as Stack;
-    expect(stack.element.classList.contains('strelit_bottom')).toBe(true);
+    expect(stack.element.classList.contains('lm_bottom')).toBe(true);
   });
 
   it('assigns integer zIndex string (without px units) when tabOverlapAllowance is used', function () {
@@ -109,5 +109,37 @@ describe('Tabs configuration and behavior', function () {
         expect(Number.isInteger(Number(zIndex))).toBe(true);
       }
     }
+  });
+
+  it('moves a promoted overflow tab to the front of the DOM', function () {
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: ['First', 'Second', 'Third'].map((title) => ({
+          type: 'component' as const,
+          componentType: 'testComponent',
+          title,
+        })),
+      },
+    });
+
+    const stack = layout.rootItem as Stack;
+    const tabsContainer = (
+      stack.header as unknown as {
+        _tabsContainer: { _lastVisibleTabIndex: number };
+      }
+    )._tabsContainer;
+    tabsContainer._lastVisibleTabIndex = 0;
+    const thirdComponent = stack.contentItems[2];
+    if (thirdComponent.type !== 'component') {
+      throw new Error('Expected a component item');
+    }
+
+    stack.setActiveComponentItem(thirdComponent, false);
+
+    expect(stack.header.tabs[0].componentItem).toBe(thirdComponent);
+    expect(stack.header.tabsContainerElement.firstElementChild).toBe(
+      thirdComponent.tab.element,
+    );
   });
 });

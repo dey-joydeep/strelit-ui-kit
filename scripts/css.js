@@ -1,6 +1,5 @@
-/* eslint-disable */
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 const less = require('less');
 const postcss = require('postcss');
 const autoprefixer = require('autoprefixer');
@@ -8,14 +7,12 @@ const autoprefixer = require('autoprefixer');
 // This script performs three tasks:
 // 1. Copy LESS and SCSS stylesheets to dist
 // 2. Render LESS to CSS and copy it to dist
-// 3. Copy images to dist
+// 3. Copy shared LESS helpers to dist
 
 // Helper function to ensure a directory exists.
 // Won't do anything if the directory already exists
 const ensureFolder = (dir) => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir);
-  }
+  fs.mkdirSync(dir, { recursive: true });
 };
 
 // Helper function to build a single less file and write the output to a css file.
@@ -37,7 +34,7 @@ const buildFile = async (filePath) => {
     from: filePath,
   });
   prefixedOutput.warnings().forEach((warn) => {
-    console.warn(`[${filePath}] [WARN]: ${warn}`);
+    console.warn(`[${filePath}] [WARN]: ${String(warn)}`);
   });
   // Write the CSS file
   fs.writeFileSync(outputPath, prefixedOutput.css);
@@ -45,43 +42,41 @@ const buildFile = async (filePath) => {
   fs.writeFileSync(lessRawOutputFile, lessFile);
 };
 
-console.log('[INFO] Creating directories');
+async function main() {
+  console.log('[INFO] Creating directories');
+  for (const directory of [
+    './dist/css/themes',
+    './dist/less/themes',
+    './dist/scss/themes',
+  ]) {
+    ensureFolder(directory);
+  }
 
-// We do not have mkdir -p without an extra dependency.
-ensureFolder('./dist');
-ensureFolder('./dist/css');
-ensureFolder('./dist/less');
-ensureFolder('./dist/scss');
-ensureFolder('./dist/css/themes');
-ensureFolder('./dist/less/themes');
-ensureFolder('./dist/scss/themes');
-ensureFolder('./dist/img');
+  await buildFile('./src/less/strelit-base.less');
+  fs.copyFileSync(
+    './src/less/strelit-icons.less',
+    './dist/less/strelit-icons.less',
+  );
+  fs.copyFileSync(
+    './src/scss/strelit-base.scss',
+    './dist/scss/strelit-base.scss',
+  );
 
-// Build base.less file
-buildFile('./src/less/strelit-base.less');
-// Copy the base scss file
-fs.copyFileSync(
-  './src/scss/strelit-base.scss',
-  './dist/scss/strelit-base.scss',
-);
+  await Promise.all(
+    fs
+      .readdirSync('./src/less/themes')
+      .map((file) => buildFile(path.join('./src/less/themes', file))),
+  );
 
-// Build every less theme
-fs.readdirSync('./src/less/themes').forEach((file) => {
-  buildFile(path.join(`./src/less/themes/`, file));
-});
+  for (const file of fs.readdirSync('./src/scss/themes')) {
+    const srcPath = path.join('./src/scss/themes', file);
+    const dstPath = path.join('./dist/scss/themes', file);
+    console.log(`[INFO] ${srcPath} => copy => ${dstPath}`);
+    fs.copyFileSync(srcPath, dstPath);
+  }
+}
 
-// Copy SCSS themes to dist
-fs.readdirSync('./src/scss/themes').forEach((file) => {
-  const srcPath = path.join('./src/scss/themes', file);
-  const dstPath = path.join('./dist/scss/themes', file);
-  console.log(`[INFO] ${srcPath} => copy => ${dstPath}`);
-  fs.copyFileSync(srcPath, dstPath);
-});
-
-// Copy Images to dist
-fs.readdirSync('./src/img').forEach((file) => {
-  const srcPath = path.join('./src/img', file);
-  const dstPath = path.join('./dist/img', file);
-  console.log(`[INFO] ${srcPath} => copy => ${dstPath}`);
-  fs.copyFileSync(srcPath, dstPath);
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
 });

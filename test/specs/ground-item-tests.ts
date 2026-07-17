@@ -19,8 +19,22 @@ describe('ground item', function () {
 
     layout = TestTools.createLayout(rootLayout);
 
-    const glElements = document.querySelectorAll('.strelit_layout');
-    expect(glElements.length).toBe(1);
+    const layoutElements = document.querySelectorAll('.lm_strelit');
+    expect(layoutElements.length).toBe(1);
     TestTools.verifyPath('stack.0.component', layout);
+  });
+
+  it('only enables automatic container resizing for the body by default', function () {
+    const customContainer = document.createElement('div');
+    document.body.appendChild(customContainer);
+
+    const customLayout = new StrelitLayout(customContainer);
+    expect(customLayout.resizeWithContainerAutomatically).toBe(false);
+    customLayout.destroy();
+    customContainer.remove();
+
+    const bodyLayout = new StrelitLayout();
+    expect(bodyLayout.resizeWithContainerAutomatically).toBe(true);
+    bodyLayout.destroy();
   });
 });

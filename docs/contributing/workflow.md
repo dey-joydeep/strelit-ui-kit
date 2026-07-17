@@ -34,7 +34,7 @@ npm run bench
 
 When planning or reviewing, ask:
 
-1. Does this reduce legacy structure without breaking public behavior?
+1. Does this preserve the documented Strelit contract?
 2. Does it preserve the current modern stack?
 3. Does it keep API/documentation/build outputs coherent?
 4. Is the diff narrow enough to validate confidently?

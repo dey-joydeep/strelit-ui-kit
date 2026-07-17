@@ -70,8 +70,6 @@ Run `npm install` to remove the npm link.
 
 The following information sources are available which can be used to learn how to use the library:
 
-- **Version 1 Golden Layout website**\
-  [https://strelit-ui-kit.com](https://strelit-ui-kit.com) documents version 1 of Golden Layout. It is useful for conceptual background only and is not authoritative for this repository.
 - **This document**
 - **CodePen examples**
   - [**Adding items to a predefined layout**](https://codepen.io/pbklink/pen/dyWJNNm)\

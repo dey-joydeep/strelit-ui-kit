@@ -7,7 +7,7 @@ import {
 } from './event-emitter';
 
 /** @internal */
-export const eventHubChildEventName = 'gl_child_event';
+export const eventHubChildEventName = 'strelit_child_event';
 /** @internal */
 export type EventHubChildEventDetail = {
   layoutManager: LayoutManager;
@@ -165,10 +165,11 @@ export class EventHub extends EventEmitter {
   private propagateToThisAndSubtree(eventName: string, args: unknown[]) {
     this.emitUnknown(eventName, ...args);
     for (let i = 0; i < this._layoutManager.openPopouts.length; i++) {
-      const childGl = this._layoutManager.openPopouts[i].getGlInstance();
+      const childLayout =
+        this._layoutManager.openPopouts[i].getStrelitInstance();
 
-      if (childGl) {
-        childGl.eventHub.propagateToThisAndSubtree(eventName, args);
+      if (childLayout) {
+        childLayout.eventHub.propagateToThisAndSubtree(eventName, args);
       }
     }
   }

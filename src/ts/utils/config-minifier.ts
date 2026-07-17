@@ -1,23 +1,21 @@
 /**
  * Minifies and unminifies configs by replacing frequent keys
- * and values with one letter substitutes. Config options must
+ * and values with compact base-36 substitutes. Config options must
  * retain array position/index, add new options at the end.
  * @internal
  */
 
 const configMinifierKeys: readonly string[] = [
   'settings',
-  'hasHeaders',
   'constrainDragToContainer',
-  'selectionEnabled',
   'dimensions',
   'borderWidth',
-  'minItemHeight',
-  'minItemWidth',
+  'defaultMinItemHeight',
+  'defaultMinItemWidth',
   'headerHeight',
   'dragProxyWidth',
   'dragProxyHeight',
-  'labels',
+  'header',
   'close',
   'maximise',
   'minimise',
@@ -26,9 +24,9 @@ const configMinifierKeys: readonly string[] = [
   'componentType',
   'componentState',
   'id',
-  'width',
+  'size',
   'type',
-  'height',
+  'minSize',
   'isClosable',
   'title',
   'popoutWholeStack',
@@ -37,8 +35,14 @@ const configMinifierKeys: readonly string[] = [
   'activeItemIndex',
   'reorderEnabled',
   'borderGrabWidth',
-
-  // Maximum 36 entries, do not cross this line!
+  'sizeUnit',
+  'minSizeUnit',
+  'window',
+  'indexInParent',
+  'resolved',
+  'show',
+  'popInOnClose',
+  'closePopoutsOnUnload',
 ];
 
 const configMinifierValues: readonly (boolean | string)[] = [
@@ -55,9 +59,7 @@ const configMinifierValues: readonly (boolean | string)[] = [
 ];
 
 export function checkConfigMinifierInitialise(): void {
-  if (configMinifierKeys.length > 36) {
-    throw new Error('Too many keys in config minifier map');
-  }
+  // Retained as an initialization hook for callers and future validation.
 }
 
 export function translateObject(
@@ -78,7 +80,7 @@ export function translateObject(
 
 function translateArray(from: unknown[], minify: boolean): unknown[] {
   const length = from.length;
-  const to = new Array<unknown>(length);
+  const to = Array<unknown>(length);
   for (let i = 0; i < length; i++) {
     to[i] = translateValue(from[i], minify);
   }
@@ -100,12 +102,24 @@ function translateValue(from: unknown, minify: boolean): unknown {
 }
 
 function minifyKey(value: string): string {
+  if (value.startsWith('~')) {
+    return `~${value}`;
+  }
+
+  if (value.startsWith('___')) {
+    return '___' + value;
+  }
+
   if (value.length === 1) {
     return '___' + value;
   }
 
   const index = indexOfKey(value);
-  return index === -1 ? value : index.toString(36);
+  if (index === -1) {
+    return value;
+  }
+  const encoded = index.toString(36);
+  return index < 36 ? encoded : `~${encoded}`;
 }
 
 function unminifyKey(key: string): string {
@@ -113,14 +127,31 @@ function unminifyKey(key: string): string {
     return configMinifierKeys[parseInt(key, 36)];
   }
 
+  if (key.startsWith('______')) {
+    return key.slice(3);
+  }
+
   if (key.length === 4 && key.startsWith('___')) {
     return key[3];
+  }
+
+  if (key.startsWith('~~')) {
+    return key.slice(1);
+  }
+
+  if (/^~[0-9a-z]+$/.test(key)) {
+    const index = parseInt(key.slice(1), 36);
+    return configMinifierKeys[index] ?? key;
   }
 
   return key;
 }
 
 function minifyValue(value: unknown): unknown {
+  if (typeof value === 'string' && value.startsWith('___')) {
+    return '___' + value;
+  }
+
   if (typeof value === 'string' && value.length === 1) {
     return '___' + value;
   }
@@ -132,6 +163,10 @@ function minifyValue(value: unknown): unknown {
 function unminifyValue(value: unknown): unknown {
   if (typeof value === 'string' && value.length === 1) {
     return configMinifierValues[parseInt(value, 36)];
+  }
+
+  if (typeof value === 'string' && value.startsWith('______')) {
+    return value.slice(3);
   }
 
   if (

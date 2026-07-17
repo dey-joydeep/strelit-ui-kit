@@ -21,13 +21,13 @@ import { numberToPixels } from '../utils/utils';
 export class DragProxy extends EventEmitter {
   private _area: ContentItemArea | null = null;
   private _lastValidArea: ContentItemArea | null = null;
-  private _minX: number;
-  private _minY: number;
-  private _maxX: number;
-  private _maxY: number;
-  private _sided: boolean;
-  private _element: HTMLElement;
-  private _proxyContainerElement: HTMLElement;
+  private _minX!: number;
+  private _minY!: number;
+  private _maxX!: number;
+  private _maxY!: number;
+  private _sided!: boolean;
+  private _element!: HTMLElement;
+  private _proxyContainerElement!: HTMLElement;
   private _componentItemFocused: boolean;
 
   private readonly _onDragHandler = (
@@ -266,7 +266,9 @@ export class DragProxy extends EventEmitter {
         if (rootItem !== undefined) {
           rootItem.addChild(droppedComponentItem);
         } else {
-          const groundItem = (this._layoutManager as unknown as { _groundItem?: ContentItem })._groundItem;
+          const groundItem = (
+            this._layoutManager as unknown as { _groundItem?: ContentItem }
+          )._groundItem;
           if (groundItem !== undefined) {
             groundItem.addChild(droppedComponentItem);
           } else {

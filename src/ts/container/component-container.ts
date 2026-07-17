@@ -1,4 +1,8 @@
-import { ComponentItemConfig, ItemConfig } from '../config/config';
+import {
+  type ComponentItemConfig,
+  isComponentItemConfig,
+  resolveComponentItemConfig,
+} from '../config/config';
 import { ResolvedComponentItemConfig } from '../config/resolved-config';
 import { Tab } from '../controls/tab';
 import { AssertError, UnexpectedNullError } from '../errors/internal-error';
@@ -12,7 +16,7 @@ import {
   LogicalZIndexToDefaultMap,
   SerializableValue,
 } from '../utils/types';
-import { deepExtend, setElementHeight, setElementWidth } from '../utils/utils';
+import { setElementHeight, setElementWidth } from '../utils/utils';
 
 /** @public */
 export type ComponentContainerComponent = object;
@@ -80,11 +84,11 @@ export class ComponentContainer extends EventEmitter {
   /** @internal */
   private _isShownWithZeroDimensions;
   /** @internal */
-  private _tab: Tab;
+  private _tab!: Tab;
   /** @internal */
   private _stackMaximised = false;
   /** @internal */
-  private _logicalZIndex: LogicalZIndex;
+  private _logicalZIndex!: LogicalZIndex;
 
   stateRequestEvent: ComponentContainerStateRequestEventHandler | undefined;
   virtualRectingRequiredEvent:
@@ -102,10 +106,6 @@ export class ComponentContainer extends EventEmitter {
   }
   get parent(): ComponentItem {
     return this._parent;
-  }
-  /** @internal @deprecated use {@link ComponentContainer.componentType} */
-  get componentName(): ComponentType {
-    return this._componentType;
   }
   get componentType(): ComponentType {
     return this._componentType;
@@ -186,11 +186,6 @@ export class ComponentContainer extends EventEmitter {
     this.releaseComponent();
     this.stateRequestEvent = undefined;
     this.emit('destroy');
-  }
-
-  /** @deprecated use {@link ComponentContainer.element} */
-  getElement(): HTMLElement {
-    return this._element;
   }
 
   /**
@@ -308,15 +303,18 @@ export class ComponentContainer extends EventEmitter {
 
   /** Replaces component without affecting layout */
   replaceComponent(itemConfig: ComponentItemConfig): void {
-    if (!ItemConfig.isComponent(itemConfig)) {
+    if (!isComponentItemConfig(itemConfig)) {
       throw new Error('ReplaceComponent not passed a component ItemConfig');
     } else {
-      const config = ComponentItemConfig.resolve(itemConfig, false);
+      const config = resolveComponentItemConfig(itemConfig);
       const previousInitialState = this._initialState;
       const previousState = this._state;
       const previousComponentType = this._componentType;
 
       this.releaseComponent();
+      this._initialState = config.componentState;
+      this._state = config.componentState;
+      this._componentType = config.componentType;
 
       let nextBoundComponent: ComponentContainerBindableComponent;
       try {
@@ -336,10 +334,6 @@ export class ComponentContainer extends EventEmitter {
         );
         throw error;
       }
-
-      this._initialState = config.componentState;
-      this._state = this._initialState;
-      this._componentType = config.componentType;
 
       this._updateItemConfigEvent(config);
 
@@ -363,40 +357,6 @@ export class ComponentContainer extends EventEmitter {
 
       this.emit('stateChanged');
     }
-  }
-
-  /**
-   * Returns the initial component state or the latest passed in setState()
-   * @returns state
-   * @deprecated Use {@link ComponentContainer.initialState}
-   */
-  getState(): SerializableValue | undefined {
-    return this._state;
-  }
-
-  /**
-   * Merges the provided state into the current one
-   * @deprecated Use {@link ComponentContainer.stateRequestEvent}
-   */
-  extendState(state: Record<string, unknown>): void {
-    const target =
-      this._state !== undefined &&
-      this._state !== null &&
-      typeof this._state === 'object' &&
-      !Array.isArray(this._state)
-        ? (this._state as Record<string, unknown>)
-        : {};
-    const extendedState = deepExtend(target, state);
-    this.setState(extendedState as SerializableValue);
-  }
-
-  /**
-   * Sets the component state
-   * @deprecated Use {@link ComponentContainer.stateRequestEvent}
-   */
-  setState(state: SerializableValue): void {
-    this._state = state;
-    this._parent.emitBaseBubblingEvent('stateChanged');
   }
 
   /**
@@ -583,7 +543,6 @@ export class ComponentContainer extends EventEmitter {
 
   /** @internal */
   private emitShow(): void {
-    this.emit('shown');
     this.emit('show');
   }
 
@@ -605,8 +564,5 @@ export class ComponentContainer extends EventEmitter {
     );
   }
 }
-
-/** @public @deprecated use {@link ComponentContainer} */
-export type ItemContainer = ComponentContainer;
 
 /** @public */

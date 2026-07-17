@@ -17,11 +17,8 @@ Registering a component and specifying static positioning is the classic Strelit
 
 The following functions can be used to register components.
 
-- `StrelitLayout.registerComponent()`
 - `StrelitLayout.registerComponentConstructor()`
 - `StrelitLayout.registerComponentFactoryFunction()`
-- `StrelitLayout.registerComponentFunction()`
-- `StrelitLayout.registerGetComponentConstructorCallback()`
 
 ## Embedding via Events
 
@@ -60,8 +57,8 @@ With Virtual Components the following events need to be handled:
 
   ```typescript
   private handleBindComponentEvent(container: ComponentContainer, itemConfig: ResolvedComponentItemConfig) {
-      // Use ResolvedComponentItemConfig.resolveComponentTypeName() to resolve component types to a unique name
-      const componentTypeName = ResolvedComponentItemConfig.resolveComponentTypeName(itemConfig);
+      // Resolve component types to a unique registered name.
+      const componentTypeName = resolveComponentTypeName(itemConfig);
       if (componentTypeName === undefined) {
           throw new Error('handleBindComponentEvent: Undefined componentTypeName');
       }
@@ -211,7 +208,7 @@ These events give applications a lot of flexibility with positioning components 
 Existing applications using register functions in Strelit Layout can easily be updated to use virtual binding by:
 
 1. The register functions have a new parameter `virtual`. By default, this is `false`, specifying the classic binding in Strelit Layout. Set this to `true` to specify that components of that type should be implemented internally as virtual components.
-1. Components need to have a getter: `rootHtmlElement` which returns the component's root HTML element. Components written in TypeScript should implement the `StrelitLayoutVirtuableComponent` interface.
+1. Components need to have a getter: `rootHtmlElement` which returns the component's root HTML element. Components written in TypeScript should implement the `StrelitLayoutVirtualComponent` interface.
 1. Components' `rootHtmlElement` element need to have its `overflow` CSS property set to hidden.
 1. Ensure that the Strelit Layout container HTML element is positioned (ie. its position property is not `static`).
 
@@ -223,15 +220,12 @@ Please note there will be a couple of minor behaviour changes:
 - Strelit Layout will modify the height and width of the root HTML element. In embedding bindings, Strelit Layout modified the height and width of the container element - not the component's root HTML Element. If your application also sets the height or width of a components root HTML element, you will need to modify your design. This can easily be done by giving the current root HTML element a new parent element and making this parent the new root HTML element for the component. Your component logic can continue to use the existing element while Strelit Layout uses the new root HTML element.
 - Strelit Layout will modify the z-index of the component's root HTML element.
 
-Also note that 'virtual via registration' binding is not supported by the `StrelitLayout.registerGetComponentConstructorCallback()` registration function.
-
 ## Multiple binding methods
 
 An application can use multiple methods of binding components for different component types. Whenever a component needs to be bound, Strelit Layout will try to bind in the following order:
 
 1. First check if its type has been registered. If so, it will bind using that registration.
 1. Check whether there is a `bindComponentEvent` handler. If so, this event will be used to bind it as a virtual component.
-1. Check whether there is a `getComponentEvent` handler. If so, this event will be used to bind the component statically within the Strelit Layout DOM. This method is deprecated.
 1. If none of the above, then an exception will be raised.
 
 If you use both 'Virtual via Events' and 'Embedding via Events', then the `unbindComponentEvent` handler can use the `ComponentContainer.virtual` field to determine which of these binding methods was used for a component.
@@ -246,10 +240,6 @@ The `VirtualLayout` class implements all the Strelit Layout functionality except
 
 - **Quick and easy**\
   Use 'Embedding via Registration'. The classic way of using Strelit Layout.
-- **Backwards compatibility**\
-  If your existing application uses the Strelit Layout registration functions, then it will automatically use 'Embedding via Registration' without any changes.
-- **Deprecated `getComponentEvent`**\
-  To quickly get rid of this deprecation, use 'Embedding via Events'.
 - **Easy virtual component bindings**\
   Use 'Virtual via Registration' to get the advantages of Virtual Component binding with minimal changes to applications.
 - **Maximum design flexibility**\

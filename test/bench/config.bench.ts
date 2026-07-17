@@ -1,5 +1,10 @@
 import { bench, describe } from 'vitest';
-import { LayoutConfig, ResolvedLayoutConfig } from '../../src';
+import {
+  type LayoutConfig,
+  minifyResolvedLayoutConfig,
+  resolveLayoutConfig,
+  unminifyResolvedLayoutConfig,
+} from '../../src';
 
 function createLargeGridConfig(rows: number, cols: number): LayoutConfig {
   const rowContents = [];
@@ -16,7 +21,7 @@ function createLargeGridConfig(rows: number, cols: number): LayoutConfig {
             componentState: {
               row: r,
               col: c,
-              data: new Array(20).fill(r + c),
+              data: Array(20).fill(r + c),
             },
           },
         ],
@@ -37,19 +42,19 @@ function createLargeGridConfig(rows: number, cols: number): LayoutConfig {
 }
 
 const largeConfig = createLargeGridConfig(10, 10); // 100 components
-const resolvedConfig = LayoutConfig.resolve(largeConfig);
-const minifiedConfig = ResolvedLayoutConfig.minifyConfig(resolvedConfig);
+const resolvedConfig = resolveLayoutConfig(largeConfig);
+const minifiedConfig = minifyResolvedLayoutConfig(resolvedConfig);
 
 describe('Strelit UI Kit - Core Algorithmic Benchmarks (100-Component Layout)', () => {
-  bench('LayoutConfig.resolve(100 components)', () => {
-    LayoutConfig.resolve(largeConfig);
+  bench('resolveLayoutConfig(100 components)', () => {
+    resolveLayoutConfig(largeConfig);
   });
 
-  bench('ResolvedLayoutConfig.minifyConfig(100 components)', () => {
-    ResolvedLayoutConfig.minifyConfig(resolvedConfig);
+  bench('minifyResolvedLayoutConfig(100 components)', () => {
+    minifyResolvedLayoutConfig(resolvedConfig);
   });
 
-  bench('ResolvedLayoutConfig.unminifyConfig(100 components)', () => {
-    ResolvedLayoutConfig.unminifyConfig(minifiedConfig);
+  bench('unminifyResolvedLayoutConfig(100 components)', () => {
+    unminifyResolvedLayoutConfig(minifiedConfig);
   });
 });

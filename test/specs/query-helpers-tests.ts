@@ -91,7 +91,7 @@ describe('query helpers', function () {
       testComponents.every((item) => item.componentType === 'testComponent'),
     ).toBe(true);
 
-    const otherComponents = layout.getComponentsByName('otherComponent');
+    const otherComponents = layout.getComponentItemsByType('otherComponent');
     expect(otherComponents.length).toBe(1);
     expect(otherComponents[0].id).toBe('component-2');
   });

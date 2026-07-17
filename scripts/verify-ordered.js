@@ -32,16 +32,28 @@ const steps = [
     logFile: '02-build.log',
   },
   {
+    id: 'test',
+    command: npmCommand.command,
+    args: [...npmCommand.argsPrefix, 'run', 'test'],
+    logFile: '03-test.log',
+  },
+  {
+    id: 'compatibility-audit',
+    command: npmCommand.command,
+    args: [...npmCommand.argsPrefix, 'run', 'audit:compatibility'],
+    logFile: '04-compatibility-audit.log',
+  },
+  {
     id: 'lint',
     command: npmCommand.command,
     args: [...npmCommand.argsPrefix, 'run', 'lint'],
-    logFile: '03-lint.log',
+    logFile: '05-lint.log',
   },
   {
     id: 'format-check',
     command: npmCommand.command,
     args: [...npmCommand.argsPrefix, 'run', 'format:check'],
-    logFile: '04-format-check.log',
+    logFile: '06-format-check.log',
   },
 ];
 

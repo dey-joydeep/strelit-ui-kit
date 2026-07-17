@@ -1,6 +1,7 @@
 import {
-  ResolvedLayoutConfig,
-  ResolvedPopoutLayoutConfig,
+  createResolvedLayoutConfigCopy,
+  minifyResolvedLayoutConfig,
+  type ResolvedPopoutLayoutConfig,
   type ResolvedPopoutLayoutConfigWindow,
 } from '../config/resolved-config';
 import { PopoutBlockedError } from '../errors/external-error';
@@ -12,7 +13,7 @@ import { ContentItem } from '../items/content-item';
 import { LayoutManager } from '../layout-manager';
 import { EventEmitter } from '../utils/event-emitter';
 import { Rect } from '../utils/types';
-import { deepExtend, getErrorMessage, getUniqueId } from '../utils/utils';
+import { getErrorMessage, getUniqueId } from '../utils/utils';
 
 /**
  * Pops a content item out into a new browser window.
@@ -59,8 +60,8 @@ export class BrowserPopout extends EventEmitter {
       throw new Error("Can't create config, layout not yet initialised");
     }
 
-    const glInstance = this.getGlInstance();
-    const glInstanceConfig = glInstance.saveLayout();
+    const strelitInstance = this.getStrelitInstance();
+    const strelitInstanceConfig = strelitInstance.saveLayout();
 
     let left: number | null;
     let top: number | null;
@@ -73,18 +74,18 @@ export class BrowserPopout extends EventEmitter {
     }
 
     const window: ResolvedPopoutLayoutConfigWindow = {
-      width: this.getGlInstance().width,
-      height: this.getGlInstance().height,
+      width: strelitInstance.width,
+      height: strelitInstance.height,
       left,
       top,
     };
 
     const config: ResolvedPopoutLayoutConfig = {
-      root: glInstanceConfig.root,
-      openPopouts: glInstanceConfig.openPopouts,
-      settings: glInstanceConfig.settings,
-      dimensions: glInstanceConfig.dimensions,
-      header: glInstanceConfig.header,
+      root: strelitInstanceConfig.root,
+      openPopouts: strelitInstanceConfig.openPopouts,
+      settings: strelitInstanceConfig.settings,
+      dimensions: strelitInstanceConfig.dimensions,
+      header: strelitInstanceConfig.header,
       window,
       parentId: this._config.parentId,
       indexInParent: this._config.indexInParent,
@@ -94,11 +95,11 @@ export class BrowserPopout extends EventEmitter {
     return config;
   }
 
-  getGlInstance(): LayoutManager {
+  getStrelitInstance(): LayoutManager {
     if (this._popoutWindow === null) {
       throw new UnexpectedNullError('BPGGI24693');
     }
-    return this._popoutWindow.__glInstance;
+    return this._popoutWindow.__strelitInstance;
   }
 
   /**
@@ -114,8 +115,8 @@ export class BrowserPopout extends EventEmitter {
   }
 
   close(): void {
-    if (this.getGlInstance()) {
-      this.getGlInstance().closeWindow();
+    if (this.getStrelitInstance()) {
+      this.getStrelitInstance().closeWindow();
     } else {
       try {
         this.getWindow().close();
@@ -140,21 +141,11 @@ export class BrowserPopout extends EventEmitter {
       return;
     }
 
-    /*
-     * The deepExtend call seems a bit pointless, but it's crucial to
-     * copy the config returned by this.getGlInstance().toConfig()
-     * onto a new object. Internet Explorer keeps the references
-     * to objects on the child window, resulting in the following error
-     * once the child window is closed:
-     *
-     * The callee (server [not server application]) is not available and disappeared
-     */
-    const glInstanceLayoutConfig = this.getGlInstance().saveLayout();
-    const copiedGlInstanceLayoutConfig = deepExtend(
-      {},
-      glInstanceLayoutConfig as unknown as Record<string, unknown>,
-    ) as unknown as ResolvedLayoutConfig;
-    const copiedRoot = copiedGlInstanceLayoutConfig.root;
+    const strelitInstanceLayoutConfig = this.getStrelitInstance().saveLayout();
+    const copiedStrelitLayoutConfig = createResolvedLayoutConfigCopy(
+      strelitInstanceLayoutConfig,
+    );
+    const copiedRoot = copiedStrelitLayoutConfig.root;
     if (copiedRoot === undefined) {
       throw new UnexpectedUndefinedError('BPPIR19998');
     }
@@ -268,8 +259,8 @@ export class BrowserPopout extends EventEmitter {
       throw new UnexpectedNullError('BPCR01844');
     } else {
       if (
-        this._popoutWindow.__glInstance &&
-        this._popoutWindow.__glInstance.isInitialised
+        this._popoutWindow.__strelitInstance &&
+        this._popoutWindow.__strelitInstance.isInitialised
       ) {
         this.onInitialised();
         if (this._checkReadyInterval !== undefined) {
@@ -308,8 +299,8 @@ export class BrowserPopout extends EventEmitter {
    * @internal
    */
   private createUrl(): string {
-    const storageKey = 'gl-window-config-' + getUniqueId();
-    const config = ResolvedLayoutConfig.minifyConfig(this._config);
+    const storageKey = 'strelit-window-config-' + getUniqueId();
+    const config = minifyResolvedLayoutConfig(this._config);
 
     try {
       localStorage.setItem(storageKey, JSON.stringify(config));
@@ -320,7 +311,7 @@ export class BrowserPopout extends EventEmitter {
     }
 
     const url = new URL(location.href);
-    url.searchParams.set('gl-window', storageKey);
+    url.searchParams.set('strelit-window', storageKey);
     return url.toString();
   }
 
@@ -348,7 +339,7 @@ export class BrowserPopout extends EventEmitter {
    */
   private onInitialised(): void {
     this._isInitialised = true;
-    this.getGlInstance().on('popIn', () => this.popIn());
+    this.getStrelitInstance().on('popIn', () => this.popIn());
     this.emit('initialised');
   }
 

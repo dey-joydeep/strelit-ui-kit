@@ -1,16 +1,18 @@
-import { LayoutConfig } from './config/config';
-import { ResolvedComponentItemConfig } from './config/resolved-config';
+import {
+  resolveComponentTypeName,
+  type ResolvedComponentItemConfig,
+} from './config/resolved-config';
 import {
   ComponentContainer,
   type ComponentContainerBindableComponent,
   type ComponentContainerComponent,
 } from './container/component-container';
-import { ApiError, BindError } from './errors/external-error';
+import { BindError } from './errors/external-error';
 import { AssertError, UnexpectedUndefinedError } from './errors/internal-error';
 import { I18nStringId, i18nStrings } from './utils/i18n-strings';
 import { LogicalZIndex, SerializableValue } from './utils/types';
 import {
-  deepExtendValue,
+  deepCloneValue,
   ensureElementPositionAbsolute,
   numberToPixels,
   setElementDisplayVisibility,
@@ -24,7 +26,7 @@ import {
 } from './virtual-layout';
 
 /** @public */
-export interface StrelitLayoutVirtuableComponent {
+export interface StrelitLayoutVirtualComponent {
   rootHtmlElement: HTMLElement;
 }
 
@@ -47,12 +49,6 @@ export type StrelitLayoutComponentFactoryFunction<
   state: TState | undefined,
   virtual: boolean,
 ) => TComponent | undefined;
-
-/** @public */
-export type StrelitLayoutGetComponentConstructorCallback = (
-  this: void,
-  config: ResolvedComponentItemConfig,
-) => StrelitLayoutComponentConstructor;
 
 /** @public */
 export interface StrelitLayoutComponentInstantiator<
@@ -79,21 +75,17 @@ export class StrelitLayout extends VirtualLayout {
     AnyStrelitLayoutComponentInstantiator
   >();
   /** @internal */
-  private _getComponentConstructorFtn:
-    StrelitLayoutGetComponentConstructorCallback | undefined;
-
-  /** @internal */
   private _registeredComponentMap = new Map<
     ComponentContainer,
     ComponentContainerComponent | undefined
   >();
   /** @internal */
-  private _virtuableComponentMap = new Map<
+  private _virtualComponentMap = new Map<
     ComponentContainer,
-    StrelitLayoutVirtuableComponent
+    StrelitLayoutVirtualComponent
   >();
   /** @internal */
-  private _strelitLayoutBoundingClientRect: DOMRect;
+  private _strelitLayoutBoundingClientRect!: DOMRect;
 
   /** @internal */
   private _containerVirtualRectingRequiredEventListener = (
@@ -135,67 +127,15 @@ export class StrelitLayout extends VirtualLayout {
     container?: HTMLElement,
     bindComponentEventHandler?: VirtualLayoutBindComponentEventHandler,
     unbindComponentEventHandler?: VirtualLayoutUnbindComponentEventHandler,
-  );
-  /** @deprecated specify layoutConfig in {@link LayoutManager.loadLayout} */
-  constructor(config: LayoutConfig, container?: HTMLElement);
-  /** @internal */
-  constructor(
-    configOrOptionalContainer: LayoutConfig | HTMLElement | undefined,
-    containerOrBindComponentEventHandler?:
-      HTMLElement | VirtualLayoutBindComponentEventHandler,
-    unbindComponentEventHandler?: VirtualLayoutUnbindComponentEventHandler,
   ) {
     super(
-      configOrOptionalContainer,
-      containerOrBindComponentEventHandler,
+      container,
+      bindComponentEventHandler,
       unbindComponentEventHandler,
       true,
     );
     // We told VirtualLayout to not call init() so this class can initialize its own properties first.
-    if (!this.deprecatedConstructor) {
-      this.init();
-    }
-  }
-
-  /**
-   * Register a new component type with the layout manager.
-   *
-   * @deprecated See {@link https://stackoverflow.com/questions/40922531/how-to-check-if-a-javascript-function-is-a-constructor}
-   * instead use {@link StrelitLayout.registerComponentConstructor}
-   * or {@link StrelitLayout.registerComponentFactoryFunction}
-   */
-  registerComponent(
-    name: string,
-    componentConstructorOrFactoryFtn:
-      | StrelitLayoutComponentConstructor<
-          SerializableValue,
-          ComponentContainerComponent
-        >
-      | StrelitLayoutComponentFactoryFunction<
-          SerializableValue,
-          ComponentContainerComponent
-        >,
-    virtual = false,
-  ): void {
-    if (typeof componentConstructorOrFactoryFtn !== 'function') {
-      throw new ApiError(
-        'registerComponent() componentConstructorOrFactoryFtn parameter is not a function',
-      );
-    } else {
-      if (Object.prototype.hasOwnProperty.call(componentConstructorOrFactoryFtn, 'prototype')) {
-        const componentConstructor =
-          componentConstructorOrFactoryFtn as StrelitLayoutComponentConstructor;
-        this.registerComponentConstructor(name, componentConstructor, virtual);
-      } else {
-        const componentFactoryFtn =
-          componentConstructorOrFactoryFtn as StrelitLayoutComponentFactoryFunction;
-        this.registerComponentFactoryFunction(
-          name,
-          componentFactoryFtn,
-          virtual,
-        );
-      }
-    }
+    this.init();
   }
 
   /**
@@ -267,52 +207,13 @@ export class StrelitLayout extends VirtualLayout {
     });
   }
 
-  /**
-   * Register a component function with the layout manager. This function should
-   * return a constructor for a component based on a config.
-   * This function will be called if a component type with the required name is not already registered.
-   * It is recommended that applications use the {@link VirtualLayout.getComponentEvent} and
-   * {@link VirtualLayout.releaseComponentEvent} instead of registering a constructor callback
-   * @deprecated use {@link StrelitLayout.registerGetComponentConstructorCallback}
-   */
-  registerComponentFunction(
-    callback: StrelitLayoutGetComponentConstructorCallback,
-  ): void {
-    this.registerGetComponentConstructorCallback(callback);
-  }
-
-  /**
-   * Register a callback closure with the layout manager which supplies a Component Constructor.
-   * This callback should return a constructor for a component based on a config.
-   * This function will be called if a component type with the required name is not already registered.
-   * It is recommended that applications use the {@link VirtualLayout.getComponentEvent} and
-   * {@link VirtualLayout.releaseComponentEvent} instead of registering a constructor callback
-   */
-  registerGetComponentConstructorCallback(
-    callback: StrelitLayoutGetComponentConstructorCallback,
-  ): void {
-    if (typeof callback !== 'function') {
-      throw new Error('Please register a callback function');
-    }
-
-    if (this._getComponentConstructorFtn !== undefined) {
-      console.warn(
-        'Multiple component functions are being registered.  Only the final registered function will be used.',
-      );
-    }
-
-    this._getComponentConstructorFtn = callback;
-  }
-
   getRegisteredComponentTypeNames(): string[] {
     const typeNamesIterableIterator = this._componentTypesMap.keys();
     return Array.from(typeNamesIterableIterator);
   }
 
   /**
-   * Returns a previously registered component instantiator.  Attempts to utilize registered
-   * component type by first, then falls back to the component constructor callback function (if registered).
-   * If neither gets an instantiator, then returns `undefined`.
+   * Returns a previously registered component instantiator.
    * Note that `undefined` will return if config.componentType is not a string
    *
    * @param config - The item config
@@ -321,24 +222,10 @@ export class StrelitLayout extends VirtualLayout {
   getComponentInstantiator(
     config: ResolvedComponentItemConfig,
   ): StrelitLayoutComponentInstantiator | undefined {
-    let instantiator: StrelitLayoutComponentInstantiator | undefined;
-
-    const typeName =
-      ResolvedComponentItemConfig.resolveComponentTypeName(config);
-    if (typeName !== undefined) {
-      instantiator = this._componentTypesMap.get(typeName);
-    }
-    if (instantiator === undefined) {
-      if (this._getComponentConstructorFtn !== undefined) {
-        instantiator = {
-          constructor: this._getComponentConstructorFtn(config),
-          factoryFunction: undefined,
-          virtual: false,
-        };
-      }
-    }
-
-    return instantiator;
+    const typeName = resolveComponentTypeName(config);
+    return typeName === undefined
+      ? undefined
+      : this._componentTypesMap.get(typeName);
   }
 
   /** @internal */
@@ -346,34 +233,17 @@ export class StrelitLayout extends VirtualLayout {
     container: ComponentContainer,
     itemConfig: ResolvedComponentItemConfig,
   ): ComponentContainerBindableComponent {
-    let instantiator: StrelitLayoutComponentInstantiator | undefined;
-
-    const typeName =
-      ResolvedComponentItemConfig.resolveComponentTypeName(itemConfig);
-    if (typeName !== undefined) {
-      instantiator = this._componentTypesMap.get(typeName);
-    }
-    if (instantiator === undefined) {
-      if (this._getComponentConstructorFtn !== undefined) {
-        instantiator = {
-          constructor: this._getComponentConstructorFtn(itemConfig),
-          factoryFunction: undefined,
-          virtual: false,
-        };
-      }
-    }
+    const instantiator = this.getComponentInstantiator(itemConfig);
 
     let result: ComponentContainerBindableComponent;
     if (instantiator !== undefined) {
       const virtual = instantiator.virtual;
-      // handle case where component is obtained by name or component constructor callback
       let componentState: SerializableValue | undefined;
       if (itemConfig.componentState === undefined) {
         componentState = undefined;
       } else {
         // make copy
-        componentState = deepExtendValue(
-          {},
+        componentState = deepCloneValue(
           itemConfig.componentState,
         ) as SerializableValue;
       }
@@ -397,19 +267,18 @@ export class StrelitLayout extends VirtualLayout {
 
       if (virtual) {
         if (component === undefined) {
-          throw new UnexpectedUndefinedError('GLBCVCU988774');
+          throw new UnexpectedUndefinedError('SLBCVCU988774');
         } else {
-          const virtuableComponent =
-            component as StrelitLayoutVirtuableComponent;
-          const componentRootElement = virtuableComponent.rootHtmlElement;
+          const virtualComponent = component as StrelitLayoutVirtualComponent;
+          const componentRootElement = virtualComponent.rootHtmlElement;
           if (componentRootElement === undefined) {
             throw new BindError(
-              `${i18nStrings[I18nStringId.VirtualComponentDoesNotHaveRootHtmlElement]}: ${typeName}`,
+              `${i18nStrings[I18nStringId.VirtualComponentDoesNotHaveRootHtmlElement]}: ${JSON.stringify(itemConfig.componentType)}`,
             );
           } else {
             ensureElementPositionAbsolute(componentRootElement);
             this.container.appendChild(componentRootElement);
-            this._virtuableComponentMap.set(container, virtuableComponent);
+            this._virtualComponentMap.set(container, virtualComponent);
             container.virtualRectingRequiredEvent =
               this._containerVirtualRectingRequiredEventListener;
             container.virtualVisibilityChangeRequiredEvent =
@@ -427,7 +296,7 @@ export class StrelitLayout extends VirtualLayout {
         component,
       };
     } else {
-      // Use getComponentEvent
+      // Delegate application-managed component binding to VirtualLayout.
       result = super.bindComponent(container, itemConfig);
     }
 
@@ -444,14 +313,14 @@ export class StrelitLayout extends VirtualLayout {
       super.unbindComponent(container, virtual, component); // was not created from registration so use virtual unbind events
     } else {
       this._registeredComponentMap.delete(container);
-      const virtuableComponent = this._virtuableComponentMap.get(container);
-      if (virtuableComponent !== undefined) {
-        const componentRootElement = virtuableComponent.rootHtmlElement;
+      const virtualComponent = this._virtualComponentMap.get(container);
+      if (virtualComponent !== undefined) {
+        const componentRootElement = virtualComponent.rootHtmlElement;
         if (componentRootElement === undefined) {
-          throw new AssertError('GLUC77743', container.title);
+          throw new AssertError('SLUC77743', container.title);
         } else {
           this.container.removeChild(componentRootElement);
-          this._virtuableComponentMap.delete(container);
+          this._virtualComponentMap.delete(container);
           container.virtualRectingRequiredEvent = undefined;
           container.virtualVisibilityChangeRequiredEvent = undefined;
           container.virtualZIndexChangeRequiredEvent = undefined;
@@ -472,14 +341,14 @@ export class StrelitLayout extends VirtualLayout {
     width: number,
     height: number,
   ): void {
-    const virtuableComponent = this._virtuableComponentMap.get(container);
-    if (virtuableComponent === undefined) {
-      throw new UnexpectedUndefinedError('GLHCSCE55933');
+    const virtualComponent = this._virtualComponentMap.get(container);
+    if (virtualComponent === undefined) {
+      throw new UnexpectedUndefinedError('SLHCSCE55933');
     } else {
-      const rootElement = virtuableComponent.rootHtmlElement;
+      const rootElement = virtualComponent.rootHtmlElement;
       if (rootElement === undefined) {
         throw new BindError(
-          i18nStrings[I18nStringId.ComponentIsNotVirtuable] +
+          i18nStrings[I18nStringId.ComponentIsNotVirtual] +
             ' ' +
             container.title,
         );
@@ -505,14 +374,14 @@ export class StrelitLayout extends VirtualLayout {
     container: ComponentContainer,
     visible: boolean,
   ): void {
-    const virtuableComponent = this._virtuableComponentMap.get(container);
-    if (virtuableComponent === undefined) {
-      throw new UnexpectedUndefinedError('GLHCVVCRE55934');
+    const virtualComponent = this._virtualComponentMap.get(container);
+    if (virtualComponent === undefined) {
+      throw new UnexpectedUndefinedError('SLHCVVCRE55934');
     } else {
-      const rootElement = virtuableComponent.rootHtmlElement;
+      const rootElement = virtualComponent.rootHtmlElement;
       if (rootElement === undefined) {
         throw new BindError(
-          i18nStrings[I18nStringId.ComponentIsNotVirtuable] +
+          i18nStrings[I18nStringId.ComponentIsNotVirtual] +
             ' ' +
             container.title,
         );
@@ -528,14 +397,14 @@ export class StrelitLayout extends VirtualLayout {
     logicalZIndex: LogicalZIndex,
     defaultZIndex: string,
   ) {
-    const virtuableComponent = this._virtuableComponentMap.get(container);
-    if (virtuableComponent === undefined) {
-      throw new UnexpectedUndefinedError('GLHCVZICRE55935');
+    const virtualComponent = this._virtualComponentMap.get(container);
+    if (virtualComponent === undefined) {
+      throw new UnexpectedUndefinedError('SLHCVZICRE55935');
     } else {
-      const rootElement = virtuableComponent.rootHtmlElement;
+      const rootElement = virtualComponent.rootHtmlElement;
       if (rootElement === undefined) {
         throw new BindError(
-          i18nStrings[I18nStringId.ComponentIsNotVirtuable] +
+          i18nStrings[I18nStringId.ComponentIsNotVirtual] +
             ' ' +
             container.title,
         );

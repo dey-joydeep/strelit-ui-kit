@@ -1,12 +1,13 @@
 import {
-  ComponentItemConfig,
-  ItemConfig,
-  RowOrColumnItemConfig,
-  StackItemConfig,
+  type ComponentItemConfig,
+  type RowOrColumnItemConfig,
+  type StackItemConfig,
+  isComponentItemConfig,
+  resolveItemConfig,
 } from '../config/config';
 import {
-  ResolvedRowOrColumnItemConfig,
-  ResolvedStackItemConfig,
+  type ResolvedRowOrColumnItemConfig,
+  type ResolvedStackItemConfig,
 } from '../config/resolved-config';
 import { Splitter } from '../controls/splitter';
 import { AssertError, UnexpectedNullError } from '../errors/internal-error';
@@ -16,7 +17,7 @@ import {
   ComponentType,
   ItemType,
   SerializableValue,
-  SizeUnitEnum,
+  SizeUnit,
   WidthOrHeightPropertyName,
 } from '../utils/types';
 import {
@@ -177,10 +178,7 @@ export class RowOrColumn extends ContentItem {
     index = this.addItem(itemConfig, index);
     const createdItem = this.contentItems[index];
 
-    if (
-      ContentItem.isStack(createdItem) &&
-      ItemConfig.isComponent(itemConfig)
-    ) {
+    if (ContentItem.isStack(createdItem) && isComponentItemConfig(itemConfig)) {
       // createdItem is a Stack which was created to hold wanted component.  Return component
       return createdItem.contentItems[0];
     } else {
@@ -193,7 +191,7 @@ export class RowOrColumn extends ContentItem {
     index?: number,
   ): number {
     this.layoutManager.checkMinimiseMaximisedStack();
-    const resolvedItemConfig = ItemConfig.resolve(itemConfig, false);
+    const resolvedItemConfig = resolveItemConfig(itemConfig);
     const contentItem = this.layoutManager.createAndInitContentItem(
       resolvedItemConfig,
       this,
@@ -468,7 +466,7 @@ export class RowOrColumn extends ContentItem {
     for (let i = 0; i < this.contentItems.length; i++) {
       const contentItem = this.contentItems[i];
       let itemSize: number;
-      if (contentItem.sizeUnit === SizeUnitEnum.Percent) {
+      if (contentItem.sizeUnit === SizeUnit.Percent) {
         itemSize = Math.floor(totalSize * (contentItem.size / 100));
       } else {
         throw new AssertError('ROCCAS6692');
@@ -517,11 +515,11 @@ export class RowOrColumn extends ContentItem {
       const contentItem = this.contentItems[i];
       const sizeUnit = contentItem.sizeUnit;
       switch (sizeUnit) {
-        case SizeUnitEnum.Percent: {
+        case SizeUnit.Percent: {
           total += contentItem.size;
           break;
         }
-        case SizeUnitEnum.Fractional: {
+        case SizeUnit.Fractional: {
           itemsWithFractionalSize.push(contentItem);
           totalFractionalSize += contentItem.size;
           break;
@@ -547,7 +545,7 @@ export class RowOrColumn extends ContentItem {
           const contentItem = itemsWithFractionalSize[i];
           contentItem.size =
             fractionalAllocatedSize * (contentItem.size / totalFractionalSize);
-          contentItem.sizeUnit = SizeUnitEnum.Percent;
+          contentItem.sizeUnit = SizeUnit.Percent;
         }
         this.respectMinItemSize();
         return;
@@ -562,7 +560,7 @@ export class RowOrColumn extends ContentItem {
           for (let i = 0; i < itemsWithFractionalSize.length; i++) {
             const contentItem = itemsWithFractionalSize[i];
             contentItem.size = 50 * (contentItem.size / totalFractionalSize);
-            contentItem.sizeUnit = SizeUnitEnum.Percent;
+            contentItem.sizeUnit = SizeUnit.Percent;
           }
           total += 50;
         }
@@ -714,7 +712,7 @@ export class RowOrColumn extends ContentItem {
   private calculateContentItemMinSize(contentItem: ContentItem) {
     const minSize = contentItem.minSize;
     if (minSize !== undefined) {
-      if (contentItem.minSizeUnit === SizeUnitEnum.Pixel) {
+      if (contentItem.minSizeUnit === SizeUnit.Pixel) {
         return minSize;
       } else {
         throw new AssertError('ROCGMD98831', JSON.stringify(contentItem));

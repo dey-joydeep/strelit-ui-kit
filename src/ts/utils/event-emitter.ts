@@ -53,10 +53,6 @@ export class EventEmitterBubblingEvent {
   get target(): EventEmitter {
     return this._target;
   }
-  /** @deprecated Use {@link EventEmitterBubblingEvent.target} instead */
-  get origin(): EventEmitter {
-    return this._target;
-  }
   get isPropagationStopped(): boolean {
     return this._isPropagationStopped;
   }
@@ -147,8 +143,6 @@ export interface EventEmitterEventParamsMap {
   popIn: EventEmitterNoParams;
   resize: EventEmitterNoParams;
   show: EventEmitterNoParams;
-  /** @deprecated - use show instead */
-  shown: EventEmitterNoParams;
   stateChanged: EventEmitterNoParams;
   tab: EventEmitterTabParam;
   tabCreated: EventEmitterTabParam;
@@ -258,12 +252,18 @@ export class EventEmitter {
   /**
    * Alias for off
    */
-  unbind = this.removeEventListener;
+  unbind = <K extends keyof EventEmitterEventParamsMap>(
+    eventName: K,
+    callback: EventEmitterCallback<K>,
+  ): void => this.removeEventListener(eventName, callback);
 
   /**
    * Alias for emit
    */
-  trigger = this.emit;
+  trigger = <K extends keyof EventEmitterEventParamsMap>(
+    eventName: K,
+    ...args: EventEmitterEventParamsMap[K]
+  ): void => this.emit(eventName, ...args);
 
   /**
    * Listen for events

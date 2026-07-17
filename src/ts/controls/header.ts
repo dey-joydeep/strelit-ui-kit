@@ -113,15 +113,15 @@ export class Header extends EventEmitter {
   /** @internal */
   private _canRemoveComponent: boolean;
   /** @internal */
-  private _side: Side;
+  private _side!: Side;
   /** @internal */
-  private _leftRightSided: boolean;
+  private _leftRightSided!: boolean;
   /** @internal */
   private readonly _closeButton: HeaderButton | null = null;
   /** @internal */
   private readonly _popoutButton: HeaderButton | null = null;
   /** @internal */
-  private readonly _tabDropdownButton: HeaderButton;
+  private readonly _tabDropdownButton!: HeaderButton;
   /** @internal */
   private readonly _maximiseButton: HeaderButton | undefined;
   // /** @internal */

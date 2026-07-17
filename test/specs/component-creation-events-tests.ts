@@ -63,4 +63,34 @@ describe('component creation events', function () {
     expect(stackCreated).toHaveBeenCalledTimes(1);
     expect(componentCreated).toHaveBeenCalledTimes(1);
   });
+
+  it('exposes replacement metadata while binding the replacement component', function () {
+    const replacementState = { source: 'replacement' };
+    const observedMetadata: unknown[] = [];
+    layout.registerComponentFactoryFunction(
+      'replacementComponent',
+      (container) => {
+        observedMetadata.push(container.componentType, container.initialState);
+      },
+    );
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        componentType: 'testComponent',
+        componentState: { source: 'initial' },
+      },
+    });
+
+    const componentItem = layout.getComponentItemsByType('testComponent')[0];
+    componentItem.container.replaceComponent({
+      type: 'component',
+      componentType: 'replacementComponent',
+      componentState: replacementState,
+    });
+
+    expect(observedMetadata).toEqual([
+      'replacementComponent',
+      replacementState,
+    ]);
+  });
 });

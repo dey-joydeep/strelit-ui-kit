@@ -1,12 +1,13 @@
-import { ComponentItemConfig, ItemConfig } from '../config/config';
+import { type ComponentItemConfig, resolveItemConfig } from '../config/config';
 import {
-  ResolvedComponentItemConfig,
-  ResolvedHeaderedItemConfig,
+  type ResolvedComponentItemConfig,
+  type ResolvedHeaderedItemConfig,
   createResolvedHeaderedItemConfigHeaderCopy,
   type ResolvedHeaderedItemConfigHeader,
-  ResolvedItemConfig,
-  ResolvedStackItemConfig,
+  type ResolvedItemConfig,
+  type ResolvedStackItemConfig,
   createResolvedItemConfigDefault,
+  createResolvedStackItemConfigDefault,
 } from '../config/resolved-config';
 import { Header, type HeaderSettings } from '../controls/header';
 import {
@@ -29,7 +30,7 @@ import {
   ItemType,
   Side,
   SerializableValue,
-  SizeUnitEnum,
+  SizeUnit,
   WidthAndHeight,
   WidthOrHeightPropertyName,
 } from '../utils/types';
@@ -80,11 +81,11 @@ export class Stack extends ComponentParentableItem {
   /** @internal */
   private _activeComponentItem: ComponentItem | undefined;
   /** @internal */
-  private _dropSegment: StackSegment;
+  private _dropSegment!: StackSegment;
   /** @internal */
-  private _dropIndex: number;
+  private _dropIndex!: number;
   /** @internal */
-  private _contentAreaDimensions: StackContentAreaDimensions;
+  private _contentAreaDimensions!: StackContentAreaDimensions;
   /** @internal */
   private _headerSideChanged = false;
   /** @internal */
@@ -296,17 +297,6 @@ export class Stack extends ComponentParentableItem {
     this.initContentItems();
   }
 
-  /** @deprecated Use `setActiveComponentItem()` */
-  setActiveContentItem(item: ContentItem): void {
-    if (!ContentItem.isComponentItem(item)) {
-      throw new Error(
-        'Stack.setActiveContentItem: item is not a ComponentItem',
-      );
-    } else {
-      this.setActiveComponentItem(item, false);
-    }
-  }
-
   setActiveComponentItem(
     componentItem: ComponentItem,
     focus: boolean,
@@ -340,11 +330,6 @@ export class Stack extends ComponentParentableItem {
         suppressFocusEvent,
       );
     }
-  }
-
-  /** @deprecated Use `getActiveComponentItem()` */
-  getActiveContentItem(): ContentItem | null {
-    return this.getActiveComponentItem() ?? null;
   }
 
   getActiveComponentItem(): ComponentItem | undefined {
@@ -405,7 +390,7 @@ export class Stack extends ComponentParentableItem {
   addItem(itemConfig: ComponentItemConfig, index?: number): number {
     this.layoutManager.checkMinimiseMaximisedStack();
 
-    const resolvedItemConfig = ItemConfig.resolve(itemConfig, false);
+    const resolvedItemConfig = resolveItemConfig(itemConfig);
     const contentItem = this.layoutManager.createAndInitContentItem(
       resolvedItemConfig,
       this,
@@ -624,7 +609,7 @@ export class Stack extends ComponentParentableItem {
      * The content item can be either a component or a stack. If it is a component, wrap it into a stack
      */
     if (contentItem.isComponent) {
-      const itemConfig = ResolvedStackItemConfig.createDefault();
+      const itemConfig = createResolvedStackItemConfigDefault();
       itemConfig.header = this.createHeaderConfig();
       const stack = this.layoutManager.createAndInitContentItem(
         itemConfig,
@@ -643,7 +628,7 @@ export class Stack extends ComponentParentableItem {
       contentItem.type === ItemType.row ||
       contentItem.type === ItemType.column
     ) {
-      const itemConfig = ResolvedStackItemConfig.createDefault();
+      const itemConfig = createResolvedStackItemConfigDefault();
       itemConfig.header = this.createHeaderConfig();
       const stack = this.layoutManager.createContentItem(itemConfig, this);
       stack.addChild(contentItem);
@@ -685,7 +670,7 @@ export class Stack extends ComponentParentableItem {
 
       this.size = 50;
       contentItem.size = 50;
-      contentItem.sizeUnit = SizeUnitEnum.Percent;
+      contentItem.sizeUnit = SizeUnit.Percent;
       rowOrColumn.updateSize(false);
     }
   }
@@ -883,7 +868,7 @@ export class Stack extends ComponentParentableItem {
     const tabsContainerElementChildNodes = tabsContainerElement.childNodes;
 
     // Create shallow copy of childNodes list, excluding DropPlaceHolder, as we will be modifying the childNodes list
-    const visibleTabElements = new Array<HTMLElement>(visibleTabsLength);
+    const visibleTabElements = Array<HTMLElement>(visibleTabsLength);
     let tabIndex = 0;
     let tabCount = 0;
     while (tabCount < visibleTabsLength) {

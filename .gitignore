@@ -10,6 +10,5 @@ debug.log
 /lib
 /apitest/dist
 /temp
-/test/dist
 /.verification
 .codex

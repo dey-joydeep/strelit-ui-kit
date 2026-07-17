@@ -5,6 +5,7 @@ import {
   LayoutConfig,
   ComponentItem,
 } from '../../src';
+import { eventHubChildEventName } from '../../src/ts/utils/event-hub';
 
 describe('Event Bubbling up the layout hierarchy', function () {
   let layout: StrelitLayout;
@@ -52,5 +53,11 @@ describe('Event Bubbling up the layout hierarchy', function () {
     comp.focus();
 
     expect(layoutFocusSpy).toHaveBeenCalled();
+  });
+});
+
+describe('Event hub protocol', function () {
+  it('uses the Strelit child-window event name', function () {
+    expect(eventHubChildEventName).toBe('strelit_child_event');
   });
 });

@@ -1,6 +1,7 @@
 import {
-  ResolvedComponentItemConfig,
+  createComponentTypeCopy,
   createResolvedHeaderedItemConfigHeaderCopy,
+  type ResolvedComponentItemConfig,
   type ResolvedHeaderedItemConfigHeader,
 } from '../config/resolved-config';
 import {
@@ -27,20 +28,16 @@ export class ComponentItem extends ContentItem {
   /** @internal */
   private _headerConfig: ResolvedHeaderedItemConfigHeader | undefined;
   /** @internal */
-  private _title: string;
+  private _title!: string;
   /** @internal */
   private readonly _initialWantMaximise: boolean;
   /** @internal */
   private _container: ComponentContainer;
   /** @internal */
-  private _tab: Tab;
+  private _tab!: Tab;
   /** @internal */
   private _focused = false;
 
-  /** @internal @deprecated use `componentType` */
-  get componentName(): ComponentType {
-    return this._container.componentType;
-  }
   get componentType(): ComponentType {
     return this._container.componentType;
   }
@@ -138,9 +135,7 @@ export class ComponentItem extends ContentItem {
       reorderEnabled: this._reorderEnabled,
       title: this._title,
       header: createResolvedHeaderedItemConfigHeaderCopy(this._headerConfig),
-      componentType: ResolvedComponentItemConfig.copyComponentType(
-        this.componentType,
-      ),
+      componentType: createComponentTypeCopy(this.componentType),
       componentState: state,
     };
 
@@ -284,9 +279,6 @@ export class ComponentItem extends ContentItem {
     }
   }
 }
-
-/** @public @deprecated use `ComponentItem` */
-export type Component = ComponentItem;
 
 /** @public */
 export type ComponentItemComponent = ComponentContainerComponent;

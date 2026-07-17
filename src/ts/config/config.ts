@@ -1,9 +1,5 @@
 import { ConfigurationError } from '../errors/external-error';
-import {
-  AssertError,
-  UnexpectedUndefinedError,
-  UnreachableCaseError,
-} from '../errors/internal-error';
+import { AssertError, UnreachableCaseError } from '../errors/internal-error';
 import { I18nStringId, i18nStrings } from '../utils/i18n-strings';
 import {
   ComponentType,
@@ -11,30 +7,41 @@ import {
   ResponsiveMode,
   SerializableValue,
   Side,
-  SizeUnitEnum,
+  SizeUnit,
+  formatSizeUnit,
+  tryParseSizeUnit,
 } from '../utils/types';
 import {
-  deepExtendValue,
+  deepCloneValue,
   splitStringAtFirstNonNumericChar,
 } from '../utils/utils';
 import {
-  ResolvedComponentItemConfig,
   createResolvedHeaderedItemConfigHeaderCopy,
+  createResolvedLayoutConfigHeaderCopy,
+  createResolvedLayoutConfigSettingsCopy,
+  isResolvedComponentItemConfig,
+  isResolvedRootItemConfig,
+  isResolvedRowOrColumnItemConfigChild,
+  resolvedComponentItemConfigDefaultReorderEnabled,
+  resolvedItemConfigDefaults,
+  resolvedLayoutConfigDimensionsDefaults,
+  resolvedLayoutConfigHeaderDefaults,
+  resolvedLayoutConfigSettingsDefaults,
+  resolvedPopoutLayoutConfigWindowDefaults,
+  resolvedStackItemConfigDefaultActiveItemIndex,
+  type ResolvedComponentItemConfig,
   type ResolvedHeaderedItemConfigHeader,
+  type ResolvedItemConfig,
+  type ResolvedLayoutConfig,
   type ResolvedLayoutConfigDimensions,
   type ResolvedLayoutConfigHeader,
   type ResolvedLayoutConfigSettings,
+  type ResolvedPopoutLayoutConfig,
   type ResolvedPopoutLayoutConfigWindow,
-  ResolvedItemConfig,
+  type ResolvedRootItemConfig,
+  type ResolvedRowOrColumnItemConfig,
   type ResolvedRowOrColumnItemConfigChildItemConfig,
-  resolvedItemConfigDefaults,
-  isResolvedComponentItemConfig,
-  ResolvedLayoutConfig,
-  ResolvedPopoutLayoutConfig,
-  ResolvedRootItemConfig,
-  isResolvedRootItemConfig,
-  ResolvedRowOrColumnItemConfig,
-  ResolvedStackItemConfig,
+  type ResolvedStackItemConfig,
 } from './resolved-config';
 
 /** @public */
@@ -50,35 +57,9 @@ export interface ItemConfig {
   content?: ItemConfig[];
 
   /**
-   * The width of this item, relative to the other children of its parent in percent
-   * @deprecated use `ItemConfig.size` instead
-   */
-  width?: number;
-
-  /**
-   * The minimum width of this item in pixels
-   * CAUTION - Not tested - do not use
-   * @deprecated use `ItemConfig.minSize` instead
-   */
-  minWidth?: number;
-
-  /**
-   * The height of this item, relative to the other children of its parent in percent
-   * @deprecated use `ItemConfig.size` instead
-   */
-  height?: number;
-
-  /**
-   * The minimum height of this item in pixels
-   * CAUTION - Not tested - do not use
-   * @deprecated use `ItemConfig.minSize` instead
-   */
-  minHeight?: number;
-
-  /**
    * The size of this item.
    * For rows, it specifies height. For columns, it specifies width.
-   * Has format \<number\>\<{@link SizeUnit}\>. Currently only supports units `fr` and `%`.
+   * Has format `<number><SizeUnit>`. Currently only supports units `fr` and `%`.
    *
    * Space is first proportionally allocated to items with sizeUnit `%`.
    * If there is any space left over (less than 100% allocated), then the
@@ -96,11 +77,7 @@ export interface ItemConfig {
    */
   minSize?: string;
 
-  /**
-   * A string that can be used to identify a ContentItem.
-   * Do NOT assign an array.  This only exists for legacy purposes.  If an array is assigned, the first element
-   * will become the id.
-   */
+  /** A string that can be used to identify a ContentItem. */
   id?: string;
 
   /**
@@ -109,183 +86,100 @@ export interface ItemConfig {
    * Default: true
    */
   isClosable?: boolean;
-
-  /**
-   * The title of the item as displayed on its tab and on popout windows
-   * Default: componentType.toString() or ''
-   * @deprecated only Component has a title
-   */
-  title?: string;
 }
 
 /** @public */
-export enum ItemConfigSizeWidthHeightSpecificationType {
-  None,
-  Size,
-  WidthOrHeight,
+export function resolveItemConfig(itemConfig: ItemConfig): ResolvedItemConfig {
+  switch (itemConfig.type) {
+    case ItemType.ground:
+      throw new ConfigurationError(
+        'ItemConfig cannot specify type ground',
+        JSON.stringify(itemConfig),
+      );
+    case ItemType.row:
+    case ItemType.column:
+      return resolveRowOrColumnItemConfig(itemConfig as RowOrColumnItemConfig);
+
+    case ItemType.stack:
+      return resolveStackItemConfig(itemConfig as StackItemConfig);
+
+    case ItemType.component:
+      return resolveComponentItemConfig(itemConfig as ComponentItemConfig);
+
+    default:
+      throw new UnreachableCaseError('UCUICR55499', itemConfig.type);
+  }
 }
 
 /** @public */
-export const ItemConfig = {
-  resolve(
-    itemConfig: ItemConfig,
-    rowAndColumnChildLegacySizeDefault: boolean,
-  ): ResolvedItemConfig {
-    switch (itemConfig.type) {
-      case ItemType.ground:
-        throw new ConfigurationError(
-          'ItemConfig cannot specify type ground',
-          JSON.stringify(itemConfig),
-        );
-      case ItemType.row:
-      case ItemType.column:
-        return RowOrColumnItemConfig.resolve(
-          itemConfig as RowOrColumnItemConfig,
-          rowAndColumnChildLegacySizeDefault,
-        );
-
-      case ItemType.stack:
-        return StackItemConfig.resolve(
-          itemConfig as StackItemConfig,
-          rowAndColumnChildLegacySizeDefault,
-        );
-
-      case ItemType.component:
-        return ComponentItemConfig.resolve(
-          itemConfig as ComponentItemConfig,
-          rowAndColumnChildLegacySizeDefault,
-        );
-
-      default:
-        throw new UnreachableCaseError('UCUICR55499', itemConfig.type);
+export function resolveItemConfigContent(
+  content: ItemConfig[] | undefined,
+): ResolvedItemConfig[] {
+  if (content === undefined) {
+    return [];
+  } else {
+    const count = content.length;
+    const result = Array<ResolvedItemConfig>(count);
+    for (let i = 0; i < count; i++) {
+      result[i] = resolveItemConfig(content[i]);
     }
-  },
+    return result;
+  }
+}
 
-  resolveContent(content: ItemConfig[] | undefined): ResolvedItemConfig[] {
-    if (content === undefined) {
-      return [];
-    } else {
-      const count = content.length;
-      const result = new Array<ResolvedItemConfig>(count);
-      for (let i = 0; i < count; i++) {
-        result[i] = ItemConfig.resolve(content[i], false);
+/** @public */
+export function resolveItemConfigId(id: string | undefined): string {
+  return id ?? resolvedItemConfigDefaults.id;
+}
+
+/** @public */
+export function resolveItemConfigSize(size: string | undefined): SizeWithUnit {
+  return size === undefined
+    ? {
+        size: resolvedItemConfigDefaults.size,
+        sizeUnit: resolvedItemConfigDefaults.sizeUnit,
       }
-      return result;
-    }
-  },
+    : parseSize(size, [SizeUnit.Percent, SizeUnit.Fractional]);
+}
 
-  resolveId(id: string | string[] | undefined): string {
-    if (id === undefined) {
-      return resolvedItemConfigDefaults.id;
-    } else {
-      if (Array.isArray(id)) {
-        if (id.length === 0) {
-          return resolvedItemConfigDefaults.id;
-        } else {
-          return id[0];
-        }
-      } else {
-        return id;
+/** @public */
+export function resolveItemConfigMinSize(
+  minSize: string | undefined,
+): UndefinableSizeWithUnit {
+  return minSize === undefined
+    ? {
+        size: resolvedItemConfigDefaults.minSize,
+        sizeUnit: resolvedItemConfigDefaults.minSizeUnit,
       }
-    }
-  },
+    : parseSize(minSize, [SizeUnit.Pixel]);
+}
 
-  resolveSize(
-    size: string | undefined,
-    width: number | undefined,
-    height: number | undefined,
-    rowAndColumnChildLegacySizeDefault: boolean,
-  ): SizeWithUnit {
-    // Remove support for rowAndColumnChildLegacySizeDefault in a major version release
-
-    if (size !== undefined) {
-      return parseSize(size, [SizeUnitEnum.Percent, SizeUnitEnum.Fractional]);
-    } else {
-      if (width !== undefined || height !== undefined) {
-        if (width !== undefined) {
-          return { size: width, sizeUnit: SizeUnitEnum.Percent };
-        } else {
-          if (height !== undefined) {
-            return { size: height, sizeUnit: SizeUnitEnum.Percent };
-          } else {
-            throw new UnexpectedUndefinedError('CRS33390');
-          }
-        }
-      } else {
-        if (rowAndColumnChildLegacySizeDefault) {
-          return { size: 50, sizeUnit: SizeUnitEnum.Percent };
-        } else {
-          return {
-            size: resolvedItemConfigDefaults.size,
-            sizeUnit: resolvedItemConfigDefaults.sizeUnit,
-          };
-        }
-      }
-    }
-  },
-
-  resolveMinSize(
-    minSize: string | undefined,
-    minWidth: number | undefined,
-    minHeight: number | undefined,
-  ): UndefinableSizeWithUnit {
-    if (minSize !== undefined) {
-      return parseSize(minSize, [SizeUnitEnum.Pixel]);
-    } else {
-      const minWidthDefined = minWidth !== undefined;
-      const minHeightDefined = minHeight !== undefined;
-      if (minWidthDefined || minHeightDefined) {
-        if (minWidthDefined) {
-          return { size: minWidth, sizeUnit: SizeUnitEnum.Pixel };
-        } else {
-          return { size: minHeight, sizeUnit: SizeUnitEnum.Pixel };
-        }
-      } else {
-        return {
-          size: resolvedItemConfigDefaults.minSize,
-          sizeUnit: resolvedItemConfigDefaults.minSizeUnit,
-        };
-      }
-    }
-  },
-
-  calculateSizeWidthHeightSpecificationType(
-    config: ItemConfig,
-  ): ItemConfigSizeWidthHeightSpecificationType {
-    if (config.size !== undefined) {
-      return ItemConfigSizeWidthHeightSpecificationType.Size;
-    } else {
-      if (config.width !== undefined || config.height !== undefined) {
-        return ItemConfigSizeWidthHeightSpecificationType.WidthOrHeight;
-      } else {
-        return ItemConfigSizeWidthHeightSpecificationType.None;
-      }
-    }
-  },
-
-  isGround(config: ItemConfig): config is ItemConfig {
-    return config.type === ItemType.ground;
-  },
-  isRow(config: ItemConfig): config is ItemConfig {
-    return config.type === ItemType.row;
-  },
-  isColumn(config: ItemConfig): config is ItemConfig {
-    return config.type === ItemType.column;
-  },
-  isStack(config: ItemConfig): config is ItemConfig {
-    return config.type === ItemType.stack;
-  },
-  isComponent(config: ItemConfig): config is ComponentItemConfig {
-    return config.type === ItemType.component;
-  },
-  SizeWidthHeightSpecificationType: ItemConfigSizeWidthHeightSpecificationType,
-} as const;
+/** @public */
+export function isGroundItemConfig(config: ItemConfig): config is ItemConfig {
+  return config.type === ItemType.ground;
+}
+/** @public */
+export function isRowItemConfig(config: ItemConfig): config is ItemConfig {
+  return config.type === ItemType.row;
+}
+/** @public */
+export function isColumnItemConfig(config: ItemConfig): config is ItemConfig {
+  return config.type === ItemType.column;
+}
+/** @public */
+export function isStackItemConfig(config: ItemConfig): config is ItemConfig {
+  return config.type === ItemType.stack;
+}
+/** @public */
+export function isComponentItemConfig(
+  config: ItemConfig,
+): config is ComponentItemConfig {
+  return config.type === ItemType.component;
+}
 
 // Stack or Component
 /** @public */
 export interface HeaderedItemConfig extends ItemConfig {
-  /** @deprecated use {@link HeaderedItemConfigHeader.show} instead */
-  hasHeaders?: boolean;
   header?: HeaderedItemConfigHeader;
   maximised?: boolean;
 }
@@ -301,77 +195,34 @@ export interface HeaderedItemConfigHeader {
   tabDropdown?: false | string;
 }
 
-const headeredItemConfigLegacyMaximisedId = '__glMaximised';
+/** @public */
+export function resolveHeaderedItemConfigHeader(
+  header: HeaderedItemConfigHeader | undefined,
+): ResolvedHeaderedItemConfigHeader | undefined {
+  if (header === undefined) {
+    return undefined;
+  } else {
+    const result: ResolvedHeaderedItemConfigHeader = {
+      show: header.show,
+      popout: header.popout,
+      maximise: header.maximise,
+      close: header.close,
+      minimise: header.minimise,
+      tabDropdown: header.tabDropdown,
+    };
+    return result;
+  }
+}
 
 /** @public */
-export const HeaderedItemConfig = {
-  Header: {
-    resolve(
-      header: HeaderedItemConfigHeader | undefined,
-      hasHeaders: boolean | undefined,
-    ): ResolvedHeaderedItemConfigHeader | undefined {
-      if (header === undefined && hasHeaders === undefined) {
-        return undefined;
-      } else {
-        const result: ResolvedHeaderedItemConfigHeader = {
-          show:
-            header?.show ??
-            (hasHeaders === undefined
-              ? undefined
-              : hasHeaders
-                ? ResolvedLayoutConfig.Header.defaults.show
-                : false),
-          popout: header?.popout,
-          maximise: header?.maximise,
-          close: header?.close,
-          minimise: header?.minimise,
-          tabDropdown: header?.tabDropdown,
-        };
-        return result;
-      }
-    },
-  },
-
-  resolveIdAndMaximised(config: HeaderedItemConfig): {
-    id: string;
-    maximised: boolean;
-  } {
-    let id: string;
-    // To support legacy configs with Id saved as an array of string, assign config.id to a type which includes string array
-    let legacyId: string | string[] | undefined = config.id;
-    let legacyMaximised = false;
-    if (legacyId === undefined) {
-      id = resolvedItemConfigDefaults.id;
-    } else {
-      if (Array.isArray(legacyId)) {
-        const legacyIdCopy = (legacyId as string[]).slice();
-        const idx = legacyIdCopy.findIndex(
-          (item: string) => item === headeredItemConfigLegacyMaximisedId,
-        );
-        if (idx >= 0) {
-          legacyMaximised = true;
-          legacyIdCopy.splice(idx, 1);
-        }
-        if (legacyIdCopy.length > 0) {
-          id = legacyIdCopy[0];
-        } else {
-          id = resolvedItemConfigDefaults.id;
-        }
-      } else {
-        id = legacyId;
-      }
-    }
-
-    let maximised: boolean;
-    if (config.maximised !== undefined) {
-      maximised = config.maximised;
-    } else {
-      maximised = legacyMaximised;
-    }
-
-    return { id, maximised };
-  },
-} as const;
+export function resolveHeaderedItemConfigIdAndMaximised(
+  config: HeaderedItemConfig,
+): { id: string; maximised: boolean } {
+  return {
+    id: resolveItemConfigId(config.id),
+    maximised: config.maximised ?? false,
+  };
+}
 
 /** @public */
 export interface StackItemConfig extends HeaderedItemConfig {
@@ -382,99 +233,89 @@ export interface StackItemConfig extends HeaderedItemConfig {
 }
 
 /** @public */
-export const StackItemConfig = {
-  resolve(
-    itemConfig: StackItemConfig,
-    rowAndColumnChildLegacySizeDefault: boolean,
-  ): ResolvedStackItemConfig {
-    const { id, maximised } =
-      HeaderedItemConfig.resolveIdAndMaximised(itemConfig);
-    const { size, sizeUnit } = ItemConfig.resolveSize(
-      itemConfig.size,
-      itemConfig.width,
-      itemConfig.height,
-      rowAndColumnChildLegacySizeDefault,
-    );
-    const { size: minSize, sizeUnit: minSizeUnit } = ItemConfig.resolveMinSize(
-      itemConfig.minSize,
-      itemConfig.minWidth,
-      itemConfig.minHeight,
-    );
+export function resolveStackItemConfig(
+  itemConfig: StackItemConfig,
+): ResolvedStackItemConfig {
+  const { id, maximised } = resolveHeaderedItemConfigIdAndMaximised(itemConfig);
+  const { size, sizeUnit } = resolveItemConfigSize(itemConfig.size);
+  const { size: minSize, sizeUnit: minSizeUnit } = resolveItemConfigMinSize(
+    itemConfig.minSize,
+  );
 
-    const result: ResolvedStackItemConfig = {
-      type: ItemType.stack,
-      content: this.resolveContent(itemConfig.content),
-      size,
-      sizeUnit,
-      minSize,
-      minSizeUnit,
-      id,
-      maximised,
-      isClosable:
-        itemConfig.isClosable ?? resolvedItemConfigDefaults.isClosable,
-      activeItemIndex:
-        itemConfig.activeItemIndex ??
-        ResolvedStackItemConfig.defaultActiveItemIndex,
-      header: HeaderedItemConfig.Header.resolve(
-        itemConfig.header,
-        itemConfig.hasHeaders,
-      ),
-    };
-    return result;
-  },
+  const result: ResolvedStackItemConfig = {
+    type: ItemType.stack,
+    content: resolveStackItemConfigContent(itemConfig.content),
+    size,
+    sizeUnit,
+    minSize,
+    minSizeUnit,
+    id,
+    maximised,
+    isClosable: itemConfig.isClosable ?? resolvedItemConfigDefaults.isClosable,
+    activeItemIndex:
+      itemConfig.activeItemIndex ??
+      resolvedStackItemConfigDefaultActiveItemIndex,
+    header: resolveHeaderedItemConfigHeader(itemConfig.header),
+  };
+  return result;
+}
 
-  fromResolved(resolvedConfig: ResolvedStackItemConfig): StackItemConfig {
-    const result: StackItemConfig = {
-      type: ItemType.stack,
-      content: this.fromResolvedContent(resolvedConfig.content),
-      size: formatSize(resolvedConfig.size, resolvedConfig.sizeUnit),
-      minSize: formatUndefinableSize(
-        resolvedConfig.minSize,
-        resolvedConfig.minSizeUnit,
-      ),
-      id: resolvedConfig.id,
-      maximised: resolvedConfig.maximised,
-      isClosable: resolvedConfig.isClosable,
-      activeItemIndex: resolvedConfig.activeItemIndex,
-      header: createResolvedHeaderedItemConfigHeaderCopy(resolvedConfig.header),
-    };
+/** @public */
+export function createStackItemConfigFromResolved(
+  resolvedConfig: ResolvedStackItemConfig,
+): StackItemConfig {
+  const result: StackItemConfig = {
+    type: ItemType.stack,
+    content: createStackItemConfigContentFromResolved(resolvedConfig.content),
+    size: formatSize(resolvedConfig.size, resolvedConfig.sizeUnit),
+    minSize: formatUndefinableSize(
+      resolvedConfig.minSize,
+      resolvedConfig.minSizeUnit,
+    ),
+    id: resolvedConfig.id,
+    maximised: resolvedConfig.maximised,
+    isClosable: resolvedConfig.isClosable,
+    activeItemIndex: resolvedConfig.activeItemIndex,
+    header: createResolvedHeaderedItemConfigHeaderCopy(resolvedConfig.header),
+  };
 
-    return result;
-  },
+  return result;
+}
 
-  resolveContent(
-    content: ComponentItemConfig[] | undefined,
-  ): ResolvedComponentItemConfig[] {
-    if (content === undefined) {
-      return [];
-    } else {
-      const count = content.length;
-      const result = new Array<ResolvedComponentItemConfig>(count);
-      for (let i = 0; i < count; i++) {
-        const childItemConfig = content[i];
-        const itemConfig = ItemConfig.resolve(childItemConfig, false);
-        if (!isResolvedComponentItemConfig(itemConfig)) {
-          throw new AssertError('UCUSICRC91114', JSON.stringify(itemConfig));
-        } else {
-          result[i] = itemConfig;
-        }
-      }
-      return result;
-    }
-  },
-
-  fromResolvedContent(
-    resolvedContent: ResolvedComponentItemConfig[],
-  ): ComponentItemConfig[] {
-    const count = resolvedContent.length;
-    const result = new Array<ComponentItemConfig>(count);
+/** @public */
+export function resolveStackItemConfigContent(
+  content: ComponentItemConfig[] | undefined,
+): ResolvedComponentItemConfig[] {
+  if (content === undefined) {
+    return [];
+  } else {
+    const count = content.length;
+    const result = Array<ResolvedComponentItemConfig>(count);
     for (let i = 0; i < count; i++) {
-      const resolvedContentConfig = resolvedContent[i];
-      result[i] = ComponentItemConfig.fromResolved(resolvedContentConfig);
+      const childItemConfig = content[i];
+      const itemConfig = resolveItemConfig(childItemConfig);
+      if (!isResolvedComponentItemConfig(itemConfig)) {
+        throw new AssertError('UCUSICRC91114', JSON.stringify(itemConfig));
+      } else {
+        result[i] = itemConfig;
+      }
     }
     return result;
-  },
-} as const;
+  }
+}
+
+/** @public */
+export function createStackItemConfigContentFromResolved(
+  resolvedContent: ResolvedComponentItemConfig[],
+): ComponentItemConfig[] {
+  const count = resolvedContent.length;
+  const result = Array<ComponentItemConfig>(count);
+  for (let i = 0; i < count; i++) {
+    const resolvedContentConfig = resolvedContent[i];
+    result[i] = createComponentItemConfigFromResolved(resolvedContentConfig);
+  }
+  return result;
+}
 
 /** @public */
 export interface ComponentItemConfig extends HeaderedItemConfig {
@@ -489,14 +330,7 @@ export interface ComponentItemConfig extends HeaderedItemConfig {
 
   /**
    * The type of the component.
-   * @deprecated use `ComponentItemConfig.componentType` instead
-   */
-  componentName?: string;
-
-  /**
-   * The type of the component.
    * `componentType` must be of type `string` if it is registered with any of the following functions:
-   * * {@link StrelitLayout.registerComponent} (deprecated)
    * * {@link StrelitLayout.registerComponentConstructor}
    * * {@link StrelitLayout.registerComponentFactoryFunction}
    */
@@ -515,104 +349,88 @@ export interface ComponentItemConfig extends HeaderedItemConfig {
 }
 
 /** @public */
-export const ComponentItemConfig = {
-  resolve(
-    itemConfig: ComponentItemConfig,
-    rowAndColumnChildLegacySizeDefault: boolean,
-  ): ResolvedComponentItemConfig {
-    let componentType: ComponentType | undefined = itemConfig.componentType;
-    if (componentType === undefined) {
-      componentType = itemConfig.componentName;
-    }
-    if (componentType === undefined) {
-      throw new Error('ComponentItemConfig.componentType is undefined');
+export function resolveComponentItemConfig(
+  itemConfig: ComponentItemConfig,
+): ResolvedComponentItemConfig {
+  const componentType = itemConfig.componentType;
+  if (componentType === undefined) {
+    throw new Error('ComponentItemConfig.componentType is undefined');
+  } else {
+    const { id, maximised } =
+      resolveHeaderedItemConfigIdAndMaximised(itemConfig);
+    let title: string;
+    if (itemConfig.title === undefined || itemConfig.title === '') {
+      title = componentTypeToTitle(componentType);
     } else {
-      const { id, maximised } =
-        HeaderedItemConfig.resolveIdAndMaximised(itemConfig);
-      let title: string;
-      if (itemConfig.title === undefined || itemConfig.title === '') {
-        title = ComponentItemConfig.componentTypeToTitle(componentType);
-      } else {
-        title = itemConfig.title;
-      }
-      const { size, sizeUnit } = ItemConfig.resolveSize(
-        itemConfig.size,
-        itemConfig.width,
-        itemConfig.height,
-        rowAndColumnChildLegacySizeDefault,
-      );
-      const { size: minSize, sizeUnit: minSizeUnit } =
-        ItemConfig.resolveMinSize(
-          itemConfig.minSize,
-          itemConfig.minWidth,
-          itemConfig.minHeight,
-        );
-      const result: ResolvedComponentItemConfig = {
-        type: itemConfig.type,
-        content: [],
-        size,
-        sizeUnit,
-        minSize,
-        minSizeUnit,
-        id,
-        maximised,
-        isClosable:
-          itemConfig.isClosable ?? resolvedItemConfigDefaults.isClosable,
-        reorderEnabled:
-          itemConfig.reorderEnabled ??
-          ResolvedComponentItemConfig.defaultReorderEnabled,
-        title,
-        header: HeaderedItemConfig.Header.resolve(
-          itemConfig.header,
-          itemConfig.hasHeaders,
-        ),
-        componentType,
-        componentState: itemConfig.componentState,
-      };
-      return result;
+      title = itemConfig.title;
     }
-  },
-
-  fromResolved(
-    resolvedConfig: ResolvedComponentItemConfig,
-  ): ComponentItemConfig {
-    const result: ComponentItemConfig = {
-      type: ItemType.component,
-      size: formatSize(resolvedConfig.size, resolvedConfig.sizeUnit),
-      minSize: formatUndefinableSize(
-        resolvedConfig.minSize,
-        resolvedConfig.minSizeUnit,
-      ),
-      id: resolvedConfig.id,
-      maximised: resolvedConfig.maximised,
-      isClosable: resolvedConfig.isClosable,
-      reorderEnabled: resolvedConfig.reorderEnabled,
-      title: resolvedConfig.title,
-      header: createResolvedHeaderedItemConfigHeaderCopy(resolvedConfig.header),
-      componentType: resolvedConfig.componentType,
-      componentState: deepExtendValue(
-        undefined,
-        resolvedConfig.componentState,
-      ) as SerializableValue,
+    const { size, sizeUnit } = resolveItemConfigSize(itemConfig.size);
+    const { size: minSize, sizeUnit: minSizeUnit } = resolveItemConfigMinSize(
+      itemConfig.minSize,
+    );
+    const result: ResolvedComponentItemConfig = {
+      type: itemConfig.type,
+      content: [],
+      size,
+      sizeUnit,
+      minSize,
+      minSizeUnit,
+      id,
+      maximised,
+      isClosable:
+        itemConfig.isClosable ?? resolvedItemConfigDefaults.isClosable,
+      reorderEnabled:
+        itemConfig.reorderEnabled ??
+        resolvedComponentItemConfigDefaultReorderEnabled,
+      title,
+      header: resolveHeaderedItemConfigHeader(itemConfig.header),
+      componentType,
+      componentState: itemConfig.componentState,
     };
-
     return result;
-  },
+  }
+}
 
-  componentTypeToTitle(componentType: ComponentType): string {
-    const componentTypeType = typeof componentType;
-    switch (componentTypeType) {
-      case 'string':
-        return componentType as string;
-      case 'number':
-        return (componentType as number).toString();
-      case 'boolean':
-        return (componentType as boolean).toString();
-      default:
-        return '';
-    }
-  },
-} as const;
+/** @public */
+export function createComponentItemConfigFromResolved(
+  resolvedConfig: ResolvedComponentItemConfig,
+): ComponentItemConfig {
+  const result: ComponentItemConfig = {
+    type: ItemType.component,
+    size: formatSize(resolvedConfig.size, resolvedConfig.sizeUnit),
+    minSize: formatUndefinableSize(
+      resolvedConfig.minSize,
+      resolvedConfig.minSizeUnit,
+    ),
+    id: resolvedConfig.id,
+    maximised: resolvedConfig.maximised,
+    isClosable: resolvedConfig.isClosable,
+    reorderEnabled: resolvedConfig.reorderEnabled,
+    title: resolvedConfig.title,
+    header: createResolvedHeaderedItemConfigHeaderCopy(resolvedConfig.header),
+    componentType: resolvedConfig.componentType,
+    componentState: deepCloneValue(
+      resolvedConfig.componentState,
+    ) as SerializableValue,
+  };
+
+  return result;
+}
+
+/** @public */
+export function componentTypeToTitle(componentType: ComponentType): string {
+  const componentTypeType = typeof componentType;
+  switch (componentTypeType) {
+    case 'string':
+      return componentType as string;
+    case 'number':
+      return (componentType as number).toString();
+    case 'boolean':
+      return (componentType as boolean).toString();
+    default:
+      return '';
+  }
+}
 
 // RowOrColumn
 /** @public */
@@ -626,269 +444,210 @@ export type RowOrColumnItemConfigChildItemConfig =
   RowOrColumnItemConfig | StackItemConfig | ComponentItemConfig;
 
 /** @public */
-export const RowOrColumnItemConfig = {
-  isChildItemConfig(
-    itemConfig: ItemConfig,
-  ): itemConfig is RowOrColumnItemConfigChildItemConfig {
-    switch (itemConfig.type) {
+export function isRowOrColumnItemConfigChild(
+  itemConfig: ItemConfig,
+): itemConfig is RowOrColumnItemConfigChildItemConfig {
+  switch (itemConfig.type) {
+    case ItemType.row:
+    case ItemType.column:
+    case ItemType.stack:
+    case ItemType.component:
+      return true;
+    case ItemType.ground:
+      return false;
+    default:
+      throw new UnreachableCaseError('UROCOSPCICIC13687', itemConfig.type);
+  }
+}
+
+/** @public */
+export function resolveRowOrColumnItemConfig(
+  itemConfig: RowOrColumnItemConfig,
+): ResolvedRowOrColumnItemConfig {
+  const { size, sizeUnit } = resolveItemConfigSize(itemConfig.size);
+  const { size: minSize, sizeUnit: minSizeUnit } = resolveItemConfigMinSize(
+    itemConfig.minSize,
+  );
+  const result: ResolvedRowOrColumnItemConfig = {
+    type: itemConfig.type,
+    content: resolveRowOrColumnItemConfigContent(itemConfig.content),
+    size,
+    sizeUnit,
+    minSize,
+    minSizeUnit,
+    id: resolveItemConfigId(itemConfig.id),
+    isClosable: itemConfig.isClosable ?? resolvedItemConfigDefaults.isClosable,
+  };
+  return result;
+}
+
+/** @public */
+export function createRowOrColumnItemConfigFromResolved(
+  resolvedConfig: ResolvedRowOrColumnItemConfig,
+): RowOrColumnItemConfig {
+  const result: RowOrColumnItemConfig = {
+    type: resolvedConfig.type,
+    content: createRowOrColumnItemConfigContentFromResolved(
+      resolvedConfig.content,
+    ),
+    size: formatSize(resolvedConfig.size, resolvedConfig.sizeUnit),
+    minSize: formatUndefinableSize(
+      resolvedConfig.minSize,
+      resolvedConfig.minSizeUnit,
+    ),
+    id: resolvedConfig.id,
+    isClosable: resolvedConfig.isClosable,
+  };
+
+  return result;
+}
+
+/** @public */
+export function resolveRowOrColumnItemConfigContent(
+  content: RowOrColumnItemConfigChildItemConfig[] | undefined,
+): ResolvedRowOrColumnItemConfigChildItemConfig[] {
+  if (content === undefined) {
+    return [];
+  } else {
+    const count = content.length;
+    for (let i = 0; i < count; i++) {
+      const childItemConfig = content[i];
+      if (!isRowOrColumnItemConfigChild(childItemConfig)) {
+        throw new ConfigurationError(
+          'ItemConfig is not Row, Column or Stack',
+          childItemConfig,
+        );
+      }
+    }
+
+    const result = Array<ResolvedRowOrColumnItemConfigChildItemConfig>(count);
+    for (let i = 0; i < count; i++) {
+      const childItemConfig = content[i];
+      const resolvedChildItemConfig = resolveItemConfig(childItemConfig);
+      if (!isResolvedRowOrColumnItemConfigChild(resolvedChildItemConfig)) {
+        throw new AssertError(
+          'UROCOSPIC99512',
+          JSON.stringify(resolvedChildItemConfig),
+        );
+      } else {
+        result[i] = resolvedChildItemConfig;
+      }
+    }
+    return result;
+  }
+}
+
+/** @public */
+export function createRowOrColumnItemConfigContentFromResolved(
+  resolvedContent: readonly ResolvedRowOrColumnItemConfigChildItemConfig[],
+): RowOrColumnItemConfigChildItemConfig[] {
+  const count = resolvedContent.length;
+  const result = Array<RowOrColumnItemConfigChildItemConfig>(count);
+  for (let i = 0; i < count; i++) {
+    const resolvedContentConfig = resolvedContent[i];
+    const type = resolvedContentConfig.type;
+    let contentConfig: RowOrColumnItemConfigChildItemConfig;
+    switch (type) {
       case ItemType.row:
       case ItemType.column:
-      case ItemType.stack:
-      case ItemType.component:
-        return true;
-      case ItemType.ground:
-        return false;
-      default:
-        throw new UnreachableCaseError('UROCOSPCICIC13687', itemConfig.type);
-    }
-  },
-
-  resolve(
-    itemConfig: RowOrColumnItemConfig,
-    rowAndColumnChildLegacySizeDefault: boolean,
-  ): ResolvedRowOrColumnItemConfig {
-    const { size, sizeUnit } = ItemConfig.resolveSize(
-      itemConfig.size,
-      itemConfig.width,
-      itemConfig.height,
-      rowAndColumnChildLegacySizeDefault,
-    );
-    const { size: minSize, sizeUnit: minSizeUnit } = ItemConfig.resolveMinSize(
-      itemConfig.minSize,
-      itemConfig.minWidth,
-      itemConfig.minHeight,
-    );
-    const result: ResolvedRowOrColumnItemConfig = {
-      type: itemConfig.type,
-      content: RowOrColumnItemConfig.resolveContent(itemConfig.content),
-      size,
-      sizeUnit,
-      minSize,
-      minSizeUnit,
-      id: ItemConfig.resolveId(itemConfig.id),
-      isClosable:
-        itemConfig.isClosable ?? resolvedItemConfigDefaults.isClosable,
-    };
-    return result;
-  },
-
-  fromResolved(
-    resolvedConfig: ResolvedRowOrColumnItemConfig,
-  ): RowOrColumnItemConfig {
-    const result: RowOrColumnItemConfig = {
-      type: resolvedConfig.type,
-      content: this.fromResolvedContent(resolvedConfig.content),
-      size: formatSize(resolvedConfig.size, resolvedConfig.sizeUnit),
-      minSize: formatUndefinableSize(
-        resolvedConfig.minSize,
-        resolvedConfig.minSizeUnit,
-      ),
-      id: resolvedConfig.id,
-      isClosable: resolvedConfig.isClosable,
-    };
-
-    return result;
-  },
-
-  resolveContent(
-    content: RowOrColumnItemConfigChildItemConfig[] | undefined,
-  ): ResolvedRowOrColumnItemConfigChildItemConfig[] {
-    if (content === undefined) {
-      return [];
-    } else {
-      const count = content.length;
-      const childItemConfigs = new Array<RowOrColumnItemConfigChildItemConfig>(
-        count,
-      );
-      let widthOrHeightSpecifiedAtLeastOnce = false;
-      let sizeSpecifiedAtLeastOnce = false;
-      for (let i = 0; i < count; i++) {
-        const childItemConfig = content[i];
-        if (!RowOrColumnItemConfig.isChildItemConfig(childItemConfig)) {
-          throw new ConfigurationError(
-            'ItemConfig is not Row, Column or Stack',
-            childItemConfig,
-          );
-        } else {
-          if (!sizeSpecifiedAtLeastOnce) {
-            const sizeWidthHeightSpecificationType =
-              ItemConfig.calculateSizeWidthHeightSpecificationType(
-                childItemConfig,
-              );
-            switch (sizeWidthHeightSpecificationType) {
-              case ItemConfigSizeWidthHeightSpecificationType.None:
-                break;
-              case ItemConfigSizeWidthHeightSpecificationType.WidthOrHeight:
-                widthOrHeightSpecifiedAtLeastOnce = true;
-                break;
-              case ItemConfigSizeWidthHeightSpecificationType.Size:
-                sizeSpecifiedAtLeastOnce = true;
-                break;
-              default:
-                throw new UnreachableCaseError(
-                  'ROCICRC87556',
-                  sizeWidthHeightSpecificationType,
-                );
-            }
-          }
-          childItemConfigs[i] = childItemConfig;
-        }
-      }
-
-      let legacySizeDefault: boolean;
-      if (sizeSpecifiedAtLeastOnce) {
-        legacySizeDefault = false;
-      } else {
-        if (widthOrHeightSpecifiedAtLeastOnce) {
-          legacySizeDefault = true;
-        } else {
-          legacySizeDefault = false;
-        }
-      }
-
-      const result = new Array<ResolvedRowOrColumnItemConfigChildItemConfig>(
-        count,
-      );
-      for (let i = 0; i < count; i++) {
-        const childItemConfig = childItemConfigs[i];
-        const resolvedChildItemConfig = ItemConfig.resolve(
-          childItemConfig,
-          legacySizeDefault,
+        contentConfig = createRowOrColumnItemConfigFromResolved(
+          resolvedContentConfig,
         );
-        if (
-          !ResolvedRowOrColumnItemConfig.isChildItemConfig(
-            resolvedChildItemConfig,
-          )
-        ) {
-          throw new AssertError(
-            'UROCOSPIC99512',
-            JSON.stringify(resolvedChildItemConfig),
-          );
-        } else {
-          result[i] = resolvedChildItemConfig;
-        }
-      }
-      return result;
+        break;
+      case ItemType.stack:
+        contentConfig = createStackItemConfigFromResolved(
+          resolvedContentConfig,
+        );
+        break;
+      case ItemType.component:
+        contentConfig = createComponentItemConfigFromResolved(
+          resolvedContentConfig,
+        );
+        break;
+      default:
+        throw new UnreachableCaseError('ROCICFRC44797', type);
     }
-  },
-
-  fromResolvedContent(
-    resolvedContent: readonly ResolvedRowOrColumnItemConfigChildItemConfig[],
-  ): RowOrColumnItemConfigChildItemConfig[] {
-    const count = resolvedContent.length;
-    const result = new Array<RowOrColumnItemConfigChildItemConfig>(count);
-    for (let i = 0; i < count; i++) {
-      const resolvedContentConfig = resolvedContent[i];
-      const type = resolvedContentConfig.type;
-      let contentConfig: RowOrColumnItemConfigChildItemConfig;
-      switch (type) {
-        case ItemType.row:
-        case ItemType.column:
-          contentConfig = RowOrColumnItemConfig.fromResolved(
-            resolvedContentConfig,
-          );
-          break;
-        case ItemType.stack:
-          contentConfig = StackItemConfig.fromResolved(resolvedContentConfig);
-          break;
-        case ItemType.component:
-          contentConfig = ComponentItemConfig.fromResolved(
-            resolvedContentConfig,
-          );
-          break;
-        default:
-          throw new UnreachableCaseError('ROCICFRC44797', type);
-      }
-      result[i] = contentConfig;
-    }
-    return result;
-  },
-} as const;
+    result[i] = contentConfig;
+  }
+  return result;
+}
 
 /** @public */
 export type RootItemConfig =
   RowOrColumnItemConfig | StackItemConfig | ComponentItemConfig;
 
 /** @public */
-export const RootItemConfig = {
-  isRootItemConfig(itemConfig: ItemConfig): itemConfig is RootItemConfig {
-    switch (itemConfig.type) {
+export function isRootItemConfig(
+  itemConfig: ItemConfig,
+): itemConfig is RootItemConfig {
+  switch (itemConfig.type) {
+    case ItemType.row:
+    case ItemType.column:
+    case ItemType.stack:
+    case ItemType.component:
+      return true;
+    case ItemType.ground:
+      return false;
+    default:
+      throw new UnreachableCaseError('URICIR23687', itemConfig.type);
+  }
+}
+
+/** @public */
+export function resolveRootItemConfig(
+  itemConfig: RootItemConfig | undefined,
+): ResolvedRootItemConfig | undefined {
+  if (itemConfig === undefined) {
+    return undefined;
+  } else {
+    const result = resolveItemConfig(itemConfig);
+    if (!isResolvedRootItemConfig(result)) {
+      throw new ConfigurationError(
+        'ItemConfig is not Row, Column or Stack',
+        JSON.stringify(itemConfig),
+      );
+    } else {
+      return result;
+    }
+  }
+}
+
+/** @public */
+export function createRootItemConfigFromResolved(
+  resolvedItemConfig: ResolvedRootItemConfig | undefined,
+): RootItemConfig | undefined {
+  if (resolvedItemConfig === undefined) {
+    return undefined;
+  } else {
+    const type = resolvedItemConfig.type;
+    switch (type) {
       case ItemType.row:
       case ItemType.column:
+        return createRowOrColumnItemConfigFromResolved(resolvedItemConfig);
       case ItemType.stack:
+        return createStackItemConfigFromResolved(resolvedItemConfig);
       case ItemType.component:
-        return true;
-      case ItemType.ground:
-        return false;
+        return createComponentItemConfigFromResolved(resolvedItemConfig);
       default:
-        throw new UnreachableCaseError('URICIR23687', itemConfig.type);
+        throw new UnreachableCaseError('RICFROU89921', type);
     }
-  },
-
-  resolve(
-    itemConfig: RootItemConfig | undefined,
-  ): ResolvedRootItemConfig | undefined {
-    if (itemConfig === undefined) {
-      return undefined;
-    } else {
-      const result = ItemConfig.resolve(itemConfig, false);
-      if (!isResolvedRootItemConfig(result)) {
-        throw new ConfigurationError(
-          'ItemConfig is not Row, Column or Stack',
-          JSON.stringify(itemConfig),
-        );
-      } else {
-        return result;
-      }
-    }
-  },
-
-  fromResolvedOrUndefined(
-    resolvedItemConfig: ResolvedRootItemConfig | undefined,
-  ): RootItemConfig | undefined {
-    if (resolvedItemConfig === undefined) {
-      return undefined;
-    } else {
-      const type = resolvedItemConfig.type;
-      switch (type) {
-        case ItemType.row:
-        case ItemType.column:
-          return RowOrColumnItemConfig.fromResolved(resolvedItemConfig);
-        case ItemType.stack:
-          return StackItemConfig.fromResolved(resolvedItemConfig);
-        case ItemType.component:
-          return ComponentItemConfig.fromResolved(resolvedItemConfig);
-        default:
-          throw new UnreachableCaseError('RICFROU89921', type);
-      }
-    }
-  },
-} as const;
+  }
+}
 
 /** @public */
 export interface LayoutConfig {
   root?: RootItemConfig | undefined;
-  /** @deprecated Use `LayoutConfig.root` */
-  content?: (RowOrColumnItemConfig | StackItemConfig | ComponentItemConfig)[];
   openPopouts?: PopoutLayoutConfig[];
   dimensions?: LayoutConfigDimensions;
   settings?: LayoutConfigSettings;
-  /** @deprecated use `LayoutConfig.header` instead */
-  labels?: LayoutConfigLabels;
   header?: LayoutConfigHeader;
 }
 
-/** Use to specify LayoutConfig with defaults or deserialise a LayoutConfig.
- * Deserialisation will handle backwards compatibility.
- * Note that LayoutConfig should be used for serialisation (not LayoutConfig)
+/**
+ * Use to specify LayoutConfig with defaults or deserialize a LayoutConfig.
  * @public
  */
 export interface LayoutConfigSettings {
-  /**
-   * @deprecated use {@link LayoutConfigHeader.show} instead
-   */
-  hasHeaders?: boolean;
-
   /**
    * Constrains the area in which items can be dragged to the layout's container. Will be set to false
    * automatically when layout.createDragSource() is called.
@@ -918,31 +677,10 @@ export interface LayoutConfigSettings {
   blockedPopoutsThrowError?: boolean;
 
   /**
-   * Specifies if all popouts should be closed when the page that created them is closed. Popouts don't have a
-   * strong dependency on their parent and can exist on their own, but can be quite annoying to close by hand. In
-   * addition, any changes made to popouts won't be stored after the parent is closed.
+   * Closes child popout windows when their parent layout window unloads.
    * Default: true
-   * @deprecated Will be removed in version 3.
    */
   closePopoutsOnUnload?: boolean;
-
-  /**
-   * Specifies if the popout icon should be displayed in the header-bar.
-   * @deprecated use {@link LayoutConfigHeader.popout} instead
-   */
-  showPopoutIcon?: boolean;
-
-  /**
-   * Specifies if the maximise icon should be displayed in the header-bar.
-   * @deprecated use {@link LayoutConfigHeader.maximise} instead
-   */
-  showMaximiseIcon?: boolean;
-
-  /**
-   * Specifies if the close icon should be displayed in the header-bar.
-   * @deprecated use {@link LayoutConfigHeader.close} instead
-   */
-  showCloseIcon?: boolean;
 
   /**
    * Specifies Responsive Mode (more info needed).
@@ -989,22 +727,10 @@ export interface LayoutConfigDimensions {
   borderGrabWidth?: number;
 
   /**
-   * The minimum height an item can be resized to (in pixel).
-   * @deprecated use {@link LayoutConfigDimensions.defaultMinItemHeight} instead
-   */
-  minItemHeight?: number;
-
-  /**
    * The minimum height an item can be resized to.
    * Default: 0
    */
   defaultMinItemHeight?: string;
-
-  /**
-   * The minimum width an item can be resized to (in pixel).
-   * @deprecated use {@link LayoutConfigDimensions.defaultMinItemWidth} instead
-   */
-  minItemWidth?: number;
 
   /**
    * The minimum width an item can be resized to.
@@ -1030,39 +756,6 @@ export interface LayoutConfigDimensions {
    * Default: 200
    */
   dragProxyHeight?: number;
-}
-
-/** @public */
-export interface LayoutConfigLabels {
-  /**
-   * @deprecated use {@link LayoutConfigHeader.close} instead
-   */
-  close?: string;
-
-  /**
-   * @deprecated use {@link LayoutConfigHeader.maximise} instead
-   */
-  maximise?: string;
-
-  /**
-   * @deprecated use {@link LayoutConfigHeader.minimise} instead
-   */
-  minimise?: string;
-
-  /**
-   * @deprecated use {@link LayoutConfigHeader.popin} instead
-   */
-  popin?: string;
-
-  /**
-   * @deprecated use {@link LayoutConfigHeader.popout} instead
-   */
-  popout?: string;
-
-  /**
-   * @deprecated use {@link LayoutConfigHeader.tabDropdown} instead
-   */
-  tabDropdown?: string;
 }
 
 /** @public */
@@ -1105,276 +798,210 @@ export interface LayoutConfigHeader {
   tabDropdown?: false | string;
 }
 
-/** Use to specify LayoutConfig with defaults or deserialise a LayoutConfig.
- * Deserialisation will handle backwards compatibility.
- * Note that LayoutConfig should be used for serialisation (not LayoutConfig)
- * @public
- */
-export const LayoutConfig = {
-  Settings: {
-    resolve(
-      settings: LayoutConfigSettings | undefined,
-    ): ResolvedLayoutConfigSettings {
-      const result: ResolvedLayoutConfigSettings = {
-        constrainDragToContainer:
-          settings?.constrainDragToContainer ??
-          ResolvedLayoutConfig.Settings.defaults.constrainDragToContainer,
-        reorderEnabled:
-          settings?.reorderEnabled ??
-          ResolvedLayoutConfig.Settings.defaults.reorderEnabled,
-        popoutWholeStack:
-          settings?.popoutWholeStack ??
-          ResolvedLayoutConfig.Settings.defaults.popoutWholeStack,
-        blockedPopoutsThrowError:
-          settings?.blockedPopoutsThrowError ??
-          ResolvedLayoutConfig.Settings.defaults.blockedPopoutsThrowError,
-        closePopoutsOnUnload:
-          settings?.closePopoutsOnUnload ??
-          ResolvedLayoutConfig.Settings.defaults.closePopoutsOnUnload,
-        responsiveMode:
-          settings?.responsiveMode ??
-          ResolvedLayoutConfig.Settings.defaults.responsiveMode,
-        tabOverlapAllowance:
-          settings?.tabOverlapAllowance ??
-          ResolvedLayoutConfig.Settings.defaults.tabOverlapAllowance,
-        reorderOnTabMenuClick:
-          settings?.reorderOnTabMenuClick ??
-          ResolvedLayoutConfig.Settings.defaults.reorderOnTabMenuClick,
-        tabControlOffset:
-          settings?.tabControlOffset ??
-          ResolvedLayoutConfig.Settings.defaults.tabControlOffset,
-        popInOnClose:
-          settings?.popInOnClose ??
-          ResolvedLayoutConfig.Settings.defaults.popInOnClose,
-      };
-      return result;
-    },
-  },
-  Dimensions: {
-    resolve(
-      dimensions: LayoutConfigDimensions | undefined,
-    ): ResolvedLayoutConfigDimensions {
-      const { size: defaultMinItemHeight, sizeUnit: defaultMinItemHeightUnit } =
-        this.resolveDefaultMinItemHeight(dimensions);
-      const { size: defaultMinItemWidth, sizeUnit: defaultMinItemWidthUnit } =
-        this.resolveDefaultMinItemWidth(dimensions);
-      const result: ResolvedLayoutConfigDimensions = {
-        borderWidth:
-          dimensions?.borderWidth ??
-          ResolvedLayoutConfig.Dimensions.defaults.borderWidth,
-        borderGrabWidth:
-          dimensions?.borderGrabWidth ??
-          ResolvedLayoutConfig.Dimensions.defaults.borderGrabWidth,
-        defaultMinItemHeight,
-        defaultMinItemHeightUnit,
-        defaultMinItemWidth,
-        defaultMinItemWidthUnit,
-        headerHeight:
-          dimensions?.headerHeight ??
-          ResolvedLayoutConfig.Dimensions.defaults.headerHeight,
-        dragProxyWidth:
-          dimensions?.dragProxyWidth ??
-          ResolvedLayoutConfig.Dimensions.defaults.dragProxyWidth,
-        dragProxyHeight:
-          dimensions?.dragProxyHeight ??
-          ResolvedLayoutConfig.Dimensions.defaults.dragProxyHeight,
-      };
-      return result;
-    },
+/** @public */
+export function resolveLayoutConfigSettings(
+  settings: LayoutConfigSettings | undefined,
+): ResolvedLayoutConfigSettings {
+  const result: ResolvedLayoutConfigSettings = {
+    constrainDragToContainer:
+      settings?.constrainDragToContainer ??
+      resolvedLayoutConfigSettingsDefaults.constrainDragToContainer,
+    reorderEnabled:
+      settings?.reorderEnabled ??
+      resolvedLayoutConfigSettingsDefaults.reorderEnabled,
+    popoutWholeStack:
+      settings?.popoutWholeStack ??
+      resolvedLayoutConfigSettingsDefaults.popoutWholeStack,
+    blockedPopoutsThrowError:
+      settings?.blockedPopoutsThrowError ??
+      resolvedLayoutConfigSettingsDefaults.blockedPopoutsThrowError,
+    closePopoutsOnUnload:
+      settings?.closePopoutsOnUnload ??
+      resolvedLayoutConfigSettingsDefaults.closePopoutsOnUnload,
+    responsiveMode:
+      settings?.responsiveMode ??
+      resolvedLayoutConfigSettingsDefaults.responsiveMode,
+    tabOverlapAllowance:
+      settings?.tabOverlapAllowance ??
+      resolvedLayoutConfigSettingsDefaults.tabOverlapAllowance,
+    reorderOnTabMenuClick:
+      settings?.reorderOnTabMenuClick ??
+      resolvedLayoutConfigSettingsDefaults.reorderOnTabMenuClick,
+    tabControlOffset:
+      settings?.tabControlOffset ??
+      resolvedLayoutConfigSettingsDefaults.tabControlOffset,
+    popInOnClose:
+      settings?.popInOnClose ??
+      resolvedLayoutConfigSettingsDefaults.popInOnClose,
+  };
+  return result;
+}
 
-    fromResolved(
-      resolvedDimensions: ResolvedLayoutConfigDimensions,
-    ): LayoutConfigDimensions {
-      const result: LayoutConfigDimensions = {
-        borderWidth: resolvedDimensions.borderWidth,
-        borderGrabWidth: resolvedDimensions.borderGrabWidth,
-        defaultMinItemHeight: formatSize(
-          resolvedDimensions.defaultMinItemHeight,
-          resolvedDimensions.defaultMinItemHeightUnit,
-        ),
-        defaultMinItemWidth: formatSize(
-          resolvedDimensions.defaultMinItemWidth,
-          resolvedDimensions.defaultMinItemWidthUnit,
-        ),
-        headerHeight: resolvedDimensions.headerHeight,
-        dragProxyWidth: resolvedDimensions.dragProxyWidth,
-        dragProxyHeight: resolvedDimensions.dragProxyHeight,
-      };
+/** @public */
+export function resolveLayoutConfigDimensions(
+  dimensions: LayoutConfigDimensions | undefined,
+): ResolvedLayoutConfigDimensions {
+  const { size: defaultMinItemHeight, sizeUnit: defaultMinItemHeightUnit } =
+    resolveDefaultMinItemHeight(dimensions);
+  const { size: defaultMinItemWidth, sizeUnit: defaultMinItemWidthUnit } =
+    resolveDefaultMinItemWidth(dimensions);
+  const result: ResolvedLayoutConfigDimensions = {
+    borderWidth:
+      dimensions?.borderWidth ??
+      resolvedLayoutConfigDimensionsDefaults.borderWidth,
+    borderGrabWidth:
+      dimensions?.borderGrabWidth ??
+      resolvedLayoutConfigDimensionsDefaults.borderGrabWidth,
+    defaultMinItemHeight,
+    defaultMinItemHeightUnit,
+    defaultMinItemWidth,
+    defaultMinItemWidthUnit,
+    headerHeight:
+      dimensions?.headerHeight ??
+      resolvedLayoutConfigDimensionsDefaults.headerHeight,
+    dragProxyWidth:
+      dimensions?.dragProxyWidth ??
+      resolvedLayoutConfigDimensionsDefaults.dragProxyWidth,
+    dragProxyHeight:
+      dimensions?.dragProxyHeight ??
+      resolvedLayoutConfigDimensionsDefaults.dragProxyHeight,
+  };
+  return result;
+}
 
-      return result;
-    },
+/** @public */
+export function createLayoutConfigDimensionsFromResolved(
+  resolvedDimensions: ResolvedLayoutConfigDimensions,
+): LayoutConfigDimensions {
+  const result: LayoutConfigDimensions = {
+    borderWidth: resolvedDimensions.borderWidth,
+    borderGrabWidth: resolvedDimensions.borderGrabWidth,
+    defaultMinItemHeight: formatSize(
+      resolvedDimensions.defaultMinItemHeight,
+      resolvedDimensions.defaultMinItemHeightUnit,
+    ),
+    defaultMinItemWidth: formatSize(
+      resolvedDimensions.defaultMinItemWidth,
+      resolvedDimensions.defaultMinItemWidthUnit,
+    ),
+    headerHeight: resolvedDimensions.headerHeight,
+    dragProxyWidth: resolvedDimensions.dragProxyWidth,
+    dragProxyHeight: resolvedDimensions.dragProxyHeight,
+  };
 
-    resolveDefaultMinItemHeight(
-      dimensions: LayoutConfigDimensions | undefined,
-    ): SizeWithUnit {
-      const height = dimensions?.defaultMinItemHeight;
-      if (height === undefined) {
-        const legacyHeight = dimensions?.minItemHeight;
-        if (legacyHeight !== undefined) {
-          return {
-            size: legacyHeight,
-            sizeUnit: SizeUnitEnum.Pixel,
-          };
-        }
-        return {
-          size: ResolvedLayoutConfig.Dimensions.defaults.defaultMinItemHeight,
-          sizeUnit:
-            ResolvedLayoutConfig.Dimensions.defaults.defaultMinItemHeightUnit,
-        };
-      } else {
-        return parseSize(height, [SizeUnitEnum.Pixel]);
-      }
-    },
+  return result;
+}
 
-    resolveDefaultMinItemWidth(
-      dimensions: LayoutConfigDimensions | undefined,
-    ): SizeWithUnit {
-      const width = dimensions?.defaultMinItemWidth;
-      if (width === undefined) {
-        const legacyWidth = dimensions?.minItemWidth;
-        if (legacyWidth !== undefined) {
-          return {
-            size: legacyWidth,
-            sizeUnit: SizeUnitEnum.Pixel,
-          };
-        }
-        return {
-          size: ResolvedLayoutConfig.Dimensions.defaults.defaultMinItemWidth,
-          sizeUnit:
-            ResolvedLayoutConfig.Dimensions.defaults.defaultMinItemWidthUnit,
-        };
-      } else {
-        return parseSize(width, [SizeUnitEnum.Pixel]);
-      }
-    },
-  },
-  Header: {
-    resolve(
-      header: LayoutConfigHeader | undefined,
-      settings: LayoutConfigSettings | undefined,
-      labels: LayoutConfigLabels | undefined,
-    ): ResolvedLayoutConfigHeader {
-      let show: false | Side;
-      if (header?.show !== undefined) {
-        show = header.show;
-      } else {
-        if (settings !== undefined && settings.hasHeaders !== undefined) {
-          show = settings.hasHeaders
-            ? ResolvedLayoutConfig.Header.defaults.show
-            : false;
-        } else {
-          show = ResolvedLayoutConfig.Header.defaults.show;
-        }
-      }
-      const result: ResolvedLayoutConfigHeader = {
-        show,
-        popout:
-          header?.popout ??
-          labels?.popout ??
-          (settings?.showPopoutIcon === false
-            ? false
-            : ResolvedLayoutConfig.Header.defaults.popout),
-        dock:
-          header?.popin ??
-          labels?.popin ??
-          ResolvedLayoutConfig.Header.defaults.dock,
-        maximise:
-          header?.maximise ??
-          labels?.maximise ??
-          (settings?.showMaximiseIcon === false
-            ? false
-            : ResolvedLayoutConfig.Header.defaults.maximise),
-        close:
-          header?.close ??
-          labels?.close ??
-          (settings?.showCloseIcon === false
-            ? false
-            : ResolvedLayoutConfig.Header.defaults.close),
-        minimise:
-          header?.minimise ??
-          labels?.minimise ??
-          ResolvedLayoutConfig.Header.defaults.minimise,
-        tabDropdown:
-          header?.tabDropdown ??
-          labels?.tabDropdown ??
-          ResolvedLayoutConfig.Header.defaults.tabDropdown,
-      };
-      return result;
-    },
-  },
-
-  isPopout(config: LayoutConfig): config is PopoutLayoutConfig {
-    return (
-      'parentId' in config || 'indexInParent' in config || 'window' in config
-    );
-  },
-
-  resolve(layoutConfig: LayoutConfig): ResolvedLayoutConfig {
-    if (this.isPopout(layoutConfig)) {
-      return PopoutLayoutConfig.resolve(layoutConfig);
-    } else {
-      let root: RootItemConfig | undefined;
-      if (layoutConfig.root !== undefined) {
-        root = layoutConfig.root;
-      } else {
-        if (
-          layoutConfig.content !== undefined &&
-          layoutConfig.content.length > 0
-        ) {
-          root = layoutConfig.content[0];
-        } else {
-          root = undefined;
-        }
-      }
-      const config: ResolvedLayoutConfig = {
-        resolved: true,
-        root: RootItemConfig.resolve(root),
-        openPopouts: this.resolveOpenPopouts(layoutConfig.openPopouts),
-        dimensions: this.Dimensions.resolve(layoutConfig.dimensions),
-        settings: this.Settings.resolve(layoutConfig.settings),
-        header: this.Header.resolve(
-          layoutConfig.header,
-          layoutConfig.settings,
-          layoutConfig.labels,
-        ),
-      };
-      return config;
-    }
-  },
-
-  fromResolved(config: ResolvedLayoutConfig): LayoutConfig {
-    const result: LayoutConfig = {
-      root: RootItemConfig.fromResolvedOrUndefined(config.root),
-      openPopouts: PopoutLayoutConfig.fromResolvedArray(config.openPopouts),
-      settings: ResolvedLayoutConfig.Settings.createCopy(config.settings),
-      dimensions: this.Dimensions.fromResolved(config.dimensions),
-      header: ResolvedLayoutConfig.Header.createCopy(config.header),
+function resolveDefaultMinItemHeight(
+  dimensions: LayoutConfigDimensions | undefined,
+): SizeWithUnit {
+  const height = dimensions?.defaultMinItemHeight;
+  if (height === undefined) {
+    return {
+      size: resolvedLayoutConfigDimensionsDefaults.defaultMinItemHeight,
+      sizeUnit: resolvedLayoutConfigDimensionsDefaults.defaultMinItemHeightUnit,
     };
-    return result;
-  },
+  } else {
+    return parseSize(height, [SizeUnit.Pixel]);
+  }
+}
 
-  isResolved(
-    configOrResolvedConfig: ResolvedLayoutConfig | LayoutConfig,
-  ): configOrResolvedConfig is ResolvedLayoutConfig {
-    const config = configOrResolvedConfig as ResolvedLayoutConfig;
-    return config.resolved !== undefined && config.resolved === true;
-  },
+function resolveDefaultMinItemWidth(
+  dimensions: LayoutConfigDimensions | undefined,
+): SizeWithUnit {
+  const width = dimensions?.defaultMinItemWidth;
+  if (width === undefined) {
+    return {
+      size: resolvedLayoutConfigDimensionsDefaults.defaultMinItemWidth,
+      sizeUnit: resolvedLayoutConfigDimensionsDefaults.defaultMinItemWidthUnit,
+    };
+  } else {
+    return parseSize(width, [SizeUnit.Pixel]);
+  }
+}
 
-  resolveOpenPopouts(
-    popoutConfigs: PopoutLayoutConfig[] | undefined,
-  ): ResolvedPopoutLayoutConfig[] {
-    if (popoutConfigs === undefined) {
-      return [];
-    } else {
-      const count = popoutConfigs.length;
-      const result = new Array<ResolvedPopoutLayoutConfig>(count);
-      for (let i = 0; i < count; i++) {
-        result[i] = PopoutLayoutConfig.resolve(popoutConfigs[i]);
-      }
-      return result;
+/** @public */
+export function resolveLayoutConfigHeader(
+  header: LayoutConfigHeader | undefined,
+): ResolvedLayoutConfigHeader {
+  const result: ResolvedLayoutConfigHeader = {
+    show: header?.show ?? resolvedLayoutConfigHeaderDefaults.show,
+    popout: header?.popout ?? resolvedLayoutConfigHeaderDefaults.popout,
+    dock: header?.popin ?? resolvedLayoutConfigHeaderDefaults.dock,
+    maximise: header?.maximise ?? resolvedLayoutConfigHeaderDefaults.maximise,
+    close: header?.close ?? resolvedLayoutConfigHeaderDefaults.close,
+    minimise: header?.minimise ?? resolvedLayoutConfigHeaderDefaults.minimise,
+    tabDropdown:
+      header?.tabDropdown ?? resolvedLayoutConfigHeaderDefaults.tabDropdown,
+  };
+  return result;
+}
+
+/** @public */
+export function isPopoutLayoutConfig(
+  config: LayoutConfig,
+): config is PopoutLayoutConfig {
+  return (
+    'parentId' in config || 'indexInParent' in config || 'window' in config
+  );
+}
+
+/** @public */
+export function resolveLayoutConfig(
+  layoutConfig: LayoutConfig,
+): ResolvedLayoutConfig {
+  if (isPopoutLayoutConfig(layoutConfig)) {
+    return resolvePopoutLayoutConfig(layoutConfig);
+  } else {
+    const config: ResolvedLayoutConfig = {
+      resolved: true,
+      root: resolveRootItemConfig(layoutConfig.root),
+      openPopouts: resolveOpenPopoutLayoutConfigs(layoutConfig.openPopouts),
+      dimensions: resolveLayoutConfigDimensions(layoutConfig.dimensions),
+      settings: resolveLayoutConfigSettings(layoutConfig.settings),
+      header: resolveLayoutConfigHeader(layoutConfig.header),
+    };
+    return config;
+  }
+}
+
+/** @public */
+export function createLayoutConfigFromResolved(
+  config: ResolvedLayoutConfig,
+): LayoutConfig {
+  const result: LayoutConfig = {
+    root: createRootItemConfigFromResolved(config.root),
+    openPopouts: createPopoutLayoutConfigArrayFromResolved(config.openPopouts),
+    settings: createResolvedLayoutConfigSettingsCopy(config.settings),
+    dimensions: createLayoutConfigDimensionsFromResolved(config.dimensions),
+    header: createResolvedLayoutConfigHeaderCopy(config.header),
+  };
+  return result;
+}
+
+/** @public */
+export function isResolvedLayoutConfig(
+  configOrResolvedConfig: ResolvedLayoutConfig | LayoutConfig,
+): configOrResolvedConfig is ResolvedLayoutConfig {
+  const config = configOrResolvedConfig as ResolvedLayoutConfig;
+  return config.resolved !== undefined && config.resolved === true;
+}
+
+/** @public */
+export function resolveOpenPopoutLayoutConfigs(
+  popoutConfigs: PopoutLayoutConfig[] | undefined,
+): ResolvedPopoutLayoutConfig[] {
+  if (popoutConfigs === undefined) {
+    return [];
+  } else {
+    const count = popoutConfigs.length;
+    const result = Array<ResolvedPopoutLayoutConfig>(count);
+    for (let i = 0; i < count; i++) {
+      result[i] = resolvePopoutLayoutConfig(popoutConfigs[i]);
     }
-  },
-} as const;
+    return result;
+  }
+}
 
 /** @public */
 export interface PopoutLayoutConfig extends LayoutConfig {
@@ -1386,25 +1013,7 @@ export interface PopoutLayoutConfig extends LayoutConfig {
    * If null, position is last
    */
   indexInParent: number | null | undefined;
-  /** @deprecated use `PopoutLayoutConfig.window` */
-  dimensions: PopoutLayoutConfigDimensions | undefined; // for backwards compatibility
   window: PopoutLayoutConfigWindow | undefined;
-}
-
-/** @public */
-// Previous versions kept window information in Dimensions key.  Only use for backwards compatibility
-/** @public
- * @deprecated use {@link PopoutLayoutConfigWindow}
- */
-export interface PopoutLayoutConfigDimensions extends LayoutConfigDimensions {
-  /** @deprecated use {@link PopoutLayoutConfigWindow.width} */
-  width?: number | null;
-  /** @deprecated use {@link PopoutLayoutConfigWindow.height} */
-  height?: number | null;
-  /** @deprecated use {@link PopoutLayoutConfigWindow.left} */
-  left?: number | null;
-  /** @deprecated use {@link PopoutLayoutConfigWindow.top} */
-  top?: number | null;
 }
 
 /** @public */
@@ -1416,132 +1025,102 @@ export interface PopoutLayoutConfigWindow {
 }
 
 /** @public */
-export const PopoutLayoutConfig = {
-  Window: {
-    resolve(
-      window: PopoutLayoutConfigWindow | undefined,
-      dimensions: PopoutLayoutConfigDimensions | undefined,
-    ): ResolvedPopoutLayoutConfigWindow {
-      let result: ResolvedPopoutLayoutConfigWindow;
-      const defaults = ResolvedPopoutLayoutConfig.Window.defaults;
-      if (window !== undefined) {
-        result = {
-          width: window.width ?? defaults.width,
-          height: window.height ?? defaults.height,
-          left: window.left ?? defaults.left,
-          top: window.top ?? defaults.top,
-        };
-      } else {
-        result = {
-          width: dimensions?.width ?? defaults.width,
-          height: dimensions?.height ?? defaults.height,
-          left: dimensions?.left ?? defaults.left,
-          top: dimensions?.top ?? defaults.top,
-        };
-      }
-      return result;
-    },
+export function resolvePopoutLayoutConfigWindow(
+  window: PopoutLayoutConfigWindow | undefined,
+): ResolvedPopoutLayoutConfigWindow {
+  const defaults = resolvedPopoutLayoutConfigWindowDefaults;
+  return {
+    width: window?.width ?? defaults.width,
+    height: window?.height ?? defaults.height,
+    left: window?.left ?? defaults.left,
+    top: window?.top ?? defaults.top,
+  };
+}
 
-    fromResolved(
-      resolvedWindow: ResolvedPopoutLayoutConfigWindow,
-    ): PopoutLayoutConfigWindow {
-      const result: PopoutLayoutConfigWindow = {
-        width: resolvedWindow.width === null ? undefined : resolvedWindow.width,
-        height:
-          resolvedWindow.height === null ? undefined : resolvedWindow.height,
-        left: resolvedWindow.left === null ? undefined : resolvedWindow.left,
-        top: resolvedWindow.top === null ? undefined : resolvedWindow.top,
-      };
+/** @public */
+export function createPopoutLayoutConfigWindowFromResolved(
+  resolvedWindow: ResolvedPopoutLayoutConfigWindow,
+): PopoutLayoutConfigWindow {
+  const result: PopoutLayoutConfigWindow = {
+    width: resolvedWindow.width === null ? undefined : resolvedWindow.width,
+    height: resolvedWindow.height === null ? undefined : resolvedWindow.height,
+    left: resolvedWindow.left === null ? undefined : resolvedWindow.left,
+    top: resolvedWindow.top === null ? undefined : resolvedWindow.top,
+  };
 
-      return result;
-    },
-  },
+  return result;
+}
 
-  resolve(popoutConfig: PopoutLayoutConfig): ResolvedPopoutLayoutConfig {
-    let root: RootItemConfig | undefined;
-    if (popoutConfig.root !== undefined) {
-      root = popoutConfig.root;
-    } else {
-      if (
-        popoutConfig.content !== undefined &&
-        popoutConfig.content.length > 0
-      ) {
-        root = popoutConfig.content[0];
-      } else {
-        root = undefined;
-      }
-    }
+/** @public */
+export function resolvePopoutLayoutConfig(
+  popoutConfig: PopoutLayoutConfig,
+): ResolvedPopoutLayoutConfig {
+  const config: ResolvedPopoutLayoutConfig = {
+    root: resolveRootItemConfig(popoutConfig.root),
+    openPopouts: resolveOpenPopoutLayoutConfigs(popoutConfig.openPopouts),
+    dimensions: resolveLayoutConfigDimensions(popoutConfig.dimensions),
+    settings: resolveLayoutConfigSettings(popoutConfig.settings),
+    header: resolveLayoutConfigHeader(popoutConfig.header),
+    parentId: popoutConfig.parentId ?? null,
+    indexInParent: popoutConfig.indexInParent ?? null,
+    window: resolvePopoutLayoutConfigWindow(popoutConfig.window),
+    resolved: true,
+  };
+  return config;
+}
 
-    const config: ResolvedPopoutLayoutConfig = {
-      root: RootItemConfig.resolve(root),
-      openPopouts: LayoutConfig.resolveOpenPopouts(popoutConfig.openPopouts),
-      dimensions: LayoutConfig.Dimensions.resolve(popoutConfig.dimensions),
-      settings: LayoutConfig.Settings.resolve(popoutConfig.settings),
-      header: LayoutConfig.Header.resolve(
-        popoutConfig.header,
-        popoutConfig.settings,
-        popoutConfig.labels,
-      ),
-      parentId: popoutConfig.parentId ?? null,
-      indexInParent: popoutConfig.indexInParent ?? null,
-      window: PopoutLayoutConfig.Window.resolve(
-        popoutConfig.window,
-        popoutConfig.dimensions,
-      ),
-      resolved: true,
-    };
-    return config;
-  },
+/** @public */
+export function createPopoutLayoutConfigFromResolved(
+  resolvedConfig: ResolvedPopoutLayoutConfig,
+): PopoutLayoutConfig {
+  const result: PopoutLayoutConfig = {
+    root: createRootItemConfigFromResolved(resolvedConfig.root),
+    openPopouts: createPopoutLayoutConfigArrayFromResolved(
+      resolvedConfig.openPopouts,
+    ),
+    dimensions: createLayoutConfigDimensionsFromResolved(
+      resolvedConfig.dimensions,
+    ),
+    settings: createResolvedLayoutConfigSettingsCopy(resolvedConfig.settings),
+    header: createResolvedLayoutConfigHeaderCopy(resolvedConfig.header),
+    parentId: resolvedConfig.parentId,
+    indexInParent: resolvedConfig.indexInParent,
+    window: createPopoutLayoutConfigWindowFromResolved(resolvedConfig.window),
+  };
 
-  fromResolved(resolvedConfig: ResolvedPopoutLayoutConfig): PopoutLayoutConfig {
-    const result: PopoutLayoutConfig = {
-      root: RootItemConfig.fromResolvedOrUndefined(resolvedConfig.root),
-      openPopouts: this.fromResolvedArray(resolvedConfig.openPopouts),
-      dimensions: LayoutConfig.Dimensions.fromResolved(
-        resolvedConfig.dimensions,
-      ),
-      settings: ResolvedLayoutConfig.Settings.createCopy(
-        resolvedConfig.settings,
-      ),
-      header: ResolvedLayoutConfig.Header.createCopy(resolvedConfig.header),
-      parentId: resolvedConfig.parentId,
-      indexInParent: resolvedConfig.indexInParent,
-      window: PopoutLayoutConfig.Window.fromResolved(resolvedConfig.window),
-    };
+  return result;
+}
 
-    return result;
-  },
+/** @public */
+export function createPopoutLayoutConfigArrayFromResolved(
+  resolvedArray: ResolvedPopoutLayoutConfig[],
+): PopoutLayoutConfig[] {
+  const resolvedOpenPopoutCount = resolvedArray.length;
+  const result = Array<PopoutLayoutConfig>(resolvedOpenPopoutCount);
+  for (let i = 0; i < resolvedOpenPopoutCount; i++) {
+    const resolvedOpenPopout = resolvedArray[i];
+    result[i] = createPopoutLayoutConfigFromResolved(resolvedOpenPopout);
+  }
 
-  fromResolvedArray(
-    resolvedArray: ResolvedPopoutLayoutConfig[],
-  ): PopoutLayoutConfig[] {
-    const resolvedOpenPopoutCount = resolvedArray.length;
-    const result = new Array<PopoutLayoutConfig>(resolvedOpenPopoutCount);
-    for (let i = 0; i < resolvedOpenPopoutCount; i++) {
-      const resolvedOpenPopout = resolvedArray[i];
-      result[i] = PopoutLayoutConfig.fromResolved(resolvedOpenPopout);
-    }
-
-    return result;
-  },
-} as const;
+  return result;
+}
 
 /** @public */
 export interface SizeWithUnit {
   size: number;
-  sizeUnit: SizeUnitEnum;
+  sizeUnit: SizeUnit;
 }
 
 /** @public */
 export interface UndefinableSizeWithUnit {
   size: number | undefined;
-  sizeUnit: SizeUnitEnum;
+  sizeUnit: SizeUnit;
 }
 
 /** @internal */
 export function parseSize(
   sizeString: string,
-  allowableSizeUnits: readonly SizeUnitEnum[],
+  allowableSizeUnits: readonly SizeUnit[],
 ): SizeWithUnit {
   const {
     numericPart: digitsPart,
@@ -1553,7 +1132,7 @@ export function parseSize(
       `${i18nStrings[I18nStringId.InvalidNumberPartInSizeString]}: ${sizeString}`,
     );
   } else {
-    const sizeUnit = SizeUnitEnum.tryParse(firstNonDigitPart);
+    const sizeUnit = tryParseSizeUnit(firstNonDigitPart);
     if (sizeUnit === undefined) {
       throw new ConfigurationError(
         `${i18nStrings[I18nStringId.UnknownUnitInSizeString]}: ${sizeString}`,
@@ -1571,21 +1150,18 @@ export function parseSize(
 }
 
 /** @internal */
-export function formatSize(size: number, sizeUnit: SizeUnitEnum) {
-  return size.toString(10) + SizeUnitEnum.format(sizeUnit);
+export function formatSize(size: number, sizeUnit: SizeUnit) {
+  return size.toString(10) + formatSizeUnit(sizeUnit);
 }
 
 /** @internal */
 export function formatUndefinableSize(
   size: number | undefined,
-  sizeUnit: SizeUnitEnum,
+  sizeUnit: SizeUnit,
 ) {
   if (size === undefined) {
     return undefined;
   } else {
-    return size.toString(10) + SizeUnitEnum.format(sizeUnit);
+    return size.toString(10) + formatSizeUnit(sizeUnit);
   }
 }
-
-/** @public @deprecated - use `LayoutConfig` */
-export type Config = LayoutConfig;

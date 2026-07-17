@@ -66,7 +66,7 @@ This runs the benchmark specs in `test/bench`, including both config-oriented an
 
 ## Notes
 
-- This repository still contains upstream compatibility layers and documentation that are being incrementally modernized.
+- Strelit exposes its own API and configuration contract; Golden Layout compatibility is handled by the migration tool rather than the runtime.
 - The original upstream license notices are preserved where required.
 
 ## Migration

@@ -73,9 +73,9 @@ To build out the workspace platform incrementally while maintaining rock-solid s
 
 ## 3. Asset & Icon Modernization: Eliminating Raster PNGs
 
-### 3.1 Why Raster PNGs Hurt Performance & Customizability
+### 3.1 Completed Raster PNG Removal
 
-Currently, `src/img/` ships 11 raster PNG files (`strelit-close-black.png`, `strelit-close-white.png`, `strelit-maximise-black.png`, etc.).
+Strelit's control icons now use shared inline SVG masks. The previous 11 PNG files and package-copy step have been removed.
 
 - **Bundle Bloat & HTTP Overhead**: Raster PNGs require separate HTTP requests or base64 data-URI duplication per theme.
 - **DPI Scaling Issues**: PNGs look blurry on 4K/Retina displays unless multi-scale assets are shipped.

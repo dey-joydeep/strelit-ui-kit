@@ -11,7 +11,7 @@ These pages document the current implementation, not the original Golden Layout 
 5. [Runtime: Events and Focus](./runtime/events-and-focus.md)
 6. [Config: Resolution Pipeline](./config/config-resolution.md)
 7. [Migration: Modernization Status](./migration/modernization-status.md)
-8. [Migration: v1 to v2 Feature Matrix](./migration/v1-to-v2-feature-matrix.md)
+8. [Migration: Golden Layout to Strelit](./migration/golden-layout-to-strelit.md)
 
 ## Scope
 

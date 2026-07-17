@@ -53,7 +53,7 @@ describe('Strelit UI Kit — DOM Initialization & Reflow Benchmarks (JSDOM)', ()
     layout.destroy();
   });
 
-  bench('StrelitLayout.updateSize() — Layout Resizing Reflow', () => {
+  bench('StrelitLayout.setSize() — Layout Resizing Reflow', () => {
     const container = document.createElement('div');
     const layout = new StrelitLayout(container);
     layout.registerComponentFactoryFunction(
@@ -65,7 +65,7 @@ describe('Strelit UI Kit — DOM Initialization & Reflow Benchmarks (JSDOM)', ()
       },
     );
     layout.loadLayout(config16);
-    layout.updateSize(1024, 768);
+    layout.setSize(1024, 768);
     layout.destroy();
   });
 });

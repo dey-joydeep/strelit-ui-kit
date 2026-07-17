@@ -27,7 +27,7 @@ This demo shows the basic usage of Strelit Layout's virtual component (virtual v
 - load layout config,
 - and a little bit more.
 
-Also, golden layout is integrated into vue3 components in this demo, so they can be used in other projects.
+Strelit Layout is integrated into Vue 3 components in this demo so they can be reused in other projects.
 
 ### Using Vue with 'embedding via events' component binding
 

@@ -1,8 +1,12 @@
-import { LayoutConfig } from './config/config';
 import {
-  ResolvedComponentItemConfig,
-  ResolvedLayoutConfig,
-  ResolvedPopoutLayoutConfig,
+  createLayoutConfigFromResolved,
+  resolveLayoutConfig,
+  type LayoutConfig,
+} from './config/config';
+import {
+  type ResolvedComponentItemConfig,
+  type ResolvedPopoutLayoutConfig,
+  unminifyResolvedLayoutConfig,
 } from './config/resolved-config';
 import {
   ComponentContainer,
@@ -10,7 +14,6 @@ import {
   type ComponentContainerComponent,
 } from './container/component-container';
 import { BindError } from './errors/external-error';
-import { UnexpectedUndefinedError } from './errors/internal-error';
 import {
   LayoutManager,
   LayoutManagerConstructorParameters,
@@ -18,24 +21,6 @@ import {
 import { DomConstants } from './utils/dom-constants';
 import { I18nStringId, i18nStrings } from './utils/i18n-strings';
 
-/**
- * @deprecated Use `bindComponentEvent` and `unbindComponentEvent` with virtual components
- * @public
- */
-export type VirtualLayoutGetComponentEventHandler = (
-  this: void,
-  container: ComponentContainer,
-  itemConfig: ResolvedComponentItemConfig,
-) => ComponentContainerComponent;
-/**
- * @deprecated Use `bindComponentEvent` and `unbindComponentEvent` with virtual components
- * @public
- */
-export type VirtualLayoutReleaseComponentEventHandler = (
-  this: void,
-  container: ComponentContainer,
-  component: ComponentContainerComponent,
-) => void;
 /** @public */
 export type VirtualLayoutBindComponentEventHandler = (
   this: void,
@@ -52,54 +37,30 @@ export type VirtualLayoutUnbindComponentEventHandler = (
 let virtualLayoutSubWindowChecked = false;
 /** @internal */
 export function createVirtualLayoutManagerConstructorParameters(
-  configOrOptionalContainer: LayoutConfig | HTMLElement | undefined,
-  containerOrBindComponentEventHandler?:
-    HTMLElement | VirtualLayoutBindComponentEventHandler,
+  containerElement: HTMLElement | undefined,
 ): LayoutManagerConstructorParameters {
   const windowConfigKey = virtualLayoutSubWindowChecked
     ? null
-    : new URL(document.location.href).searchParams.get('gl-window');
+    : new URL(document.location.href).searchParams.get('strelit-window');
   virtualLayoutSubWindowChecked = true;
   const isSubWindow = windowConfigKey !== null;
 
-  let containerElement: HTMLElement | undefined;
   let config: LayoutConfig | undefined;
   if (windowConfigKey !== null) {
     const windowConfigStr = localStorage.getItem(windowConfigKey);
     if (windowConfigStr === null) {
-      throw new Error('Null gl-window Config');
+      throw new Error('Missing Strelit popout configuration');
     }
     localStorage.removeItem(windowConfigKey);
     const minifiedWindowConfig = JSON.parse(
       windowConfigStr,
     ) as ResolvedPopoutLayoutConfig;
-    const resolvedConfig =
-      ResolvedLayoutConfig.unminifyConfig(minifiedWindowConfig);
-    config = LayoutConfig.fromResolved(resolvedConfig);
-
-    if (configOrOptionalContainer instanceof HTMLElement) {
-      containerElement = configOrOptionalContainer;
-    }
-  } else {
-    if (configOrOptionalContainer === undefined) {
-      config = undefined;
-    } else if (configOrOptionalContainer instanceof HTMLElement) {
-      config = undefined;
-      containerElement = configOrOptionalContainer;
-    } else {
-      config = configOrOptionalContainer;
-    }
-
-    if (
-      containerElement === undefined &&
-      containerOrBindComponentEventHandler instanceof HTMLElement
-    ) {
-      containerElement = containerOrBindComponentEventHandler;
-    }
+    const resolvedConfig = unminifyResolvedLayoutConfig(minifiedWindowConfig);
+    config = createLayoutConfigFromResolved(resolvedConfig);
   }
 
   return {
-    constructorOrSubWindowLayoutConfig: config,
+    subWindowLayoutConfig: config,
     isSubWindow,
     containerElement,
   };
@@ -107,23 +68,12 @@ export function createVirtualLayoutManagerConstructorParameters(
 
 /** @public */
 export class VirtualLayout extends LayoutManager {
-  /**
-   * @deprecated Use {@link VirtualLayout.bindComponentEvent} and
-   * {@link VirtualLayout.unbindComponentEvent} with virtual components
-   */
-  getComponentEvent: VirtualLayoutGetComponentEventHandler | undefined;
-  /**
-   * @deprecated Use {@link VirtualLayout.bindComponentEvent} and
-   * {@link VirtualLayout.unbindComponentEvent} with virtual components
-   */
-  releaseComponentEvent: VirtualLayoutReleaseComponentEventHandler | undefined;
-
   bindComponentEvent: VirtualLayoutBindComponentEventHandler | undefined;
   unbindComponentEvent: VirtualLayoutUnbindComponentEventHandler | undefined;
 
-  /** @internal @deprecated use while constructor is not determinate */
-  private _bindComponentEventHanlderPassedInConstructor = false; // remove when constructor is determinate
-  /** @internal  @deprecated use while constructor is not determinate */
+  /** @internal */
+  private _bindComponentEventHandlerPassedInConstructor = false;
+  /** @internal */
   private _creationTimeoutPassed = false; // remove when constructor is determinate
 
   /**
@@ -138,57 +88,27 @@ export class VirtualLayout extends LayoutManager {
     container?: HTMLElement,
     bindComponentEventHandler?: VirtualLayoutBindComponentEventHandler,
     unbindComponentEventHandler?: VirtualLayoutUnbindComponentEventHandler,
-  );
-  /** @deprecated specify layoutConfig in {@link LayoutManager.loadLayout} */
-  constructor(config: LayoutConfig, container?: HTMLElement);
-  /** @internal */
-  constructor(
-    configOrOptionalContainer: LayoutConfig | HTMLElement | undefined,
-    containerOrBindComponentEventHandler:
-      HTMLElement | VirtualLayoutBindComponentEventHandler | undefined,
-    unbindComponentEventHandler:
-      VirtualLayoutUnbindComponentEventHandler | undefined,
-    skipInit: true,
-  );
-  /** @internal */
-  constructor(
-    configOrOptionalContainer: LayoutConfig | HTMLElement | undefined,
-    containerOrBindComponentEventHandler?:
-      HTMLElement | VirtualLayoutBindComponentEventHandler,
-    unbindComponentEventHandler?: VirtualLayoutUnbindComponentEventHandler,
-    skipInit?: true,
+    skipInit = false,
   ) {
-    super(
-      createVirtualLayoutManagerConstructorParameters(
-        configOrOptionalContainer,
-        containerOrBindComponentEventHandler,
-      ),
-    );
+    super(createVirtualLayoutManagerConstructorParameters(container));
 
-    if (containerOrBindComponentEventHandler !== undefined) {
-      if (typeof containerOrBindComponentEventHandler === 'function') {
-        this.bindComponentEvent = containerOrBindComponentEventHandler;
-        this._bindComponentEventHanlderPassedInConstructor = true;
-
-        if (unbindComponentEventHandler !== undefined) {
-          this.unbindComponentEvent = unbindComponentEventHandler;
-        }
-      }
+    if (bindComponentEventHandler !== undefined) {
+      this.bindComponentEvent = bindComponentEventHandler;
+      this._bindComponentEventHandlerPassedInConstructor = true;
+      this.unbindComponentEvent = unbindComponentEventHandler;
     }
 
-    if (!this._bindComponentEventHanlderPassedInConstructor) {
-      // backward compatibility
-
+    if (!this._bindComponentEventHandlerPassedInConstructor) {
       if (this.isSubWindow) {
         // document.body.style.visibility = 'hidden';
         // Set up layoutConfig since constructor is not determinate and may exit early. Other functions may need
         // this.layoutConfig. this.layoutConfig is again calculated in the same way when init() completes.
         // Remove this when constructor is determinate.
-        if (this._constructorOrSubWindowLayoutConfig === undefined) {
-          throw new UnexpectedUndefinedError('VLC98823');
+        if (this._subWindowLayoutConfig === undefined) {
+          throw new Error('Missing Strelit popout configuration');
         } else {
-          const resolvedLayoutConfig = LayoutConfig.resolve(
-            this._constructorOrSubWindowLayoutConfig,
+          const resolvedLayoutConfig = resolveLayoutConfig(
+            this._subWindowLayoutConfig,
           );
           // remove root from layoutConfig
           this.layoutConfig = {
@@ -200,9 +120,7 @@ export class VirtualLayout extends LayoutManager {
     }
 
     if (!skipInit) {
-      if (!this.deprecatedConstructor) {
-        this.init();
-      }
+      this.init();
     }
   }
 
@@ -213,23 +131,13 @@ export class VirtualLayout extends LayoutManager {
     this.unbindComponentEvent = undefined;
   }
 
-  /**
-   * Creates the actual layout. Must be called after all initial components
-   * are registered. Recurses through the configuration and sets up
-   * the item tree.
-   *
-   * If called before the document is ready it adds itself as a listener
-   * to the document.ready event
-   * @deprecated LayoutConfig should not be loaded in the {@link LayoutManager} constructor, but rather in a
-   * {@link LayoutManager.loadLayout} call. If LayoutConfig is not specified in the {@link LayoutManager} constructor,
-   * then init() will be automatically called internally and should not be called externally.
-   */
+  /** Initializes the layout after binding handlers have been assigned. */
   override init(): void {
     /**
      * If the document isn't ready yet, wait for it.
      */
     if (
-      !this._bindComponentEventHanlderPassedInConstructor &&
+      !this._bindComponentEventHandlerPassedInConstructor &&
       (document.readyState === 'loading' || document.body === null)
     ) {
       document.addEventListener('DOMContentLoaded', () => this.init(), {
@@ -244,7 +152,7 @@ export class VirtualLayout extends LayoutManager {
      * with StrelitLayout
      */
     if (
-      !this._bindComponentEventHanlderPassedInConstructor &&
+      !this._bindComponentEventHandlerPassedInConstructor &&
       this.isSubWindow &&
       !this._creationTimeoutPassed
     ) {
@@ -254,12 +162,12 @@ export class VirtualLayout extends LayoutManager {
     }
 
     if (this.isSubWindow) {
-      if (!this._bindComponentEventHanlderPassedInConstructor) {
+      if (!this._bindComponentEventHandlerPassedInConstructor) {
         this.clearHtmlAndAdjustStylesForSubWindow();
       }
 
       // Expose this instance on the window object to allow the opening window to interact with it
-      window.__glInstance = this;
+      window.__strelitInstance = this;
     }
 
     super.init();
@@ -278,11 +186,11 @@ export class VirtualLayout extends LayoutManager {
   clearHtmlAndAdjustStylesForSubWindow(): void {
     const headElement = document.head;
 
-    const appendNodeLists = new Array<NodeListOf<Element>>(4);
+    const appendNodeLists = Array<NodeListOf<Element>>(4);
     appendNodeLists[0] = document.querySelectorAll('body link');
     appendNodeLists[1] = document.querySelectorAll('body style');
     appendNodeLists[2] = document.querySelectorAll('template');
-    appendNodeLists[3] = document.querySelectorAll('.gl_keep');
+    appendNodeLists[3] = document.querySelectorAll('.strelit_keep');
 
     for (let listIdx = 0; listIdx < appendNodeLists.length; listIdx++) {
       const appendNodeList = appendNodeLists[listIdx];
@@ -336,22 +244,13 @@ export class VirtualLayout extends LayoutManager {
       const bindableComponent = this.bindComponentEvent(container, itemConfig);
       return bindableComponent;
     } else {
-      if (this.getComponentEvent !== undefined) {
-        return {
-          virtual: false,
-          component: this.getComponentEvent(container, itemConfig),
-        };
-      } else {
-        // There is no component registered for this type, and we don't have a getComponentEvent defined.
-        // This might happen when the user pops out a dialog and the component types are not registered upfront.
-        const text =
-          i18nStrings[
-            I18nStringId
-              .ComponentTypeNotRegisteredAndBindComponentEventHandlerNotAssigned
-          ];
-        const message = `${text}: ${JSON.stringify(itemConfig)}`;
-        throw new BindError(message);
-      }
+      const text =
+        i18nStrings[
+          I18nStringId
+            .ComponentTypeNotRegisteredAndBindComponentEventHandlerNotAssigned
+        ];
+      const message = `${text}: ${JSON.stringify(itemConfig)}`;
+      throw new BindError(message);
     }
   }
 
@@ -363,14 +262,6 @@ export class VirtualLayout extends LayoutManager {
   ): void {
     if (this.unbindComponentEvent !== undefined) {
       this.unbindComponentEvent(container);
-    } else {
-      if (!virtual && this.releaseComponentEvent !== undefined) {
-        if (component === undefined) {
-          throw new UnexpectedUndefinedError('VCUCRCU333998');
-        } else {
-          this.releaseComponentEvent(container, component);
-        }
-      }
     }
   }
 }

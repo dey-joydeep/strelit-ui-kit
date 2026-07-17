@@ -9,15 +9,12 @@ There are two runtime binding modes:
 - registered binding via `StrelitLayout.registerComponentConstructor()` or `registerComponentFactoryFunction()`
 - external binding via `VirtualLayout.bindComponentEvent` and `unbindComponentEvent`
 
-Legacy `getComponentEvent` and `releaseComponentEvent` still exist, but they are compatibility paths.
-
 ## Registered Components
 
 `StrelitLayout.bindComponent()` resolves a component instantiator in this order:
 
 1. registered type name from `_componentTypesMap`
-2. fallback callback from `registerGetComponentConstructorCallback()`
-3. `VirtualLayout` bind hooks if no registration exists
+2. `VirtualLayout` bind hooks if no registration exists
 
 Component state is cloned before construction, so constructors and factory functions do not receive the original config object by reference.
 

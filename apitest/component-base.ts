@@ -1,9 +1,6 @@
-import {
-  ComponentContainer,
-  type StrelitLayoutVirtuableComponent,
-} from '../src';
+import { ComponentContainer, type StrelitLayoutVirtualComponent } from '../src';
 
-export abstract class ComponentBase implements StrelitLayoutVirtuableComponent {
+export abstract class ComponentBase implements StrelitLayoutVirtualComponent {
   private _rootElement: HTMLElement;
 
   get container(): ComponentContainer {

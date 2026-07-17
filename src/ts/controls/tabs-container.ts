@@ -154,8 +154,9 @@ export class TabsContainer {
             this._tabs[j] = this._tabs[j - 1];
           }
           this._tabs[0] = activeTab;
+          this._element.prepend(activeTab.element);
 
-          // updateTabSizes will always be called after this and it will reposition tab elements
+          // updateTabSizes will move overflowed tabs between their containers.
         }
       }
     }

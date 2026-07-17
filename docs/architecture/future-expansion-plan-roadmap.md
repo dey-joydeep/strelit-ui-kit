@@ -102,16 +102,9 @@ Aligned with `LICENSING-PLAN.md`, the ecosystem follows an open-core structure w
 
 ## 3. Asset & Icon Modernization: Zero-Raster SVG / CSS Mask Architecture
 
-### 3.1 Inventory of Legacy Raster Assets
+### 3.1 Completed Raster Asset Removal
 
-Currently, `src/img/` ships 11 raster PNG icons:
-
-- `strelit-close-black.png` / `strelit-close-white.png`
-- `strelit-maximise-black.png` / `strelit-maximise-white.png`
-- `strelit-minimize-black.png` / `strelit-minimize-white.png`
-- `strelit-popin-black.png` / `strelit-popin-white.png`
-- `strelit-popout-black.png` / `strelit-popout-white.png`
-- `strelit-close-tab-white.png`
+The 11 control-icon PNGs previously stored in `src/img/` have been removed. Light, dark, and borderless themes now share inline SVG mask definitions from `src/less/strelit-icons.less`.
 
 ### 3.2 Zero-Raster CSS Mask Architecture
 
@@ -171,7 +164,7 @@ gantt
 _Can run immediately inside `packages/core` without breaking API compatibility._
 
 - **Scope & Deliverables**:
-  1. **Zero-Raster Icon System**: Replace all 11 raster PNGs in `src/img/` with SVG CSS mask rules (`mask-image` + `currentColor`).
+  1. **Zero-Raster Icon System**: Completed with shared SVG CSS mask rules (`mask-image` + theme color).
   2. **CSS Containment & Layout Optimization**: Add `contain: strict / layout style` to `.strelit-item-container` and `content-visibility: auto` to background tabs.
   3. **Batched Geometry Updates**: Coalesce synchronous style mutations inside a single `requestAnimationFrame` scheduler during live splitter drags.
 - **Estimated Effort**: 1 Sprint (2–3 weeks)

@@ -1,16 +1,18 @@
 import { ComponentBase } from './component-base';
 import {
   ComponentContainer,
+  type ComponentContainerBindableComponent,
   ComponentItemConfig,
   ContentItem,
-  EventEmitter,
-  LayoutConfig,
+  type ClickBubblingEvent,
   LogicalZIndex,
   ResolvedComponentItemConfig,
   ResolvedLayoutConfig,
   SerializableValue,
   StrelitLayout,
   Stack,
+  createLayoutConfigFromResolved,
+  resolveComponentTypeName,
 } from '../src';
 import { BooleanComponent } from './boolean-component';
 import { ColorComponent } from './color-component';
@@ -455,9 +457,8 @@ export class App {
   private handleBindComponentEvent(
     container: ComponentContainer,
     itemConfig: ResolvedComponentItemConfig,
-  ): ComponentContainer.BindableComponent {
-    const componentTypeName =
-      ResolvedComponentItemConfig.resolveComponentTypeName(itemConfig);
+  ): ComponentContainerBindableComponent {
+    const componentTypeName = resolveComponentTypeName(itemConfig);
     if (componentTypeName === undefined) {
       throw new Error('handleBindComponentEvent: Undefined componentTypeName');
     }
@@ -720,7 +721,7 @@ export class App {
     this._strelitLayout.clear();
   }
 
-  private handleStackHeaderClick(event: EventEmitter.ClickBubblingEvent) {
+  private handleStackHeaderClick(event: ClickBubblingEvent) {
     const stack = event.target as Stack;
     const itemCount = stack.contentItems.length;
     this._stackHeaderClickedItemCountSpan.innerText = itemCount.toString();
@@ -790,7 +791,7 @@ export class App {
     if (this._savedLayout === undefined) {
       throw new Error('No saved layout');
     } else {
-      const layoutConfig = LayoutConfig.fromResolved(this._savedLayout);
+      const layoutConfig = createLayoutConfigFromResolved(this._savedLayout);
       this._strelitLayout.loadLayout(layoutConfig);
     }
   }

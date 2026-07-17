@@ -1,29 +1,14 @@
-import { ComponentItemConfig as ConfigComponentItemConfig } from '../config/config'; // remove alias in version 3
-import { ResolvedRowOrColumnItemConfig } from '../config/resolved-config';
+import {
+  type ComponentItemConfig,
+  resolveComponentItemConfig,
+} from '../config/config';
+import { createResolvedRowOrColumnItemConfigDefault } from '../config/resolved-config';
 import { UnexpectedNullError } from '../errors/internal-error';
 import { ComponentItem } from '../items/component-item';
 import { GroundItem } from '../items/ground-item';
 import { LayoutManager } from '../layout-manager';
 import { DragListener } from '../utils/drag-listener';
-import { ComponentType, SerializableValue } from '../utils/types';
 import { DragProxy } from './drag-proxy';
-
-/** @public @deprecated use `ComponentItemConfig` */
-export interface DragSourceComponentItemConfig {
-  type: ComponentType;
-  state?: SerializableValue;
-  title?: string;
-}
-
-/** @public @deprecated remove in version 3 */
-export function isDragSourceComponentItemConfig(
-  config: DragSourceComponentItemConfig | ConfigComponentItemConfig,
-): config is DragSourceComponentItemConfig {
-  return (
-    !('componentType' in config) &&
-    !(config.type === 'component' && 'componentName' in config)
-  );
-}
 
 /**
  * Allows for any DOM item to create a component on drag
@@ -46,23 +31,14 @@ export class DragSource {
     private readonly _element: HTMLElement,
     /** @internal */
     private readonly _extraAllowableChildTargets: HTMLElement[],
-    /** @internal @deprecated replace with componentItemConfigOrFtn in version 3 */
-    private _componentTypeOrFtn:
-      | ComponentType
-      | (() => DragSourceComponentItemConfig | ConfigComponentItemConfig),
-    /** @internal @deprecated remove in version 3 */
-    private _componentState: SerializableValue | undefined,
-    /** @internal @deprecated remove in version 3 */
-    private _title: string | undefined,
-    /** @internal @deprecated remove in version 3 */
-    private _id: string | undefined,
+    private readonly _itemConfigCallback: () => ComponentItemConfig,
   ) {
     this._dragListener = null;
 
     this._dummyGroundContainer = document.createElement('div');
 
     const dummyRootItemConfig =
-      ResolvedRowOrColumnItemConfig.createDefault('row');
+      createResolvedRowOrColumnItemConfigDefault('row');
     this._dummyGroundContentItem = new GroundItem(
       this._layoutManager,
       dummyRootItemConfig,
@@ -103,42 +79,14 @@ export class DragSource {
    * @internal
    */
   private onDragStart(x: number, y: number) {
-    const type = 'component';
-    let dragSourceItemConfig: ConfigComponentItemConfig;
-
-    if (typeof this._componentTypeOrFtn === 'function') {
-      const ftnDragSourceItemConfig = this._componentTypeOrFtn() as
-        DragSourceComponentItemConfig | ConfigComponentItemConfig;
-      // If the componentType property exists, then it is already a ComponentItemConfig so nothing to do
-      if (isDragSourceComponentItemConfig(ftnDragSourceItemConfig)) {
-        dragSourceItemConfig = {
-          type,
-          componentState: ftnDragSourceItemConfig.state,
-          componentType: ftnDragSourceItemConfig.type,
-          title: ftnDragSourceItemConfig.title ?? this._title,
-        };
-      } else {
-        dragSourceItemConfig = ftnDragSourceItemConfig;
-      }
-    } else {
-      dragSourceItemConfig = {
-        type,
-        componentState: this._componentState,
-        componentType: this._componentTypeOrFtn,
-        title: this._title,
-        id: this._id,
-      };
-    }
+    const dragSourceItemConfig = this._itemConfigCallback();
 
     // Create a dummy ContentItem only for drag purposes
     // All ContentItems (except for GroundItem) need a parent.  When dragging, the parent is not used.
     // Instead of allowing null parents (as Javascript version did), use a temporary dummy GroundItem parent and add ContentItem to that
     // If this does not work, need to create alternative GroundItem class
 
-    const resolvedItemConfig = ConfigComponentItemConfig.resolve(
-      dragSourceItemConfig,
-      false,
-    );
+    const resolvedItemConfig = resolveComponentItemConfig(dragSourceItemConfig);
 
     const componentItem = new ComponentItem(
       this._layoutManager,

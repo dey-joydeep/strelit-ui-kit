@@ -6,7 +6,7 @@ export const enum I18nStringId {
   PleaseRegisterAConstructorFunction,
   ComponentTypeNotRegisteredAndBindComponentEventHandlerNotAssigned,
   ComponentIsAlreadyRegistered,
-  ComponentIsNotVirtuable,
+  ComponentIsNotVirtual,
   VirtualComponentDoesNotHaveRootHtmlElement,
   ItemConfigIsNotTypeComponent,
   InvalidNumberPartInSizeString,
@@ -44,10 +44,9 @@ const i18nStringInfosObject: I18nStringInfosObject = {
     id: I18nStringId.ComponentIsAlreadyRegistered,
     default: 'Component is already registered',
   },
-  ComponentIsNotVirtuable: {
-    id: I18nStringId.ComponentIsNotVirtuable,
-    default:
-      'Component is not virtuable. Requires rootHtmlElement field/getter',
+  ComponentIsNotVirtual: {
+    id: I18nStringId.ComponentIsNotVirtual,
+    default: 'Component is not virtual. Requires rootHtmlElement field/getter',
   },
   VirtualComponentDoesNotHaveRootHtmlElement: {
     id: I18nStringId.VirtualComponentDoesNotHaveRootHtmlElement,
@@ -78,7 +77,7 @@ let i18nStringsInitialised = false;
 export const i18nStringCount = Object.keys(i18nStringInfosObject).length;
 
 /** @public */
-export const i18nStrings = new Array<string>(i18nStringCount);
+export const i18nStrings = Array<string>(i18nStringCount);
 
 /** @public */
 export function checkI18nStringsInitialise(): void {

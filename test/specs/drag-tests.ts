@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { StrelitLayout, LayoutConfig, LayoutManager } from '../../src';
+import { StrelitLayout, LayoutConfig } from '../../src';
 import TestTools from './test-tools';
 
 describe('drag source', function () {
@@ -29,33 +29,7 @@ describe('drag source', function () {
     layout.destroy();
   });
 
-  it('creates a new component when dragged (static component config)', function () {
-    createDragSource(false);
-    doComponentDragTest();
-  });
-
-  it('creates a new component if dragged (deferred component config)', function () {
-    createDragSource(true);
-    doComponentDragTest();
-  });
-
-  it('accepts legacy componentName configs from deferred drag sources', function () {
-    dragSourceElement = document.createElement('div');
-    document.body.appendChild(dragSourceElement);
-
-    layout.newDragSource(dragSourceElement, () => ({
-      type: 'component',
-      componentName: TestTools.TEST_COMPONENT_NAME,
-      componentState: {
-        html: `<div class="${createdFromDragSourceClass} legacy"></div>`,
-      },
-      title: 'legacy drag source',
-    }));
-
-    doComponentDragTest();
-  });
-
-  function createDragSource(deferred: boolean): void {
+  it('creates a new component from a deferred Strelit component config', function () {
     dragSourceElement = document.createElement('div');
     dragSourceElement.id = 'dragSrc';
     document.body.appendChild(dragSourceElement);
@@ -66,28 +40,15 @@ describe('drag source', function () {
     };
     const componentTitle = 'created from drag source';
 
-    let dragSourceParameters: Parameters<
-      typeof LayoutManager.prototype.newDragSource
-    >;
-    if (deferred) {
-      dragSourceParameters = [
-        dragSourceElement,
-        () => ({
-          type: componentType,
-          state: componentState,
-          title: componentTitle,
-        }),
-      ];
-    } else {
-      dragSourceParameters = [
-        dragSourceElement,
-        componentType,
-        componentState,
-        componentTitle,
-      ];
-    }
-    layout.newDragSource(...dragSourceParameters);
-  }
+    layout.newDragSource(dragSourceElement, () => ({
+      type: 'component',
+      componentType,
+      componentState,
+      title: componentTitle,
+    }));
+
+    doComponentDragTest();
+  });
 
   function doComponentDragTest(): void {
     let dragProxy = TestTools.getDragProxy();

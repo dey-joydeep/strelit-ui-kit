@@ -110,88 +110,23 @@ export function ensureElementPositionAbsolute(element: HTMLElement): void {
   }
 }
 
-/**
- * Legacy compatibility helper equivalent to jQuery's $.extend(target, obj)
- * @internal
- */
-export function extend(
-  target: Record<string, unknown>,
-  obj: Record<string, unknown>,
-): Record<string, unknown> {
-  for (const key in obj) {
-    if (Object.prototype.hasOwnProperty.call(obj, key)) {
-      target[key] = obj[key];
-    }
-  }
-  return target;
-}
-
-/**
- * Legacy compatibility helper equivalent to jQuery's $.extend(true, target, obj)
- * @internal
- */
-export function deepExtend(
-  target: Record<string, unknown>,
-  obj: Record<string, unknown> | undefined,
-): Record<string, unknown> {
-  if (obj !== undefined) {
-    for (const key in obj) {
-      if (Object.prototype.hasOwnProperty.call(obj, key)) {
-        const value = obj[key];
-        const existingTarget = target[key];
-        target[key] = deepExtendValue(existingTarget, value);
-      }
-    }
-  }
-
-  return target;
-}
-
 /** @internal */
-export function deepExtendValue(
-  existingTarget: unknown,
-  value: unknown,
-): unknown {
+export function deepCloneValue(value: unknown): unknown {
   if (typeof value !== 'object') {
     return value;
-  } else {
-    if (Array.isArray(value)) {
-      const length = value.length;
-      const targetArray = new Array<unknown>(length);
-      for (let i = 0; i < length; i++) {
-        const element = value[i];
-        targetArray[i] = deepExtendValue({}, element);
-      }
-      return targetArray;
-    } else {
-      if (value === null) {
-        return null;
-      } else {
-        const valueObj = value as Record<string, unknown>;
-        if (existingTarget === undefined) {
-          return deepExtend({}, valueObj); // overwrite
-        } else {
-          if (typeof existingTarget !== 'object') {
-            return deepExtend({}, valueObj); // overwrite
-          } else {
-            if (Array.isArray(existingTarget)) {
-              return deepExtend({}, valueObj); // overwrite
-            } else {
-              if (existingTarget === null) {
-                return deepExtend({}, valueObj); // overwrite
-              } else {
-                const existingTargetObj = existingTarget as Record<
-                  string,
-                  unknown
-                >;
-                return deepExtend(existingTargetObj, valueObj); // merge
-              }
-            }
-          }
-        }
-      }
-    }
   }
+  if (value === null) {
+    return null;
+  }
+  if (Array.isArray(value)) {
+    return value.map((element) => deepCloneValue(element));
+  }
+
+  const result: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    result[key] = deepCloneValue(entry);
+  }
+  return result;
 }
 
 /** @internal */

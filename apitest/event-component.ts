@@ -1,4 +1,8 @@
-import { ComponentContainer, EventEmitter, SerializableValue } from '../src';
+import {
+  ComponentContainer,
+  type EventEmitterUnknownParams,
+  SerializableValue,
+} from '../src';
 import { ComponentBase } from './component-base';
 
 export class EventComponent extends ComponentBase {
@@ -32,9 +36,9 @@ export class EventComponent extends ComponentBase {
     });
     this.rootHtmlElement.appendChild(this._sendElement);
 
-    const cb = (...ev: EventEmitter.UnknownParams) => {
+    const cb = (...ev: EventEmitterUnknownParams) => {
       const evt = document.createElement('span');
-      evt.innerText = `Received: ${ev}`;
+      evt.innerText = `Received: ${String(ev)}`;
       this.rootHtmlElement.appendChild(evt);
     };
 

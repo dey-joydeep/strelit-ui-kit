@@ -17,7 +17,7 @@ export default class TestTools {
 
     myLayout.registerComponentFactoryFunction(
       this.TEST_COMPONENT_NAME,
-      TestTools.createTestComponent,
+      (container, state) => TestTools.createTestComponent(container, state),
     );
 
     myLayout.loadLayout(config);
@@ -79,9 +79,7 @@ export default class TestTools {
 
   public static getDragProxy(): HTMLDivElement | null {
     // class copied from DomConstants.ClassName.DragProxy (could instead expose this in public API?)
-    const dragProxy = document.querySelector(
-      '.strelit_dragProxy',
-    ) as HTMLDivElement;
+    const dragProxy = document.querySelector('.lm_dragProxy') as HTMLDivElement;
     return dragProxy;
   }
 }

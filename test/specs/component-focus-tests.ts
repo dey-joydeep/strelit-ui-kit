@@ -6,7 +6,7 @@ import {
   ComponentItem,
 } from '../../src';
 
-describe('Component Focus API (replaces legacy v1 selection model)', function () {
+describe('Component Focus API', function () {
   let layout: StrelitLayout;
 
   beforeEach(function () {

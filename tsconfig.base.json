@@ -1,10 +1,8 @@
 {
   "compileOnSave": false,
   "compilerOptions": {
-    "ignoreDeprecations": "5.0",
-    "moduleResolution": "node10",
+    "moduleResolution": "bundler",
     "target": "es2020",
-    "downlevelIteration": true,
     "importHelpers": true,
     "strict": true,
     "strictNullChecks": true,
@@ -17,31 +15,11 @@
     "strictFunctionTypes": true,
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
-    "strictPropertyInitialization": false,
+    "strictPropertyInitialization": true,
     "noUnusedLocals": false,
     "allowSyntheticDefaultImports": true,
-    "baseUrl": "./",
     "sourceMap": true,
-    "emitDecoratorMetadata": true,
-    "experimentalDecorators": true,
     "typeRoots": ["node_modules/@types"],
     "lib": ["es2020", "dom"]
-  },
-  "include": ["src/**.ts"],
-  "exclude": [
-    "api-test",
-    "dist",
-    "demo",
-    "doc",
-    "etc",
-    "lib",
-    "node_modules",
-    "script",
-    "temp",
-    "test",
-    "typings/browser",
-    "typings/browser.d.ts",
-    "webpack",
-    "website"
-  ]
+  }
 }

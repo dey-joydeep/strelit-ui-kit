@@ -513,7 +513,7 @@ const miniRowConfig_widthHeight: LayoutConfig = {
         },
         isClosable: false,
         componentType: ColorComponent.typeName,
-        width: 30,
+        size: '30%',
         componentState: 'gold',
       },
       {
@@ -543,7 +543,7 @@ const miniStackConfig_widthHeight: LayoutConfig = {
           show: 'top',
         },
         componentType: ColorComponent.typeName,
-        width: 30,
+        size: '30%',
         componentState: 'white',
       },
       {
@@ -570,7 +570,7 @@ const rowWithEmptyStackConfig_widthHeight: LayoutConfig = {
         type: 'component',
         title: 'Golden',
         componentType: ColorComponent.typeName,
-        width: 30,
+        size: '30%',
         componentState: 'gold',
       },
       {
@@ -618,7 +618,7 @@ const standardConfig_widthHeight: LayoutConfig = {
     type: 'row',
     content: [
       {
-        width: 80,
+        size: '80%',
         type: 'column',
         content: [
           {
@@ -636,7 +636,7 @@ const standardConfig_widthHeight: LayoutConfig = {
                 header: { show: 'right' },
                 isClosable: false,
                 componentType: ColorComponent.typeName,
-                width: 30,
+                size: '30%',
                 componentState: {
                   bg: 'strelit_layout_spiral.png',
                 },
@@ -687,13 +687,11 @@ const standardConfig_widthHeight: LayoutConfig = {
         ],
       },
       {
-        width: 50,
+        size: '50%',
         type: 'row',
-        title: 'test stack',
         content: [
           {
             type: 'stack',
-            title: 'test row',
             content: [
               {
                 type: 'component',
@@ -745,13 +743,13 @@ const responsiveConfig_widthHeight: LayoutConfig = {
     responsiveMode: 'always',
   },
   dimensions: {
-    minItemWidth: 250,
+    defaultMinItemWidth: '250px',
   },
   root: {
     type: 'row',
     content: [
       {
-        width: 30,
+        size: '30%',
         type: 'column',
         content: [
           {
@@ -766,7 +764,7 @@ const responsiveConfig_widthHeight: LayoutConfig = {
                 type: 'component',
                 title: 'Golden',
                 componentType: ColorComponent.typeName,
-                width: 30,
+                size: '30%',
                 componentState: {
                   bg: 'strelit_layout_spiral.png',
                 },
@@ -805,14 +803,14 @@ const responsiveConfig_widthHeight: LayoutConfig = {
         ],
       },
       {
-        width: 30,
+        size: '30%',
         title: 'Layout',
         type: 'component',
         componentType: ColorComponent.typeName,
         componentState: { bg: 'strelit_layout_text.png' },
       },
       {
-        width: 20,
+        size: '20%',
         type: 'component',
         title: 'Market',
         componentType: ColorComponent.typeName,
@@ -836,17 +834,17 @@ const responsiveConfig_widthHeight: LayoutConfig = {
         },
       },
       {
-        width: 20,
+        size: '20%',
         type: 'column',
         content: [
           {
-            height: 20,
+            size: '20%',
             type: 'component',
             title: 'Performance',
             componentType: ColorComponent.typeName,
           },
           {
-            height: 80,
+            size: '80%',
             type: 'component',
             title: 'Profile',
             componentType: ColorComponent.typeName,
@@ -872,7 +870,7 @@ const tabDropdownConfig_widthHeight: LayoutConfig = {
     type: 'row',
     content: [
       {
-        width: 30,
+        size: '30%',
         type: 'column',
         content: [
           {
@@ -887,7 +885,7 @@ const tabDropdownConfig_widthHeight: LayoutConfig = {
                 type: 'component',
                 title: 'Golden',
                 componentType: TextComponent.typeName,
-                width: 30,
+                size: '30%',
                 componentState: {
                   text: 'hello',
                 },
@@ -926,7 +924,7 @@ const tabDropdownConfig_widthHeight: LayoutConfig = {
         ],
       },
       {
-        width: 20,
+        size: '20%',
         type: 'stack',
         content: [
           {
@@ -980,7 +978,7 @@ const tabDropdownConfig_widthHeight: LayoutConfig = {
         ],
       },
       {
-        width: 30,
+        size: '30%',
         title: 'Layout',
         type: 'component',
         componentType: BooleanComponent.typeName,

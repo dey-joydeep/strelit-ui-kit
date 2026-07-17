@@ -13,8 +13,7 @@
     ".verification/**",
     "dist/**",
     "lib/**",
-    "temp/**",
-    "test/dist/**"
+    "temp/**"
   ],
   "overrides": [
     {
@@ -31,15 +30,10 @@
       }
     },
     {
-      "files": ["test/**/*.ts", "test/**/*.js"],
+      "files": ["test/**/*.ts"],
       "env": {
         "vitest": true
       }
     }
-  ],
-  "rules": {
-    "unicorn/no-new-array": "off",
-    "typescript/unbound-method": "off",
-    "typescript/restrict-template-expressions": "off"
-  }
+  ]
 }

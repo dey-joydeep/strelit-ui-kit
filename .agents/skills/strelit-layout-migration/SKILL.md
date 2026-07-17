@@ -13,12 +13,17 @@ The repository includes an AST/regex migration script to transform package impor
 
 ```powershell
 npm run migrate:golden-layout -- --target <path> --dry-run
+npm run migrate:golden-layout -- --target <path> --from v2 --write
 ```
 
 This updates:
 
 - Package names (`golden-layout` -> `strelit-ui-kit`)
 - Subpath imports (`golden-layout/dist/css/...` -> `strelit-ui-kit/dist/css/...`)
+- Namespace API references and collision-safe named imports
+- Recognized v1/v2 saved-layout JSON when `--from v1` or `--from v2` is supplied
+
+Treat every reported manual-review finding as blocking. The tool deliberately does not guess receiver-dependent method calls, v1 React bindings, nested-stack semantics, computed API access, or lossy multi-root data.
 
 ## 2. Configuration Differences (v1 to Strelit UI)
 

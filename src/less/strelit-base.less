@@ -4,7 +4,6 @@
 // All changes to base style should be done in strelit-base.less.
 // Do NOT make changes directly in strelit-base.scss.  strelit-base.scss should only be updated by
 // running the npm script "update-scss"
-// Keep this Less simple so less2sass can reliably convert it into the SCSS base file.
 
 // Width variables (appears count calculates by raw css)
 @width0: 100%; // Appears 3 times
@@ -24,47 +23,47 @@
 @height5: 18px; // Appears 1 time
 @height6: 15px; // Appears 1 time
 
-.strelit_root {
+.lm_root {
   position: relative;
 }
 
-.strelit_row > .strelit_item {
+.lm_row > .lm_item {
   float: left;
 }
 
 // Single Pane content (area in which final dragged content is contained)
-.strelit_content {
+.lm_content {
   overflow: hidden;
   position: relative;
 }
 
-// ".strelit_dragging" is applied to BODY tag during Drag and is also directly applied to the root of the object being dragged
-.strelit_dragging,
-.strelit_dragging * {
+// ".lm_dragging" is applied to BODY tag during Drag and is also directly applied to the root of the object being dragged
+.lm_dragging,
+.lm_dragging * {
   cursor: move !important;
   user-select: none;
 }
 
 // If a specific Pane is maximized
-.strelit_maximised {
+.lm_maximised {
   position: absolute;
   top: 0;
   left: 0;
   z-index: 40;
 }
 
-.strelit_maximise_placeholder {
+.lm_maximise_placeholder {
   display: none;
 }
 
 // Separator line (handle to change pane size)
-.strelit_splitter {
+.lm_splitter {
   position: relative;
   z-index: 2;
   touch-action: none;
 
-  &.strelit_vertical {
-    .strelit_drag_handle {
+  &.lm_vertical {
+    .lm_drag_handle {
       width: @width0;
       position: absolute;
       cursor: ns-resize;
@@ -73,11 +72,11 @@
     }
   }
 
-  &.strelit_horizontal {
+  &.lm_horizontal {
     float: left;
     height: @height0;
 
-    .strelit_drag_handle {
+    .lm_drag_handle {
       height: @height0;
       position: absolute;
       cursor: ew-resize;
@@ -88,18 +87,18 @@
 }
 
 // Pane Header (container of Tabs for each pane)
-.strelit_header {
+.lm_header {
   overflow: visible;
   position: relative;
   z-index: 1;
   user-select: none;
 
-  [class^='strelit_'] {
+  [class^='lm_'] {
     box-sizing: content-box !important;
   }
 
   // Pane controls (popout, maximize, minimize, close)
-  .strelit_controls {
+  .lm_controls {
     position: absolute;
     right: 3px;
     display: flex;
@@ -113,13 +112,13 @@
     }
   }
 
-  .strelit_tabs {
+  .lm_tabs {
     position: absolute;
     display: flex;
   }
 
-  // Single Tab container. A single Tab is set for each pane, a group of Tabs are contained in ".strelit_header"
-  .strelit_tab {
+  // Single Tab container. A single Tab is set for each pane, a group of Tabs are contained in ".lm_header"
+  .lm_tab {
     cursor: pointer;
     float: left;
     height: @height2;
@@ -134,25 +133,25 @@
       height: @height4;
       position: absolute;
 
-      &.strelit_left {
+      &.lm_left {
         top: 0;
         left: -2px;
       }
 
-      &.strelit_right {
+      &.lm_right {
         top: 0;
         right: -2px;
       }
     }
 
-    .strelit_title {
+    .lm_title {
       display: inline-block;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
     // Close Tab Icon
-    .strelit_close_tab {
+    .lm_close_tab {
       width: @width3;
       height: @height2;
       position: absolute;
@@ -164,40 +163,40 @@
 }
 
 // Change stack style to absolute positioning for docking transition ability
-.strelit_stack {
+.lm_stack {
   position: relative;
 
-  > .strelit_items {
+  > .lm_items {
     overflow: hidden;
   }
 
-  &.strelit_left {
-    > .strelit_items {
+  &.lm_left {
+    > .lm_items {
       position: absolute;
       left: 20px;
       top: 0;
     }
   }
-  &.strelit_right {
-    > .strelit_items {
+  &.lm_right {
+    > .lm_items {
       position: absolute;
       right: 20px;
       top: 0;
     }
 
-    > .strelit_header {
+    > .lm_header {
       position: absolute;
       right: 0;
       top: 0;
     }
   }
-  &.strelit_bottom {
-    > .strelit_items {
+  &.lm_bottom {
+    > .lm_items {
       position: absolute;
       bottom: 20px;
     }
 
-    > .strelit_header {
+    > .lm_header {
       position: absolute;
       bottom: 0;
     }
@@ -205,34 +204,34 @@
 }
 
 // Headers positions
-.strelit_left,
-.strelit_right {
-  &.strelit_stack {
-    .strelit_header {
+.lm_left,
+.lm_right {
+  &.lm_stack {
+    .lm_header {
       height: 100%;
     }
   }
 
-  &.strelit_dragProxy {
-    .strelit_header,
-    .strelit_items {
+  &.lm_dragProxy {
+    .lm_header,
+    .lm_items {
       float: left;
     }
   }
 
-  &.strelit_dragProxy,
-  &.strelit_stack {
-    .strelit_header {
+  &.lm_dragProxy,
+  &.lm_stack {
+    .lm_header {
       width: 20px;
       vertical-align: top;
 
-      .strelit_tabs {
+      .lm_tabs {
         transform-origin: left top;
         top: 0;
         width: 1000px; /*hack*/
       }
 
-      .strelit_controls {
+      .lm_controls {
         bottom: 0;
         flex-flow: column;
       }
@@ -240,19 +239,19 @@
   }
 }
 
-.strelit_dragProxy.strelit_left,
-.strelit_stack.strelit_left {
-  .strelit_header {
-    .strelit_tabs {
+.lm_dragProxy.lm_left,
+.lm_stack.lm_left {
+  .lm_header {
+    .lm_tabs {
       transform: rotate(-90deg) scaleX(-1);
       left: 0;
-      .strelit_tab {
+      .lm_tab {
         transform: scaleX(-1);
         margin-top: 1px;
       }
     }
 
-    .strelit_tabdropdown_list {
+    .lm_tabdropdown_list {
       top: initial;
       right: initial;
       left: 20px;
@@ -260,59 +259,59 @@
   }
 }
 
-.strelit_dragProxy.strelit_right .strelit_content {
+.lm_dragProxy.lm_right .lm_content {
   float: left;
 }
 
-.strelit_dragProxy.strelit_right,
-.strelit_stack.strelit_right {
-  .strelit_header {
-    .strelit_tabs {
+.lm_dragProxy.lm_right,
+.lm_stack.lm_right {
+  .lm_header {
+    .lm_tabs {
       transform: rotate(90deg) scaleX(1);
       left: 100%;
       margin-left: 0;
     }
 
-    .strelit_controls {
+    .lm_controls {
       left: 3px;
     }
 
-    .strelit_tabdropdown_list {
+    .lm_tabdropdown_list {
       top: initial;
       right: 20px;
     }
   }
 }
 
-.strelit_dragProxy.strelit_bottom,
-.strelit_stack.strelit_bottom {
-  .strelit_header {
+.lm_dragProxy.lm_bottom,
+.lm_stack.lm_bottom {
+  .lm_header {
     width: 100%;
-    .strelit_tab {
+    .lm_tab {
       margin-top: 0;
       border-top: none;
     }
 
-    .strelit_controls {
+    .lm_controls {
       top: 3px;
     }
 
-    .strelit_tabdropdown_list {
+    .lm_tabdropdown_list {
       top: initial;
       bottom: 20px;
     }
   }
 }
 
-.strelit_drop_tab_placeholder {
+.lm_drop_tab_placeholder {
   float: left;
   width: @width2;
   visibility: hidden;
 }
 
 // Dropdown arrow for additional tabs when too many to be displayed
-.strelit_header {
-  .strelit_controls .strelit_tabdropdown:before {
+.lm_header {
+  .lm_controls .lm_tabdropdown:before {
     content: '';
     width: 0;
     height: 0;
@@ -324,24 +323,24 @@
     color: white; // Overriden in specific Themes
   }
 
-  .strelit_tabdropdown_list {
+  .lm_tabdropdown_list {
     position: absolute;
     top: 20px;
     right: 0;
     z-index: 5;
     overflow: hidden;
 
-    .strelit_tab {
+    .lm_tab {
       clear: both;
       padding-right: 10px;
       margin: 0;
 
-      .strelit_title {
+      .lm_title {
         width: 100px;
       }
     }
 
-    .strelit_close_tab {
+    .lm_close_tab {
       display: none !important;
     }
   }
@@ -352,31 +351,31 @@
 ***********************************/
 
 // Single Pane content during Drag (style of moving window following mouse)
-.strelit_dragProxy {
+.lm_dragProxy {
   position: absolute;
   top: 0;
   left: 0;
   z-index: 30;
 
-  .strelit_header {
+  .lm_header {
     background: transparent;
   }
 
-  .strelit_content {
+  .lm_content {
     border-top: none;
     overflow: hidden;
   }
 }
 
 // Placeholder Container of target position
-.strelit_dropTargetIndicator {
+.lm_dropTargetIndicator {
   display: none;
   position: absolute;
   z-index: 35;
   transition: all 200ms ease;
 
   // Inner Placeholder
-  .strelit_inner {
+  .lm_inner {
     width: @width0;
     height: @height0;
     position: relative;
@@ -385,7 +384,7 @@
   }
 }
 
-.strelit_transition_indicator {
+.lm_transition_indicator {
   display: none;
   width: @width1;
   height: @height1;
@@ -396,7 +395,7 @@
 }
 
 // If a specific Pane is Popped Out, so move it to a different Browser Window, Icon to restore original position is:
-.strelit_popin {
+.lm_popin {
   width: @width1;
   height: @height1;
   position: absolute;
@@ -412,11 +411,11 @@
     left: 0;
   }
 
-  > .strelit_bg {
+  > .lm_bg {
     z-index: 10;
   }
 
-  > .strelit_icon {
+  > .lm_icon {
     z-index: 20;
   }
 }

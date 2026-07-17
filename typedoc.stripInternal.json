@@ -7,8 +7,6 @@
   "excludePrivate": true,
   "excludeProtected": true,
   "exclude": [
-    "./src/ts/utils/jquery-legacy.ts",
-    "./src/ts/utils/utils.ts.ts",
     "./src/ts/controls/drop-target-indicator.ts",
     "./src/ts/controls/header-button.ts",
     "./src/ts/controls/splitter.ts",

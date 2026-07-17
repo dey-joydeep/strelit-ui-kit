@@ -5,7 +5,7 @@ This document describes how the current runtime is assembled from `LayoutManager
 ## Class Layering
 
 - `LayoutManager` in `src/ts/layout-manager.ts` is the core runtime. It owns container sizing, root creation, item factories, focus state, drag sources, popouts, and layout save/load.
-- `VirtualLayout` in `src/ts/virtual-layout.ts` adds constructor compatibility, subwindow detection via `gl-window`, and bind/unbind events for application-managed components.
+- `VirtualLayout` in `src/ts/virtual-layout.ts` adds subwindow detection via `strelit-window` and bind/unbind events for application-managed components.
 - `StrelitLayout` in `src/ts/strelit-layout.ts` adds component registration by type name, constructor/factory instantiation, and support for virtual components whose root DOM lives outside the item node.
 
 ## Startup Flow
@@ -23,7 +23,7 @@ This document describes how the current runtime is assembled from `LayoutManager
 
 ## Item Creation Rule
 
-`createContentItem()` wraps a component in a stack when the parent is not already a stack. This is a core v2 runtime rule and explains why many APIs accept a component config but the live tree may insert a `Stack`.
+`createContentItem()` wraps a component in a stack when the parent is not already a stack. This is a core Strelit runtime rule and explains why many APIs accept a component config but the live tree may insert a `Stack`.
 
 ## Sizing Model
 
