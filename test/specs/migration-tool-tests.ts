@@ -168,6 +168,8 @@ const resolved = LayoutConfig.resolve(config);
   it.each([
     'golden-layout/dist/scss/goldenlayout-dark-theme.scss',
     'golden-layout/dist/scss/themes/goldenlayout-dark-theme.scss',
+    'golden-layout/dist/scss/_goldenlayout-var-theme.scss',
+    'golden-layout/dist/scss/themes/_goldenlayout-var-theme.scss',
   ])('preserves unavailable SCSS theme import %s', (legacyPath) => {
     const legacyImport = `import '${legacyPath}';`;
     const filePath = createFixture(`${legacyImport}\n`);
