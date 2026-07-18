@@ -197,6 +197,33 @@ const resolved = LayoutConfig.resolve(config);
     );
   });
 
+  it.each([
+    {
+      fileName: 'consumer.css',
+      legacyPath: 'golden-layout/src/css/goldenlayout-dark-theme.css?inline',
+      migratedPath:
+        'strelit-ui-kit/dist/css/themes/strelit-dark-theme.css?inline',
+    },
+    {
+      fileName: 'consumer.less',
+      legacyPath:
+        'golden-layout/dist/less/themes/goldenlayout-dark-theme.less#asset',
+      migratedPath:
+        'strelit-ui-kit/dist/less/themes/strelit-dark-theme.less#asset',
+    },
+  ])(
+    'preserves resource suffixes when migrating $fileName theme imports',
+    ({ fileName, legacyPath, migratedPath }) => {
+      const filePath = createFixture(`@import "${legacyPath}";\n`, fileName);
+
+      migrate(filePath);
+
+      expect(readFileSync(filePath, 'utf8')).toContain(
+        `@import "${migratedPath}";`,
+      );
+    },
+  );
+
   it('rewrites proven container and stack receivers and flags unknown ones', () => {
     const filePath = createFixture(`
 import { ComponentContainer, Stack } from 'golden-layout';

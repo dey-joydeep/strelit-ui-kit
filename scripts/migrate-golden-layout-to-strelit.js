@@ -198,33 +198,33 @@ const replacements = [
   {
     name: 'css subpath import',
     pattern:
-      /(['"])golden-layout\/(?:dist|src)\/css\/((?:themes\/)?goldenlayout(?:-([a-z-]+)-theme|-base)\.css)\1/g,
-    replacement: (_match, quote, fileName, themeName) => {
+      /(['"])golden-layout\/(?:dist|src)\/css\/((?:themes\/)?goldenlayout(?:-([a-z-]+)-theme|-base)\.css)([?#][^'"]*)?\1/g,
+    replacement: (_match, quote, fileName, themeName, suffix = '') => {
       if (themeName !== undefined) {
-        return `${quote}strelit-ui-kit/dist/css/themes/strelit-${themeName}-theme.css${quote}`;
+        return `${quote}strelit-ui-kit/dist/css/themes/strelit-${themeName}-theme.css${suffix}${quote}`;
       }
 
       if (fileName === 'goldenlayout-base.css') {
-        return `${quote}strelit-ui-kit/dist/css/strelit-base.css${quote}`;
+        return `${quote}strelit-ui-kit/dist/css/strelit-base.css${suffix}${quote}`;
       }
 
-      return `${quote}strelit-ui-kit/dist/css/${fileName}${quote}`;
+      return `${quote}strelit-ui-kit/dist/css/${fileName}${suffix}${quote}`;
     },
   },
   {
     name: 'less subpath import',
     pattern:
-      /(['"])golden-layout\/(?:dist|src)\/less\/((?:themes\/)?goldenlayout(?:-([a-z-]+)-theme|-base)\.less)\1/g,
-    replacement: (_match, quote, fileName, themeName) => {
+      /(['"])golden-layout\/(?:dist|src)\/less\/((?:themes\/)?goldenlayout(?:-([a-z-]+)-theme|-base)\.less)([?#][^'"]*)?\1/g,
+    replacement: (_match, quote, fileName, themeName, suffix = '') => {
       if (themeName !== undefined) {
-        return `${quote}strelit-ui-kit/dist/less/themes/strelit-${themeName}-theme.less${quote}`;
+        return `${quote}strelit-ui-kit/dist/less/themes/strelit-${themeName}-theme.less${suffix}${quote}`;
       }
 
       if (fileName === 'goldenlayout-base.less') {
-        return `${quote}strelit-ui-kit/dist/less/strelit-base.less${quote}`;
+        return `${quote}strelit-ui-kit/dist/less/strelit-base.less${suffix}${quote}`;
       }
 
-      return `${quote}strelit-ui-kit/dist/less/${fileName}${quote}`;
+      return `${quote}strelit-ui-kit/dist/less/${fileName}${suffix}${quote}`;
     },
   },
   {
