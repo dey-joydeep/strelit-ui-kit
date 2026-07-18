@@ -254,7 +254,7 @@ const replacements = [
           subpath.includes('/src/scss/themes/') ||
           subpath.includes('/dist/scss/themes/') ||
           (subpath.includes('/scss/') &&
-            /\/?_?goldenlayout-[^/]+-theme\.scss$/.test(subpath))
+            /\/?_?goldenlayout-[^/?#]+-theme\.scss(?:[?#].*)?$/.test(subpath))
         ) {
           return _match;
         }
@@ -378,7 +378,7 @@ const manualReviewPatterns = [
   {
     name: 'SCSS theme imports require a manual Strelit theme selection',
     pattern:
-      /golden-layout\/(?:dist|src)\/scss\/(?:themes\/)?_?goldenlayout-[^'"\s/]+-theme\.scss/,
+      /golden-layout\/(?:dist|src)\/scss\/(?:themes\/)?_?goldenlayout-[^'"\s/?#]+-theme\.scss(?:[?#][^'"\s]*)?/,
   },
   {
     name: 'legacy drag-source config fields must become componentType and componentState',
@@ -846,7 +846,7 @@ function migratePackagePath(specifier) {
   const [, styleType, originalFile] = styleMatch;
   if (
     styleType === 'scss' &&
-    /(?:^|\/)_?goldenlayout-[^/]+-theme\.scss$/.test(originalFile)
+    /(?:^|\/)_?goldenlayout-[^/?#]+-theme\.scss(?:[?#].*)?$/.test(originalFile)
   ) {
     return specifier;
   }

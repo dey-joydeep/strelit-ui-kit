@@ -84,6 +84,11 @@ Run the narrowest relevant verification after changes. For non-trivial refactors
 - Keep `README.md`, `docs/index.md`, and relevant planning files aligned with actual repo behavior
 - If behavior or workflows change, update docs in the same task when practical
 
+## Temporary Artifacts
+
+- Use the repository-root `.tmp/` directory for disposable local content such as PR-scoped audit reports, local review artifacts, temporary session context, and agent handoff notes
+- Never commit `.tmp/` contents; promote durable findings or instructions into the appropriate tracked documentation
+
 ## Licensing Direction
 
 - Current repo direction is MIT-derived core

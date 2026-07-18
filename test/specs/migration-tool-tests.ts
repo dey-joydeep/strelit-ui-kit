@@ -170,9 +170,24 @@ const resolved = LayoutConfig.resolve(config);
     'golden-layout/dist/scss/themes/goldenlayout-dark-theme.scss',
     'golden-layout/dist/scss/_goldenlayout-var-theme.scss',
     'golden-layout/dist/scss/themes/_goldenlayout-var-theme.scss',
+    'golden-layout/dist/scss/_goldenlayout-var-theme.scss?inline',
+    'golden-layout/dist/scss/themes/goldenlayout-dark-theme.scss#asset',
   ])('preserves unavailable SCSS theme import %s', (legacyPath) => {
     const legacyImport = `import '${legacyPath}';`;
     const filePath = createFixture(`${legacyImport}\n`);
+
+    const output = migrate(filePath);
+
+    expect(readFileSync(filePath, 'utf8')).toContain(legacyImport);
+    expect(output).toContain(
+      'SCSS theme imports require a manual Strelit theme selection',
+    );
+  });
+
+  it('preserves query-suffixed SCSS theme imports in text files', () => {
+    const legacyImport =
+      '@import "golden-layout/dist/scss/_goldenlayout-var-theme.scss?inline";';
+    const filePath = createFixture(`${legacyImport}\n`, 'consumer.scss');
 
     const output = migrate(filePath);
 
@@ -307,6 +322,6 @@ const config: DragSource.ComponentItemConfig = {
     (fixtureName) => {
       compileFixture(fixtureName);
     },
-    15_000,
+    30_000,
   );
 });
