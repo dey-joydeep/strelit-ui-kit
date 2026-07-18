@@ -376,7 +376,8 @@ const replacements = [
 const manualReviewPatterns = [
   {
     name: 'SCSS theme imports require a manual Strelit theme selection',
-    pattern: /golden-layout\/(?:dist|src)\/scss\/themes\/[^'"\s]+-theme\.scss/,
+    pattern:
+      /golden-layout\/(?:dist|src)\/scss\/(?:themes\/)?goldenlayout-[^'"\s/]+-theme\.scss/,
   },
   {
     name: 'legacy drag-source config fields must become componentType and componentState',
@@ -844,7 +845,7 @@ function migratePackagePath(specifier) {
   const [, styleType, originalFile] = styleMatch;
   if (
     styleType === 'scss' &&
-    (originalFile.startsWith('themes/') || originalFile.includes('/themes/'))
+    /(?:^|\/)goldenlayout-[^/]+-theme\.scss$/.test(originalFile)
   ) {
     return specifier;
   }
