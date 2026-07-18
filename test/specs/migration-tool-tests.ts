@@ -165,6 +165,19 @@ const resolved = LayoutConfig.resolve(config);
     expect(migrated).toContain('new StrelitLayout()');
   });
 
+  it('preserves unavailable SCSS theme imports for manual migration', () => {
+    const legacyImport =
+      "import 'golden-layout/dist/scss/themes/goldenlayout-dark-theme.scss';";
+    const filePath = createFixture(`${legacyImport}\n`);
+
+    const output = migrate(filePath);
+
+    expect(readFileSync(filePath, 'utf8')).toContain(legacyImport);
+    expect(output).toContain(
+      'SCSS theme imports require a manual Strelit theme selection',
+    );
+  });
+
   it('rewrites proven container and stack receivers and flags unknown ones', () => {
     const filePath = createFixture(`
 import { ComponentContainer, Stack } from 'golden-layout';

@@ -26,4 +26,20 @@ describe('serializable value guards', () => {
     expect(isSerializableValue(Symbol('state'))).toBe(false);
     expect(isSerializableValue(cyclic)).toBe(false);
   });
+
+  it('rejects non-plain objects that would lose state when cloned', () => {
+    class ComponentState {
+      enabled = true;
+    }
+
+    expect(isSerializableValue(new Map())).toBe(false);
+    expect(isSerializableValue(new Set())).toBe(false);
+    expect(isSerializableValue(new Date())).toBe(false);
+    expect(isSerializableValue(new ComponentState())).toBe(false);
+
+    const nullPrototype = Object.assign(Object.create(null) as object, {
+      enabled: true,
+    });
+    expect(isSerializableValue(nullPrototype)).toBe(true);
+  });
 });

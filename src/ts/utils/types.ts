@@ -137,6 +137,9 @@ function isSerializableValueInternal(
     return result;
   }
   if (value !== null && typeof value === 'object') {
+    if (!hasPlainObjectPrototype(value)) {
+      return false;
+    }
     if (seen.has(value)) {
       return false;
     }
@@ -148,6 +151,15 @@ function isSerializableValueInternal(
     return result;
   }
   return false;
+}
+
+function hasPlainObjectPrototype(value: object): boolean {
+  try {
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === null || Object.getPrototypeOf(prototype) === null;
+  } catch {
+    return false;
+  }
 }
 
 /** @public */
