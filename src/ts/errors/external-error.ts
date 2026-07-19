@@ -1,7 +1,11 @@
-/** @public */
+/**
+ * Provides external error behavior.
+ * @public
+ */
 export abstract class ExternalError extends Error {
   /** @internal */
   constructor(
+    /** The stable error category. */
     public readonly type: string,
     message: string,
   ) {
@@ -9,18 +13,25 @@ export abstract class ExternalError extends Error {
   }
 }
 
-/** @public */
+/**
+ * Provides configuration error behavior.
+ * @public
+ */
 export class ConfigurationError extends ExternalError {
   /** @internal */
   constructor(
     message: string,
+    /** The configuration fragment associated with the error, when available. */
     public readonly node?: string,
   ) {
     super('Configuration', message);
   }
 }
 
-/** @public */
+/**
+ * Provides popout blocked error behavior.
+ * @public
+ */
 export class PopoutBlockedError extends ExternalError {
   /** @internal */
   constructor(message: string) {
@@ -28,7 +39,10 @@ export class PopoutBlockedError extends ExternalError {
   }
 }
 
-/** @public */
+/**
+ * Provides api error behavior.
+ * @public
+ */
 export class ApiError extends ExternalError {
   /** @internal */
   constructor(message: string) {
@@ -36,7 +50,10 @@ export class ApiError extends ExternalError {
   }
 }
 
-/** @public */
+/**
+ * Provides bind error behavior.
+ * @public
+ */
 export class BindError extends ExternalError {
   /** @internal */
   constructor(message: string) {

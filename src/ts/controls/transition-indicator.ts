@@ -24,18 +24,11 @@ export class TransitionIndicator {
     this._element.remove();
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   transitionElements(fromElement: HTMLElement, toElement: HTMLElement): void {
-    /**
-     * TODO - This is not quite as cool as expected. Review.
-     */
-    return;
-    // this._toElement = toElement;
-    // this._animationStartTime = now();
-    // this._fromDimensions = this._measure(fromElement);
-    // this._fromDimensions.opacity = 0.8;
-    // this._element.show().css(this._fromDimensions);
-    // animFrame(fnBind(this._nextAnimationFrame, this));
+    // Transitions are deliberately disabled until an accessible motion design
+    // is specified. Keep the hook because BrowserPopout owns this lifecycle.
+    void fromElement;
+    void toElement;
   }
 
   private nextAnimationFrame(): void {

@@ -22,3 +22,5 @@ The main contract changes are:
 - use `ComponentContainer`, `ContentItem`, and `ComponentItem`
 
 Migration support belongs to the tool and documentation, not to the Strelit runtime.
+
+Maintainers extending the codemod must follow the [migration tool maintenance contract](./migration-tool-maintenance.md).

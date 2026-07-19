@@ -56,6 +56,10 @@ import {
   i18nStrings,
 } from './utils/i18n-strings';
 import {
+  maximumConfigDepth,
+  maximumConfigNodes,
+} from './utils/resource-limits';
+import {
   ComponentType,
   ItemType,
   Rect,
@@ -76,12 +80,18 @@ declare global {
   }
 }
 
-/** @public */
+/**
+ * Represents layout manager before virtual recting event.
+ * @public
+ */
 export type LayoutManagerBeforeVirtualRectingEvent = (
   this: void,
   count: number,
 ) => void;
-/** @public */
+/**
+ * Represents layout manager after virtual recting event.
+ * @public
+ */
 export type LayoutManagerAfterVirtualRectingEvent = (this: void) => void;
 
 /** @internal */
@@ -89,6 +99,53 @@ export interface LayoutManagerConstructorParameters {
   subWindowLayoutConfig: LayoutConfig | undefined;
   isSubWindow: boolean;
   containerElement: HTMLElement | undefined;
+}
+
+function assertResolvedItemConfigWithinLimits(root: ResolvedItemConfig): void {
+  type ValidationFrame =
+    | { readonly config: ResolvedItemConfig; readonly depth: number }
+    | { readonly completed: ResolvedItemConfig };
+
+  const active = new WeakSet<object>();
+  const stack: ValidationFrame[] = [{ config: root, depth: 0 }];
+  let nodes = 0;
+
+  while (stack.length > 0) {
+    const frame = stack.pop();
+    if (frame === undefined) {
+      break;
+    }
+    if ('completed' in frame) {
+      active.delete(frame.completed);
+      continue;
+    }
+
+    const { config, depth } = frame;
+    if (depth > maximumConfigDepth || nodes >= maximumConfigNodes) {
+      throw new ConfigurationError(
+        'Resolved layout configuration exceeds resource limits',
+      );
+    }
+    if (active.has(config)) {
+      throw new ConfigurationError(
+        'Resolved layout configuration contains a cycle',
+      );
+    }
+
+    nodes++;
+    const content = config.content;
+    if (content.length > maximumConfigNodes - nodes) {
+      throw new ConfigurationError(
+        'Resolved layout configuration exceeds resource limits',
+      );
+    }
+
+    active.add(config);
+    stack.push({ completed: config });
+    for (let index = content.length - 1; index >= 0; index--) {
+      stack.push({ config: content[index], depth: depth + 1 });
+    }
+  }
 }
 
 /** @internal */
@@ -109,71 +166,116 @@ export function createLayoutManagerTabDropPlaceholderElement(
   return element;
 }
 
-/** @public */
+/**
+ * Defines the layout manager location contract.
+ * @public
+ */
 export interface LayoutManagerLocation {
+  /** The parent item. */
   parentItem: ContentItem;
+  /** The index. */
   index: number;
 }
 
-/** @public */
+/**
+ * Identifies supported layout manager location selector type id values.
+ * @public
+ */
 export const enum LayoutManagerLocationSelectorTypeId {
+  /** Uses the focused item value. */
   FocusedItem,
+  /** Uses the focused stack value. */
   FocusedStack,
+  /** Uses the first stack value. */
   FirstStack,
+  /** Uses the first row or column value. */
   FirstRowOrColumn,
+  /** Uses the first row value. */
   FirstRow,
+  /** Uses the first column value. */
   FirstColumn,
+  /** Uses the empty value. */
   Empty,
+  /** Uses the root value. */
   Root,
 }
 
-/** @public */
+/**
+ * Defines the layout manager location selector contract.
+ * @public
+ */
 export interface LayoutManagerLocationSelector {
+  /** The type id. */
   typeId: LayoutManagerLocationSelectorTypeId;
+  /** The index. */
   index?: number;
 }
 
-/** @public */
+/**
+ * Provides the layout manager default location selectors.
+ * @public
+ */
 export const layoutManagerDefaultLocationSelectors: readonly LayoutManagerLocationSelector[] =
   [
     {
+      /** The type id. */
       typeId: LayoutManagerLocationSelectorTypeId.FocusedStack,
+      /** The index. */
       index: undefined,
     },
     {
+      /** The type id. */
       typeId: LayoutManagerLocationSelectorTypeId.FirstStack,
+      /** The index. */
       index: undefined,
     },
     {
+      /** The type id. */
       typeId: LayoutManagerLocationSelectorTypeId.FirstRowOrColumn,
+      /** The index. */
       index: undefined,
     },
-    { typeId: LayoutManagerLocationSelectorTypeId.Root, index: undefined },
+    {
+      /** The type id. */
+      typeId: LayoutManagerLocationSelectorTypeId.Root,
+      /** The index. */
+      index: undefined,
+    },
   ];
 
 /** Location selectors that prefer placement after the focused item. @public */
 export const layoutManagerAfterFocusedItemIfPossibleLocationSelectors: readonly LayoutManagerLocationSelector[] =
   [
     {
+      /** The type id. */
       typeId: LayoutManagerLocationSelectorTypeId.FocusedItem,
+      /** The index. */
       index: 1,
     },
     {
+      /** The type id. */
       typeId: LayoutManagerLocationSelectorTypeId.FirstStack,
+      /** The index. */
       index: undefined,
     },
     {
+      /** The type id. */
       typeId: LayoutManagerLocationSelectorTypeId.FirstRowOrColumn,
+      /** The index. */
       index: undefined,
     },
-    { typeId: LayoutManagerLocationSelectorTypeId.Root, index: undefined },
+    {
+      /** The type id. */
+      typeId: LayoutManagerLocationSelectorTypeId.Root,
+      /** The index. */
+      index: undefined,
+    },
   ];
 
 /**
- * The main class that will be exposed as StrelitLayout.
+ * Coordinates the content tree, component binding, sizing, drag-and-drop, and popout lifecycle used by {@link StrelitLayout}.
+ * @public
  */
-
-/** @public */
 export abstract class LayoutManager extends EventEmitter {
   /** Whether the layout will be automatically be resized to container whenever the container's size is changed
    * Default is true if <body> is the container otherwise false
@@ -219,6 +321,8 @@ export abstract class LayoutManager extends EventEmitter {
   /** @internal */
   private _firstLoad = true;
   /** @internal */
+  private _contentItemTreeCreationDepth = 0;
+  /** @internal */
   private _eventHub = new EventHub(this);
   /** @internal */
   private _width: number | null = null;
@@ -248,15 +352,21 @@ export abstract class LayoutManager extends EventEmitter {
     ev: EventEmitterBubblingEvent,
   ) => this.cleanupBeforeMaximisedStackDestroyed(ev);
 
+  /** Whether sub window. */
   readonly isSubWindow: boolean;
+  /** The layout config. */
   layoutConfig!: ResolvedLayoutConfig;
 
+  /** The before virtual recting event. */
   beforeVirtualRectingEvent: LayoutManagerBeforeVirtualRectingEvent | undefined;
+  /** The after virtual recting event. */
   afterVirtualRectingEvent: LayoutManagerAfterVirtualRectingEvent | undefined;
 
+  /** Gets the container. */
   get container(): HTMLElement {
     return this._containerElement;
   }
+  /** Gets the is initialised. */
   get isInitialised(): boolean {
     return this._isInitialised;
   }
@@ -264,6 +374,7 @@ export abstract class LayoutManager extends EventEmitter {
   get groundItem(): GroundItem | undefined {
     return this._groundItem;
   }
+  /** Gets the open popouts. */
   get openPopouts(): BrowserPopout[] {
     return this._openPopouts;
   }
@@ -275,9 +386,11 @@ export abstract class LayoutManager extends EventEmitter {
   get transitionIndicator(): TransitionIndicator | null {
     return this._transitionIndicator;
   }
+  /** Gets the width. */
   get width(): number | null {
     return this._width;
   }
+  /** Gets the height. */
   get height(): number | null {
     return this._height;
   }
@@ -289,6 +402,7 @@ export abstract class LayoutManager extends EventEmitter {
   get eventHub(): EventHub {
     return this._eventHub;
   }
+  /** Gets the root item. */
   get rootItem(): ContentItem | undefined {
     if (this._groundItem === undefined) {
       throw new Error('Cannot access rootItem before init');
@@ -301,6 +415,7 @@ export abstract class LayoutManager extends EventEmitter {
       }
     }
   }
+  /** Gets the focused component item. */
   get focusedComponentItem(): ComponentItem | undefined {
     return this._focusedComponentItem;
   }
@@ -308,6 +423,7 @@ export abstract class LayoutManager extends EventEmitter {
   get tabDropPlaceholder(): HTMLElement {
     return this._tabDropPlaceholder;
   }
+  /** Gets the maximised stack. */
   get maximisedStack(): Stack | undefined {
     return this._maximisedStack;
   }
@@ -854,7 +970,12 @@ export abstract class LayoutManager extends EventEmitter {
     }
   }
 
-  /** @public */
+  /**
+   * Creates and initializes a content-item tree from a resolved configuration.
+   *
+   * @throws {@link ConfigurationError} When the supplied tree is cyclic, malformed, deeper than 128 items, or contains more than 10,000 nodes.
+   * @public
+   */
   createAndInitContentItem(
     config: ResolvedItemConfig,
     parent: ContentItem,
@@ -876,47 +997,56 @@ export abstract class LayoutManager extends EventEmitter {
     config: ResolvedItemConfig,
     parent: ContentItem,
   ): ContentItem {
-    if (typeof config.type !== 'string') {
-      throw new ConfigurationError(
-        "Missing parameter 'type'",
-        JSON.stringify(config),
-      );
+    if (this._contentItemTreeCreationDepth === 0) {
+      assertResolvedItemConfigWithinLimits(config);
     }
+    this._contentItemTreeCreationDepth++;
+    try {
+      if (typeof config.type !== 'string') {
+        throw new ConfigurationError(
+          "Missing parameter 'type'",
+          JSON.stringify(config),
+        );
+      }
 
-    /**
-     * We add an additional stack around every component that's not within a stack anyways.
-     */
-    if (
-      // If this is a component
-      isResolvedComponentItemConfig(config) &&
-      // and it's not already within a stack
-      !(parent instanceof Stack) &&
-      // and we have a parent
-      !!parent &&
-      // and it's not the topmost item in a new window
-      !(this.isSubWindow && parent instanceof GroundItem)
-    ) {
-      const stackConfig: ResolvedStackItemConfig = {
-        type: ItemType.stack,
-        content: [config],
-        size: config.size,
-        sizeUnit: config.sizeUnit,
-        minSize: config.minSize,
-        minSizeUnit: config.minSizeUnit,
-        id: config.id,
-        maximised: config.maximised,
-        isClosable: config.isClosable,
-        activeItemIndex: 0,
-        header: undefined,
-      };
+      /**
+       * We add an additional stack around every component that's not within a stack anyways.
+       */
+      if (
+        // If this is a component
+        isResolvedComponentItemConfig(config) &&
+        // and it's not already within a stack
+        !(parent instanceof Stack) &&
+        // and we have a parent
+        !!parent &&
+        // and it's not the topmost item in a new window
+        !(this.isSubWindow && parent instanceof GroundItem)
+      ) {
+        const stackConfig: ResolvedStackItemConfig = {
+          type: ItemType.stack,
+          content: [config],
+          size: config.size,
+          sizeUnit: config.sizeUnit,
+          minSize: config.minSize,
+          minSizeUnit: config.minSizeUnit,
+          id: config.id,
+          maximised: config.maximised,
+          isClosable: config.isClosable,
+          activeItemIndex: 0,
+          header: undefined,
+        };
 
-      config = stackConfig;
+        config = stackConfig;
+      }
+
+      const contentItem = this.createContentItemFromConfig(config, parent);
+      return contentItem;
+    } finally {
+      this._contentItemTreeCreationDepth--;
     }
-
-    const contentItem = this.createContentItemFromConfig(config, parent);
-    return contentItem;
   }
 
+  /** Finds first component item by id. */
   findFirstComponentItemById(id: string): ComponentItem | undefined {
     if (this._groundItem === undefined) {
       throw new UnexpectedUndefinedError('LMFFCIBI82446');
@@ -1369,6 +1499,7 @@ export abstract class LayoutManager extends EventEmitter {
     }
   }
 
+  /** Performs the check minimise maximised stack operation. */
   checkMinimiseMaximisedStack(): void {
     if (this._maximisedStack !== undefined) {
       this._maximisedStack.minimise();

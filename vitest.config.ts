@@ -5,6 +5,10 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./test/vitest.setup.ts'],
     include: ['test/specs/**/*-tests.ts'],
+    // jsdom workers are memory-heavy; bounded concurrency keeps CI and
+    // developer verification reliable on shared hosts.
+    maxWorkers: 1,
+    testTimeout: 60_000,
     globals: false,
     restoreMocks: true,
     clearMocks: true,

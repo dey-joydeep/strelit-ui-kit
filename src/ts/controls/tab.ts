@@ -55,22 +55,28 @@ export class Tab {
   private readonly _tabTitleChangedListener = (title: string) =>
     this.setTitle(title);
 
+  /** Gets the is active. */
   get isActive(): boolean {
     return this._isActive;
   }
   // get header(): Header { return this._header; }
+  /** Gets the component item. */
   get componentItem(): ComponentItem {
     return this._componentItem;
   }
+  /** Gets the element. */
   get element(): HTMLElement {
     return this._element;
   }
+  /** Gets the title element. */
   get titleElement(): HTMLElement {
     return this._titleElement;
   }
+  /** Gets the close element. */
   get closeElement(): HTMLElement | undefined {
     return this._closeElement;
   }
+  /** Gets the reorder enabled. */
   get reorderEnabled(): boolean {
     return this._dragListener !== undefined;
   }

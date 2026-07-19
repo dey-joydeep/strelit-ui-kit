@@ -25,12 +25,19 @@ import {
   type VirtualLayoutUnbindComponentEventHandler,
 } from './virtual-layout';
 
-/** @public */
+/**
+ * Defines the strelit layout virtual component contract.
+ * @public
+ */
 export interface StrelitLayoutVirtualComponent {
+  /** The root html element. */
   rootHtmlElement: HTMLElement;
 }
 
-/** @public */
+/**
+ * Represents strelit layout component constructor.
+ * @public
+ */
 export type StrelitLayoutComponentConstructor<
   TState extends SerializableValue = SerializableValue,
   TComponent extends ComponentContainerComponent = ComponentContainerComponent,
@@ -40,7 +47,10 @@ export type StrelitLayoutComponentConstructor<
   virtual: boolean,
 ) => TComponent;
 
-/** @public */
+/**
+ * Represents strelit layout component factory function.
+ * @public
+ */
 export type StrelitLayoutComponentFactoryFunction<
   TState extends SerializableValue = SerializableValue,
   TComponent extends ComponentContainerComponent = ComponentContainerComponent,
@@ -50,15 +60,21 @@ export type StrelitLayoutComponentFactoryFunction<
   virtual: boolean,
 ) => TComponent | undefined;
 
-/** @public */
+/**
+ * Defines the strelit layout component instantiator contract.
+ * @public
+ */
 export interface StrelitLayoutComponentInstantiator<
   TState extends SerializableValue = SerializableValue,
   TComponent extends ComponentContainerComponent = ComponentContainerComponent,
 > {
+  /** The constructor. */
   constructor:
     StrelitLayoutComponentConstructor<TState, TComponent> | undefined;
+  /** The factory function. */
   factoryFunction:
     StrelitLayoutComponentFactoryFunction<TState, TComponent> | undefined;
+  /** The virtual. */
   virtual: boolean;
 }
 
@@ -67,7 +83,10 @@ type AnyStrelitLayoutComponentInstantiator = StrelitLayoutComponentInstantiator<
   ComponentContainerComponent
 >;
 
-/** @public */
+/**
+ * Provides strelit layout behavior.
+ * @public
+ */
 export class StrelitLayout extends VirtualLayout {
   /** @internal */
   private _componentTypesMap = new Map<
@@ -207,6 +226,7 @@ export class StrelitLayout extends VirtualLayout {
     });
   }
 
+  /** Returns registered component type names. */
   getRegisteredComponentTypeNames(): string[] {
     const typeNamesIterableIterator = this._componentTypesMap.keys();
     return Array.from(typeNamesIterableIterator);
@@ -329,6 +349,7 @@ export class StrelitLayout extends VirtualLayout {
     }
   }
 
+  /** Performs the fire before virtual recting event operation. */
   override fireBeforeVirtualRectingEvent(count: number): void {
     this._strelitLayoutBoundingClientRect =
       this.container.getBoundingClientRect();

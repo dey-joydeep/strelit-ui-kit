@@ -18,7 +18,7 @@ export type EventHubChildEventDetail = {
 export type EventHubChildEventInit = CustomEventInit<EventHubChildEventDetail>;
 
 // Add our ChildEvent to WindowEventMap for type safety
-/** @public */
+/** Adds Strelit's cross-window event to the browser event map. @public */
 declare global {
   interface WindowEventMap {
     [eventHubChildEventName]: CustomEvent<EventHubChildEventDetail>;

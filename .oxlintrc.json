@@ -7,6 +7,11 @@
   "options": {
     "typeAware": true
   },
+  "plugins": ["typescript", "unicorn", "oxc", "jsdoc"],
+  "rules": {
+    "jsdoc/check-access": "error",
+    "jsdoc/check-tag-names": "error"
+  },
   "ignorePatterns": [
     ".codex/**",
     ".generated-docs/**",
@@ -33,6 +38,9 @@
       "files": ["test/**/*.ts"],
       "env": {
         "vitest": true
+      },
+      "rules": {
+        "jsdoc/check-tag-names": "off"
       }
     }
   ]

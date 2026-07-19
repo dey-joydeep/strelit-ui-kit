@@ -10,8 +10,12 @@ These pages document the current implementation, not the original Golden Layout 
 4. [Runtime: Drag and Drop](./runtime/drag-and-drop.md)
 5. [Runtime: Events and Focus](./runtime/events-and-focus.md)
 6. [Config: Resolution Pipeline](./config/config-resolution.md)
-7. [Migration: Modernization Status](./migration/modernization-status.md)
-8. [Migration: Golden Layout to Strelit](./migration/golden-layout-to-strelit.md)
+7. [Architecture: Recursive Input Limits](./architecture/resource-limits.md)
+8. [Migration: Modernization Status](./migration/modernization-status.md)
+9. [Migration: Golden Layout to Strelit](./migration/golden-layout-to-strelit.md)
+10. [Migration Tool Maintenance](./migration/migration-tool-maintenance.md)
+11. [Compatibility Audit Maintenance](./architecture/compatibility-audit-maintenance.md)
+12. [Verification Pipeline Maintenance](./contributing/verification-pipeline.md)
 
 ## Scope
 

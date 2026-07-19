@@ -18,52 +18,80 @@ import {
 } from '../utils/types';
 import { setElementHeight, setElementWidth } from '../utils/utils';
 
-/** @public */
+/**
+ * Represents component container component.
+ * @public
+ */
 export type ComponentContainerComponent = object;
-/** @public */
+/**
+ * Defines the component container bindable component contract.
+ * @public
+ */
 export interface ComponentContainerBindableComponent {
+  /** The component. */
   component: ComponentContainerComponent | undefined;
+  /** The virtual. */
   virtual: boolean;
 }
-/** @public */
+/**
+ * Represents component container state request event handler.
+ * @public
+ */
 export type ComponentContainerStateRequestEventHandler = (
   this: void,
 ) => SerializableValue | undefined;
-/** @public */
+/**
+ * Represents component container virtual recting required event.
+ * @public
+ */
 export type ComponentContainerVirtualRectingRequiredEvent = (
   this: void,
   container: ComponentContainer,
   width: number,
   height: number,
 ) => void;
-/** @public */
+/**
+ * Represents component container virtual visibility change required event.
+ * @public
+ */
 export type ComponentContainerVirtualVisibilityChangeRequiredEvent = (
   this: void,
   container: ComponentContainer,
   visible: boolean,
 ) => void;
-/** @public */
+/**
+ * Represents component container virtual zindex change required event.
+ * @public
+ */
 export type ComponentContainerVirtualZIndexChangeRequiredEvent = (
   this: void,
   container: ComponentContainer,
   logicalZIndex: LogicalZIndex,
   defaultZIndex: string,
 ) => void;
+/** Represents component container show event handler. */
 export type ComponentContainerShowEventHandler = (this: void) => void;
+/** Represents component container hide event handler. */
 export type ComponentContainerHideEventHandler = (this: void) => void;
+/** Represents component container focus event handler. */
 export type ComponentContainerFocusEventHandler = (
   this: void,
   suppressEvent: boolean,
 ) => void;
+/** Represents component container blur event handler. */
 export type ComponentContainerBlurEventHandler = (
   this: void,
   suppressEvent: boolean,
 ) => void;
+/** Represents component container update item config event handler. */
 export type ComponentContainerUpdateItemConfigEventHandler = (
   itemConfig: ResolvedComponentItemConfig,
 ) => void;
 
-/** @public */
+/**
+ * Provides component container behavior.
+ * @public
+ */
 export class ComponentContainer extends EventEmitter {
   /** @internal */
   private _componentType: ComponentType;
@@ -90,47 +118,63 @@ export class ComponentContainer extends EventEmitter {
   /** @internal */
   private _logicalZIndex!: LogicalZIndex;
 
+  /** The state request event. */
   stateRequestEvent: ComponentContainerStateRequestEventHandler | undefined;
+  /** The virtual recting required event. */
   virtualRectingRequiredEvent:
     ComponentContainerVirtualRectingRequiredEvent | undefined;
+  /** The virtual visibility change required event. */
   virtualVisibilityChangeRequiredEvent:
     ComponentContainerVirtualVisibilityChangeRequiredEvent | undefined;
+  /** The virtual zindex change required event. */
   virtualZIndexChangeRequiredEvent:
     ComponentContainerVirtualZIndexChangeRequiredEvent | undefined;
 
+  /** Gets the width. */
   get width(): number {
     return this._width;
   }
+  /** Gets the height. */
   get height(): number {
     return this._height;
   }
+  /** Gets the parent. */
   get parent(): ComponentItem {
     return this._parent;
   }
+  /** Gets the component type. */
   get componentType(): ComponentType {
     return this._componentType;
   }
+  /** Gets the virtual. */
   get virtual(): boolean {
     return this._boundComponent.virtual;
   }
+  /** Gets the component. */
   get component(): ComponentContainerComponent | undefined {
     return this._boundComponent.component;
   }
+  /** Gets the tab. */
   get tab(): Tab {
     return this._tab;
   }
+  /** Gets the title. */
   get title(): string {
     return this._parent.title;
   }
+  /** Gets the layout manager. */
   get layoutManager(): LayoutManager {
     return this._layoutManager;
   }
+  /** Gets the is hidden. */
   get isHidden(): boolean {
     return !this._visible;
   }
+  /** Gets the visible. */
   get visible(): boolean {
     return this._visible;
   }
+  /** Gets the state. */
   get state(): SerializableValue | undefined {
     return this._state;
   }
@@ -409,10 +453,12 @@ export class ComponentContainer extends EventEmitter {
     }
   }
 
+  /** Sets base logical zindex. */
   setBaseLogicalZIndex(): void {
     this.setLogicalZIndex(LogicalZIndex.base);
   }
 
+  /** Sets logical zindex. */
   setLogicalZIndex(logicalZIndex: LogicalZIndex): void {
     if (logicalZIndex !== this._logicalZIndex) {
       this._logicalZIndex = logicalZIndex;
@@ -564,5 +610,3 @@ export class ComponentContainer extends EventEmitter {
     );
   }
 }
-
-/** @public */

@@ -6,6 +6,18 @@
   "readme": "README.md",
   "excludePrivate": true,
   "excludeProtected": true,
+  "validation": {
+    "notDocumented": true
+  },
+  "treatValidationWarningsAsErrors": true,
+  "intentionallyNotDocumented": [
+    "Tab.reorderEnabled",
+    "ContentItem.id",
+    "ComponentItem.id",
+    "ComponentParentableItem.id",
+    "RowOrColumn.id",
+    "Stack.id"
+  ],
   "exclude": [
     "./src/ts/controls/drop-target-indicator.ts",
     "./src/ts/controls/header-button.ts",

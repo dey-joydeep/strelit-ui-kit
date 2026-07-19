@@ -26,9 +26,20 @@ Add when relevant:
 
 ```bash
 npm run apitest:build
+npm run apitest:smoke
 npm run doc
 npm run bench
 ```
+
+Oxlint validates JSDoc access and tag syntax. Every new or changed public API must also have a meaningful summary and document observable errors or limits. The required lint command runs TypeDoc's strict public-documentation audit after Oxlint. It can also be run independently with:
+
+```bash
+npm run lint:docs
+```
+
+The TypeDoc configuration excludes only setter reflections whose contracts are documented on their getters, as required by API Extractor. It does not exempt undocumented public declarations.
+
+Maintainer-facing Node scripts are not part of the generated public API, but their processing stages, safety invariants, extension points, and release checks must be documented. See the [migration tool](../migration/migration-tool-maintenance.md), [compatibility audit](../architecture/compatibility-audit-maintenance.md), and [verification pipeline](./verification-pipeline.md) maintenance guides.
 
 ## Priority Questions For This Repo
 

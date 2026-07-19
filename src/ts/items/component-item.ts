@@ -21,7 +21,10 @@ import {
 import { ComponentParentableItem } from './component-parentable-item';
 import { ContentItem } from './content-item';
 
-/** @public */
+/**
+ * Provides component item behavior.
+ * @public
+ */
 export class ComponentItem extends ContentItem {
   /** @internal */
   private _reorderEnabled: boolean;
@@ -38,9 +41,11 @@ export class ComponentItem extends ContentItem {
   /** @internal */
   private _focused = false;
 
+  /** Gets the component type. */
   get componentType(): ComponentType {
     return this._container.componentType;
   }
+  /** Gets the reorder enabled. */
   get reorderEnabled(): boolean {
     return this._reorderEnabled;
   }
@@ -48,25 +53,32 @@ export class ComponentItem extends ContentItem {
   get initialWantMaximise(): boolean {
     return this._initialWantMaximise;
   }
+  /** Gets the component. */
   get component(): ComponentContainerComponent | undefined {
     return this._container.component;
   }
+  /** Gets the container. */
   get container(): ComponentContainer {
     return this._container;
   }
+  /** Gets the parent item. */
   get parentItem(): ComponentParentableItem {
     return this._parentItem;
   }
 
+  /** Gets the header config. */
   get headerConfig(): ResolvedHeaderedItemConfigHeader | undefined {
     return this._headerConfig;
   }
+  /** Gets the title. */
   get title(): string {
     return this._title;
   }
+  /** Gets the tab. */
   get tab(): Tab {
     return this._tab;
   }
+  /** Gets the focused. */
   get focused(): boolean {
     return this._focused;
   }
@@ -110,11 +122,13 @@ export class ComponentItem extends ContentItem {
     super.destroy();
   }
 
+  /** Performs the apply updatable config operation. */
   applyUpdatableConfig(config: ResolvedComponentItemConfig): void {
     this.setTitle(config.title);
     this._headerConfig = config.header;
   }
 
+  /** Performs the to config operation. */
   toConfig(): ResolvedComponentItemConfig {
     const stateRequestEvent = this._container.stateRequestEvent;
     const state =
@@ -142,6 +156,7 @@ export class ComponentItem extends ContentItem {
     return result;
   }
 
+  /** Performs the close operation. */
   close(): void {
     if (this.parent === null) {
       throw new UnexpectedNullError('CIC68883');
@@ -206,6 +221,7 @@ export class ComponentItem extends ContentItem {
     this.emitBaseBubblingEvent('stateChanged');
   }
 
+  /** Sets tab. */
   setTab(tab: Tab): void {
     this._tab = tab;
     this.emit('tab', tab);
@@ -280,5 +296,8 @@ export class ComponentItem extends ContentItem {
   }
 }
 
-/** @public */
+/**
+ * Represents component item component.
+ * @public
+ */
 export type ComponentItemComponent = ComponentContainerComponent;

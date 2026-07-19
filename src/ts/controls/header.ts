@@ -127,35 +127,45 @@ export class Header extends EventEmitter {
   // /** @internal */
   // private _activeComponentItem: ComponentItem | null = null; // only used to identify active tab
 
+  /** Gets the show. */
   get show(): boolean {
     return this._show;
   }
+  /** Gets the side. */
   get side(): Side {
     return this._side;
   }
+  /** Gets the left right sided. */
   get leftRightSided(): boolean {
     return this._leftRightSided;
   }
 
+  /** Gets the layout manager. */
   get layoutManager(): LayoutManager {
     return this._layoutManager;
   }
+  /** Gets the parent. */
   get parent(): Stack {
     return this._parent;
   }
+  /** Gets the tabs. */
   get tabs(): Tab[] {
     return this._tabsContainer.tabs;
   }
+  /** Gets the last visible tab index. */
   get lastVisibleTabIndex(): number {
     return this._tabsContainer.lastVisibleTabIndex;
   }
 
+  /** Gets the element. */
   get element(): HTMLElement {
     return this._element;
   }
+  /** Gets the tabs container element. */
   get tabsContainerElement(): HTMLElement {
     return this._tabsContainer.element;
   }
+  /** Gets the controls container element. */
   get controlsContainerElement(): HTMLElement {
     return this._controlsContainerElement;
   }

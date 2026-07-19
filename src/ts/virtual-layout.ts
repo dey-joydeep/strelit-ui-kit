@@ -21,13 +21,19 @@ import {
 import { DomConstants } from './utils/dom-constants';
 import { I18nStringId, i18nStrings } from './utils/i18n-strings';
 
-/** @public */
+/**
+ * Represents virtual layout bind component event handler.
+ * @public
+ */
 export type VirtualLayoutBindComponentEventHandler = (
   this: void,
   container: ComponentContainer,
   itemConfig: ResolvedComponentItemConfig,
 ) => ComponentContainerBindableComponent;
-/** @public */
+/**
+ * Represents virtual layout unbind component event handler.
+ * @public
+ */
 export type VirtualLayoutUnbindComponentEventHandler = (
   this: void,
   container: ComponentContainer,
@@ -66,9 +72,14 @@ export function createVirtualLayoutManagerConstructorParameters(
   };
 }
 
-/** @public */
+/**
+ * Provides virtual layout behavior.
+ * @public
+ */
 export class VirtualLayout extends LayoutManager {
+  /** The bind component event. */
   bindComponentEvent: VirtualLayoutBindComponentEventHandler | undefined;
+  /** The unbind component event. */
   unbindComponentEvent: VirtualLayoutUnbindComponentEventHandler | undefined;
 
   /** @internal */
@@ -124,6 +135,7 @@ export class VirtualLayout extends LayoutManager {
     }
   }
 
+  /** Performs the destroy operation. */
   override destroy(): void {
     super.destroy();
 

@@ -2,6 +2,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const ts = require('typescript');
 
+/**
+ * Consumer migration CLI. Transformations are intentionally kept in this
+ * executable so tests exercise the same parsing, discovery, and write path as
+ * customers. See docs/migration/migration-tool-maintenance.md.
+ */
+
 const usage = `Usage:
   npm run migrate:golden-layout -- --target <path> [--from auto|v1|v2] [--dry-run]
   npm run migrate:golden-layout -- --target <path> [--from auto|v1|v2] --write
@@ -418,6 +424,7 @@ const manualReviewPatterns = [
   },
 ];
 
+/** Maps a supported source extension to its TypeScript parser mode. */
 function scriptKindForExtension(extension) {
   switch (extension) {
     case '.tsx':
@@ -433,6 +440,7 @@ function scriptKindForExtension(extension) {
   }
 }
 
+/** Returns a dotted property or qualified type name when syntax is static. */
 function getDottedName(node, sourceFile) {
   if (!ts.isPropertyAccessExpression(node) && !ts.isQualifiedName(node)) {
     return undefined;
@@ -440,6 +448,7 @@ function getDottedName(node, sourceFile) {
   return node.getText(sourceFile);
 }
 
+/** Applies non-overlapping edits from right to left to preserve source offsets. */
 function applyTextEdits(content, edits) {
   const ordered = [...edits].sort((left, right) => right.start - left.start);
   let transformed = content;
@@ -468,6 +477,7 @@ function addBindingName(name, bindings) {
   }
 }
 
+/** Collects local bindings and existing Strelit imports for collision avoidance. */
 function collectSourceBindings(sourceFile) {
   const bindings = new Set();
   const importedNames = new Map();
@@ -531,6 +541,7 @@ function classifyReceiverType(typeNode, sourceFile) {
   return receiverTypeKinds.get(typeName);
 }
 
+/** Classifies statically provable API receivers used by method migrations. */
 function collectReceiverKinds(sourceFile) {
   const receiverKinds = new Map();
 
@@ -567,6 +578,98 @@ function collectReceiverKinds(sourceFile) {
   return receiverKinds;
 }
 
+function findObjectProperty(objectLiteral, propertyName) {
+  return objectLiteral.properties.find(
+    (property) =>
+      ts.isPropertyAssignment(property) &&
+      ((ts.isIdentifier(property.name) &&
+        property.name.text === propertyName) ||
+        (ts.isStringLiteral(property.name) &&
+          property.name.text === propertyName)),
+  );
+}
+
+function isLayoutItemObjectLiteral(objectLiteral) {
+  const typeProperty = findObjectProperty(objectLiteral, 'type');
+  if (typeProperty === undefined) {
+    return false;
+  }
+
+  const typeText = typeProperty.initializer.getText();
+  return /(?:^|\.)(?:row|column|stack|component)$/.test(
+    typeText.replaceAll(/["']/g, ''),
+  );
+}
+
+function isLayoutDimensionsObjectLiteral(objectLiteral) {
+  const parent = objectLiteral.parent;
+  return (
+    ts.isPropertyAssignment(parent) &&
+    parent.initializer === objectLiteral &&
+    ((ts.isIdentifier(parent.name) && parent.name.text === 'dimensions') ||
+      (ts.isStringLiteral(parent.name) && parent.name.text === 'dimensions'))
+  );
+}
+
+/** Returns a modern size-property replacement for an unambiguous numeric field. */
+function getNumericPropertyMigration(node) {
+  if (
+    !ts.isPropertyAssignment(node) ||
+    !ts.isObjectLiteralExpression(node.parent) ||
+    !ts.isNumericLiteral(node.initializer)
+  ) {
+    return undefined;
+  }
+
+  const propertyName = ts.isIdentifier(node.name)
+    ? node.name.text
+    : ts.isStringLiteral(node.name)
+      ? node.name.text
+      : undefined;
+  if (propertyName === undefined) {
+    return undefined;
+  }
+
+  if (propertyName === 'minItemWidth' || propertyName === 'minItemHeight') {
+    if (!isLayoutDimensionsObjectLiteral(node.parent)) {
+      return undefined;
+    }
+    const axis = propertyName === 'minItemWidth' ? 'Width' : 'Height';
+    return `defaultMinItem${axis}: '${node.initializer.text}px'`;
+  }
+
+  if (!isLayoutItemObjectLiteral(node.parent)) {
+    return undefined;
+  }
+
+  const migration =
+    propertyName === 'width' || propertyName === 'height'
+      ? { target: 'size', unit: '%' }
+      : propertyName === 'minWidth' || propertyName === 'minHeight'
+        ? { target: 'minSize', unit: 'px' }
+        : undefined;
+  if (migration === undefined) {
+    return undefined;
+  }
+
+  const competingProperty =
+    propertyName === 'width'
+      ? 'height'
+      : propertyName === 'height'
+        ? 'width'
+        : propertyName === 'minWidth'
+          ? 'minHeight'
+          : 'minWidth';
+  if (
+    findObjectProperty(node.parent, migration.target) !== undefined ||
+    findObjectProperty(node.parent, competingProperty) !== undefined
+  ) {
+    return undefined;
+  }
+
+  return `${migration.target}: '${node.initializer.text}${migration.unit}'`;
+}
+
 function migrateImportSpecifier(specifier) {
   const importedName = specifier.propertyName?.text ?? specifier.name.text;
   const migratedName =
@@ -596,6 +699,7 @@ function createDefaultImportClause(importClause) {
   return `{ ${[defaultBinding, ...named].join(', ')} }`;
 }
 
+/** Migrates one JavaScript or TypeScript source file through syntax-aware edits. */
 function transformSourceContent(content, filePath) {
   const normalized = content;
   const applied = [];
@@ -644,6 +748,12 @@ function transformSourceContent(content, filePath) {
   }
 
   function visit(node) {
+    const numericPropertyMigration = getNumericPropertyMigration(node);
+    if (numericPropertyMigration !== undefined) {
+      addEdit(node, numericPropertyMigration, 'numeric layout item sizing');
+      return;
+    }
+
     if (
       (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
       node.moduleSpecifier !== undefined &&
@@ -829,6 +939,7 @@ function transformSourceContent(content, filePath) {
   };
 }
 
+/** Migrates a package or published style subpath while preserving URL suffixes. */
 function migratePackagePath(specifier) {
   if (specifier === 'golden-layout') {
     return 'strelit-ui-kit';
@@ -879,6 +990,7 @@ function isLayoutConfig(value) {
   );
 }
 
+/** Migrates one recognized saved-layout item and records lossy cases. */
 function transformLayoutItem(item, itemPath, manualReviews, sourceVersion) {
   if (!isLayoutItem(item)) {
     manualReviews.add(`${itemPath} is not a recognized layout item`);
@@ -961,6 +1073,7 @@ function transformLayoutItem(item, itemPath, manualReviews, sourceVersion) {
   }
 }
 
+/** Consolidates legacy header settings into the current header schema. */
 function migrateHeader(layoutConfig) {
   const settings = isRecord(layoutConfig.settings) ? layoutConfig.settings : {};
   const labels = isRecord(layoutConfig.labels) ? layoutConfig.labels : {};
@@ -1013,6 +1126,7 @@ function migrateHeader(layoutConfig) {
   }
 }
 
+/** Migrates a layout or popout config recursively into the Strelit schema. */
 function transformLayoutConfig(
   layoutConfig,
   configPath,
@@ -1080,6 +1194,7 @@ function transformLayoutConfig(
   }
 }
 
+/** Parses and migrates JSON only when it has a recognized layout shape. */
 function transformJsonContent(content, sourceVersion = 'auto') {
   let parsed;
   try {
@@ -1101,6 +1216,7 @@ function transformJsonContent(content, sourceVersion = 'auto') {
   };
 }
 
+/** Parses CLI arguments and preserves dry-run as the safe default. */
 function parseArguments(argv) {
   let target;
   let write = false;
@@ -1154,8 +1270,36 @@ function shouldProcessFile(filePath) {
   return textFileExtensions.has(path.extname(filePath).toLowerCase());
 }
 
-function walk(entryPath, result) {
-  const stat = fs.statSync(entryPath);
+function isPathWithin(rootPath, candidatePath) {
+  const relative = path.relative(rootPath, candidatePath);
+  return (
+    relative === '' ||
+    (relative !== '..' &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative))
+  );
+}
+
+/** Rejects link-based escapes and verifies canonical target containment. */
+function assertSafeMigrationPath(entryPath, canonicalRoot) {
+  const stat = fs.lstatSync(entryPath);
+  if (stat.isSymbolicLink()) {
+    throw new Error(`Refusing symbolic link or reparse point: ${entryPath}`);
+  }
+  if (stat.isFile() && stat.nlink > 1) {
+    throw new Error(`Refusing multiply-linked file: ${entryPath}`);
+  }
+
+  const canonicalEntry = fs.realpathSync.native(entryPath);
+  if (!isPathWithin(canonicalRoot, canonicalEntry)) {
+    throw new Error(`Refusing path outside migration target: ${entryPath}`);
+  }
+  return stat;
+}
+
+/** Discovers supported files without traversing ignored or unsafe entries. */
+function walk(entryPath, result, canonicalRoot) {
+  const stat = assertSafeMigrationPath(entryPath, canonicalRoot);
   if (stat.isDirectory()) {
     const name = path.basename(entryPath);
     if (ignoredDirectories.has(name)) {
@@ -1163,13 +1307,14 @@ function walk(entryPath, result) {
     }
 
     for (const entry of fs.readdirSync(entryPath)) {
-      walk(path.join(entryPath, entry), result);
+      walk(path.join(entryPath, entry), result, canonicalRoot);
     }
   } else if (shouldProcessFile(entryPath)) {
     result.push(entryPath);
   }
 }
 
+/** Dispatches one file to its syntax-, schema-, or text-aware transformer. */
 function transformContent(content, filePath, options = {}) {
   if (path.extname(filePath).toLowerCase() === '.json') {
     const jsonResult = transformJsonContent(
@@ -1225,6 +1370,7 @@ function transformContent(content, filePath, options = {}) {
   };
 }
 
+/** Adds collision-safe named imports requested by source transformations. */
 function addRequiredImports(content, requiredImports) {
   const entries =
     requiredImports instanceof Map
@@ -1276,6 +1422,7 @@ function addRequiredImports(content, requiredImports) {
   return `import { ${names.join(', ')} } from 'strelit-ui-kit';\n${content}`;
 }
 
+/** Executes discovery, dry-run reporting, and guarded write-mode updates. */
 function main() {
   const { target, write, sourceVersion } = parseArguments(
     process.argv.slice(2),
@@ -1284,12 +1431,19 @@ function main() {
     throw new Error(`Target does not exist: ${target}`);
   }
 
+  const targetStat = fs.lstatSync(target);
+  if (targetStat.isSymbolicLink()) {
+    throw new Error(`Refusing symbolic link or reparse point: ${target}`);
+  }
+  const canonicalTarget = fs.realpathSync.native(target);
+
   const files = [];
-  walk(target, files);
+  walk(canonicalTarget, files, canonicalTarget);
 
   let changedFileCount = 0;
   let manualReviewFileCount = 0;
   for (const filePath of files) {
+    assertSafeMigrationPath(filePath, canonicalTarget);
     const original = fs.readFileSync(filePath, 'utf8');
     const { transformed, applied, manualReviews } = transformContent(
       original,
@@ -1304,6 +1458,7 @@ function main() {
       );
 
       if (write) {
+        assertSafeMigrationPath(filePath, canonicalTarget);
         fs.writeFileSync(filePath, transformed);
       }
     }

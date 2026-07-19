@@ -80,7 +80,10 @@ export function createRowOrColumnElement(
   return element;
 }
 
-/** @public */
+/**
+ * Provides row or column behavior.
+ * @public
+ */
 export class RowOrColumn extends ContentItem {
   /** @internal */
   private readonly _childElementContainer: HTMLElement;
@@ -141,6 +144,7 @@ export class RowOrColumn extends ContentItem {
     }
   }
 
+  /** Creates component. */
   newComponent(
     componentType: ComponentType,
     componentState?: SerializableValue,
@@ -156,6 +160,7 @@ export class RowOrColumn extends ContentItem {
     return this.newItem(itemConfig, index) as ComponentItem;
   }
 
+  /** Adds component. */
   addComponent(
     componentType: ComponentType,
     componentState?: SerializableValue,
@@ -171,6 +176,7 @@ export class RowOrColumn extends ContentItem {
     return this.addItem(itemConfig, index);
   }
 
+  /** Creates item. */
   newItem(
     itemConfig: RowOrColumnItemConfig | StackItemConfig | ComponentItemConfig,
     index?: number,
@@ -186,6 +192,7 @@ export class RowOrColumn extends ContentItem {
     }
   }
 
+  /** Adds item. */
   addItem(
     itemConfig: RowOrColumnItemConfig | StackItemConfig | ComponentItemConfig,
     index?: number,
@@ -370,6 +377,7 @@ export class RowOrColumn extends ContentItem {
     this.initContentItems();
   }
 
+  /** Performs the to config operation. */
   toConfig(): ResolvedRowOrColumnItemConfig {
     const result: ResolvedRowOrColumnItemConfig = {
       type: this.type as 'row' | 'column',

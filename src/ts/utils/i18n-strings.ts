@@ -1,16 +1,29 @@
 import { AssertError } from '../errors/internal-error';
 
-/** @public */
+/**
+ * Identifies supported i18n string id values.
+ * @public
+ */
 export const enum I18nStringId {
+  /** Uses the popout cannot be created with ground item config value. */
   PopoutCannotBeCreatedWithGroundItemConfig,
+  /** Uses the please register aconstructor function value. */
   PleaseRegisterAConstructorFunction,
+  /** Uses the component type not registered and bind component event handler not assigned value. */
   ComponentTypeNotRegisteredAndBindComponentEventHandlerNotAssigned,
+  /** Uses the component is already registered value. */
   ComponentIsAlreadyRegistered,
+  /** Uses the component is not virtual value. */
   ComponentIsNotVirtual,
+  /** Uses the virtual component does not have root html element value. */
   VirtualComponentDoesNotHaveRootHtmlElement,
+  /** Uses the item config is not type component value. */
   ItemConfigIsNotTypeComponent,
+  /** Uses the invalid number part in size string value. */
   InvalidNumberPartInSizeString,
+  /** Uses the unknown unit in size string value. */
   UnknownUnitInSizeString,
+  /** Uses the unsupported unit in size string value. */
   UnsupportedUnitInSizeString,
 }
 
@@ -73,13 +86,22 @@ const i18nStringInfosObject: I18nStringInfosObject = {
 const i18nStringInfos = Object.values(i18nStringInfosObject);
 let i18nStringsInitialised = false;
 
-/** @public */
+/**
+ * Provides the i18n string count.
+ * @public
+ */
 export const i18nStringCount = Object.keys(i18nStringInfosObject).length;
 
-/** @public */
+/**
+ * Provides the i18n strings.
+ * @public
+ */
 export const i18nStrings = Array<string>(i18nStringCount);
 
-/** @public */
+/**
+ * Performs the check i18n strings initialise operation.
+ * @public
+ */
 export function checkI18nStringsInitialise(): void {
   if (!i18nStringsInitialised) {
     for (let i = 0; i < i18nStringCount; i++) {

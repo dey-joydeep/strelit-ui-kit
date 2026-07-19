@@ -8,6 +8,7 @@ Strelit UI Kit is a TypeScript docking and workspace layout library derived from
 - Fast test runner with `Vitest`
 - API demo app served with `Vite`
 - Linting with `Oxlint`
+- JSDoc access and tag validation during linting
 - Formatting with `Prettier`
 - API surface checks with `api-extractor`
 - HTML docs generated with `TypeDoc`
@@ -45,6 +46,8 @@ npm run doc
 npm run apitest:serve
 npm run migrate:golden-layout -- --target ../my-app --dry-run
 ```
+
+Public API documentation is generated with TypeDoc. `npm run lint` rejects undocumented public reflections, and new or changed public APIs must include a meaningful contract, including relevant failure and resource-limit behavior.
 
 Benchmark workflows:
 

@@ -55,6 +55,7 @@ export class BrowserPopout extends EventEmitter {
     this.createWindow();
   }
 
+  /** Performs the to config operation. */
   toConfig(): ResolvedPopoutLayoutConfig {
     if (!this._isInitialised) {
       throw new Error("Can't create config, layout not yet initialised");
@@ -95,6 +96,7 @@ export class BrowserPopout extends EventEmitter {
     return config;
   }
 
+  /** Returns strelit instance. */
   getStrelitInstance(): LayoutManager {
     if (this._popoutWindow === null) {
       throw new UnexpectedNullError('BPGGI24693');
@@ -114,6 +116,7 @@ export class BrowserPopout extends EventEmitter {
     return this._popoutWindow;
   }
 
+  /** Performs the close operation. */
   close(): void {
     if (this.getStrelitInstance()) {
       this.getStrelitInstance().closeWindow();

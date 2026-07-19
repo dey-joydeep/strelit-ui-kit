@@ -1,9 +1,6 @@
 @use '../strelit-base.scss';
 @use 'strelit-icons' as icons;
 
-// TODO
-// Images should be changed to SVG sprites so that colors can be changed
-
 // Color variables (appears count calculates by raw css)
 $baseBkgdColor: var(--color-layout-base-bkgd, #000000); // Appears 7 times
 $singlePaneContentBkgdColor: var(

@@ -30,8 +30,21 @@ The tool currently rewrites:
 - receiver-aware layout, container, and stack methods such as `toConfig()` -> `saveLayout()` when the receiver can be proven
 - dotted config helpers such as `LayoutConfig.resolve()` -> named module functions
 - saved-layout fields including `content`, `componentName`, numeric sizing, array IDs, header settings, labels, and legacy popout dimensions
+- numeric `width`, `height`, `minWidth`, `minHeight`, `minItemWidth`, and `minItemHeight` fields in typed layout literals when their replacement is unambiguous
 
 The migration is idempotent: running it again on migrated input makes no further changes.
+
+Dry-run is the default and is verified to leave every target file byte-for-byte unchanged. Write mode rejects symbolic links, Windows reparse points, and multiply linked files, and rechecks real-path containment before every read and write.
+
+## Demo-Based Verification
+
+The migrator is tested by launching the real command-line process, not by calling private transformer functions. The suite covers dry-run and write mode, idempotence, v1 and v2 source compilation against the current Strelit public API, saved-layout load/save/reload behavior, and filesystem-containment failures.
+
+The Golden Layout v2.6 API demo was also migrated from a fresh sibling-repository copy. Its deterministic source transformations complete without sizing warnings. A representative `v2-api-demo.ts` fixture, including the original demo's numeric item and dimension sizing forms, is retained in the automated compile suite to prevent regression.
+
+The current `apitest/` application was modernized manually beyond API migration: its webpack harness became Vite, formatting was updated, package-internal imports were changed to the Strelit source entry point, and local variables and visible copy were rebranded. Those build-system and presentation changes are intentionally outside the consumer migration tool.
+
+Maintainers can reproduce its production-build browser check with `npm run apitest:smoke`. Changes to the codemod must follow the [migration tool maintenance contract](./migration-tool-maintenance.md).
 
 ## What Still Needs Manual Review
 
@@ -47,6 +60,7 @@ The migration helper is intentionally conservative. You should still review:
 - computed API access and dynamic imports
 - custom theme overrides or DOM selectors
 - framework integrations that relied on older binding patterns
+- project-specific build tooling, aliases, relative package-internal imports, local variable names, and visible product copy
 
 ## Key Product Differences
 
@@ -66,3 +80,4 @@ Strelit UI Kit is not a re-published Golden Layout package. Expect these differe
 4. Fix any application-specific breakages by hand.
 5. Rebuild and retest your application.
 6. Resolve every manual-review warning before compiling against Strelit.
+7. Run the migrated application's own typecheck, build, and behavioral tests; a warning-free codemod run is not a substitute for application verification.

@@ -16,6 +16,10 @@ import {
   splitStringAtFirstNonNumericChar,
 } from '../utils/utils';
 import {
+  maximumConfigDepth,
+  maximumConfigNodes,
+} from '../utils/resource-limits';
+import {
   createResolvedHeaderedItemConfigHeaderCopy,
   createResolvedLayoutConfigHeaderCopy,
   createResolvedLayoutConfigSettingsCopy,
@@ -44,7 +48,7 @@ import {
   type ResolvedStackItemConfig,
 } from './resolved-config';
 
-/** @public */
+/** User-facing configuration shared by every layout item. @public */
 export interface ItemConfig {
   /**
    * The type of the item. Possible values are 'row', 'column', 'stack', 'component'.
@@ -88,51 +92,124 @@ export interface ItemConfig {
   isClosable?: boolean;
 }
 
-/** @public */
+/**
+ * Normalizes an item configuration and recursively resolves its descendants.
+ *
+ * @throws {@link ConfigurationError} When the tree is cyclic, malformed, deeper than 128 items, or contains more than 10,000 resolved nodes.
+ * @public
+ */
 export function resolveItemConfig(itemConfig: ItemConfig): ResolvedItemConfig {
-  switch (itemConfig.type) {
-    case ItemType.ground:
-      throw new ConfigurationError(
-        'ItemConfig cannot specify type ground',
-        JSON.stringify(itemConfig),
-      );
-    case ItemType.row:
-    case ItemType.column:
-      return resolveRowOrColumnItemConfig(itemConfig as RowOrColumnItemConfig);
+  return resolveItemConfigWithBudget(itemConfig, createResolutionBudget(), 0);
+}
 
-    case ItemType.stack:
-      return resolveStackItemConfig(itemConfig as StackItemConfig);
+interface LayoutResolutionBudget {
+  nodes: number;
+  readonly active: WeakSet<object>;
+}
 
-    case ItemType.component:
-      return resolveComponentItemConfig(itemConfig as ComponentItemConfig);
+function createResolutionBudget(): LayoutResolutionBudget {
+  return { nodes: 0, active: new WeakSet<object>() };
+}
 
-    default:
-      throw new UnreachableCaseError('UCUICR55499', itemConfig.type);
+function resolveItemConfigWithBudget(
+  itemConfig: ItemConfig,
+  budget: LayoutResolutionBudget,
+  depth: number,
+): ResolvedItemConfig {
+  if (depth > maximumConfigDepth || budget.nodes >= maximumConfigNodes) {
+    throw new ConfigurationError(
+      'Layout configuration exceeds resource limits',
+    );
+  }
+  if (budget.active.has(itemConfig)) {
+    throw new ConfigurationError('Layout configuration contains a cycle');
+  }
+
+  budget.nodes++;
+  budget.active.add(itemConfig);
+  try {
+    switch (itemConfig.type) {
+      case ItemType.ground:
+        throw new ConfigurationError(
+          'ItemConfig cannot specify type ground',
+          JSON.stringify(itemConfig),
+        );
+      case ItemType.row:
+      case ItemType.column:
+        return resolveRowOrColumnItemConfigWithBudget(
+          itemConfig as RowOrColumnItemConfig,
+          budget,
+          depth,
+        );
+
+      case ItemType.stack:
+        return resolveStackItemConfigWithBudget(
+          itemConfig as StackItemConfig,
+          budget,
+          depth,
+        );
+
+      case ItemType.component:
+        return resolveComponentItemConfig(itemConfig as ComponentItemConfig);
+
+      default:
+        throw new UnreachableCaseError('UCUICR55499', itemConfig.type);
+    }
+  } finally {
+    budget.active.delete(itemConfig);
   }
 }
 
-/** @public */
+/**
+ * Resolves an optional list of item configurations using one shared resource budget.
+ *
+ * @throws {@link ConfigurationError} When the content is cyclic, malformed, deeper than 128 items, or contains more than 10,000 resolved nodes.
+ * @public
+ */
 export function resolveItemConfigContent(
   content: ItemConfig[] | undefined,
+): ResolvedItemConfig[] {
+  return resolveItemConfigContentWithBudget(
+    content,
+    createResolutionBudget(),
+    0,
+  );
+}
+
+function resolveItemConfigContentWithBudget(
+  content: ItemConfig[] | undefined,
+  budget: LayoutResolutionBudget,
+  depth: number,
 ): ResolvedItemConfig[] {
   if (content === undefined) {
     return [];
   } else {
     const count = content.length;
+    if (count > maximumConfigNodes - budget.nodes) {
+      throw new ConfigurationError(
+        'Layout configuration exceeds resource limits',
+      );
+    }
     const result = Array<ResolvedItemConfig>(count);
     for (let i = 0; i < count; i++) {
-      result[i] = resolveItemConfig(content[i]);
+      result[i] = resolveItemConfigWithBudget(content[i], budget, depth);
     }
     return result;
   }
 }
 
-/** @public */
+/**
+ * Resolves item config id.
+ * @public
+ */
 export function resolveItemConfigId(id: string | undefined): string {
   return id ?? resolvedItemConfigDefaults.id;
 }
 
-/** @public */
+/**
+ * Resolves item config size.
+ * @public
+ */
 export function resolveItemConfigSize(size: string | undefined): SizeWithUnit {
   return size === undefined
     ? {
@@ -142,7 +219,10 @@ export function resolveItemConfigSize(size: string | undefined): SizeWithUnit {
     : parseSize(size, [SizeUnit.Percent, SizeUnit.Fractional]);
 }
 
-/** @public */
+/**
+ * Resolves item config min size.
+ * @public
+ */
 export function resolveItemConfigMinSize(
   minSize: string | undefined,
 ): UndefinableSizeWithUnit {
@@ -154,23 +234,38 @@ export function resolveItemConfigMinSize(
     : parseSize(minSize, [SizeUnit.Pixel]);
 }
 
-/** @public */
+/**
+ * Returns whether ground item config.
+ * @public
+ */
 export function isGroundItemConfig(config: ItemConfig): config is ItemConfig {
   return config.type === ItemType.ground;
 }
-/** @public */
+/**
+ * Returns whether row item config.
+ * @public
+ */
 export function isRowItemConfig(config: ItemConfig): config is ItemConfig {
   return config.type === ItemType.row;
 }
-/** @public */
+/**
+ * Returns whether column item config.
+ * @public
+ */
 export function isColumnItemConfig(config: ItemConfig): config is ItemConfig {
   return config.type === ItemType.column;
 }
-/** @public */
+/**
+ * Returns whether stack item config.
+ * @public
+ */
 export function isStackItemConfig(config: ItemConfig): config is ItemConfig {
   return config.type === ItemType.stack;
 }
-/** @public */
+/**
+ * Returns whether component item config.
+ * @public
+ */
 export function isComponentItemConfig(
   config: ItemConfig,
 ): config is ComponentItemConfig {
@@ -178,24 +273,42 @@ export function isComponentItemConfig(
 }
 
 // Stack or Component
-/** @public */
+/**
+ * Defines the headered item config contract.
+ * @public
+ */
 export interface HeaderedItemConfig extends ItemConfig {
+  /** The header. */
   header?: HeaderedItemConfigHeader;
+  /** The maximised. */
   maximised?: boolean;
 }
 
-/** @public */
+/**
+ * Defines the headered item config header contract.
+ * @public
+ */
 export interface HeaderedItemConfigHeader {
+  /** The show. */
   show?: false | Side;
+  /** The popout. */
   popout?: false | string;
+  /** The dock. */
   dock?: false | string;
+  /** The maximise. */
   maximise?: false | string;
+  /** The close. */
   close?: string;
+  /** The minimise. */
   minimise?: string;
+  /** The tab dropdown. */
   tabDropdown?: false | string;
 }
 
-/** @public */
+/**
+ * Resolves headered item config header.
+ * @public
+ */
 export function resolveHeaderedItemConfigHeader(
   header: HeaderedItemConfigHeader | undefined,
 ): ResolvedHeaderedItemConfigHeader | undefined {
@@ -214,27 +327,54 @@ export function resolveHeaderedItemConfigHeader(
   }
 }
 
-/** @public */
+/**
+ * Resolves headered item config id and maximised.
+ * @public
+ */
 export function resolveHeaderedItemConfigIdAndMaximised(
   config: HeaderedItemConfig,
-): { id: string; maximised: boolean } {
+): {
+  /** The normalized item identifier. */
+  id: string;
+  /** Whether the item is initially maximised. */
+  maximised: boolean;
+} {
   return {
     id: resolveItemConfigId(config.id),
     maximised: config.maximised ?? false,
   };
 }
 
-/** @public */
+/** Stack item input accepted by the Strelit configuration resolver. @public */
 export interface StackItemConfig extends HeaderedItemConfig {
+  /** The type. */
   type: 'stack';
+  /** The content. */
   content: ComponentItemConfig[];
   /** The index of the item in content which is to be active*/
   activeItemIndex?: number;
 }
 
-/** @public */
+/**
+ * Normalizes a stack and its component children.
+ *
+ * @throws {@link ConfigurationError} When the stack exceeds configuration resource limits.
+ * @public
+ */
 export function resolveStackItemConfig(
   itemConfig: StackItemConfig,
+): ResolvedStackItemConfig {
+  return resolveItemConfigWithBudget(
+    itemConfig,
+    createResolutionBudget(),
+    0,
+  ) as ResolvedStackItemConfig;
+}
+
+function resolveStackItemConfigWithBudget(
+  itemConfig: StackItemConfig,
+  budget: LayoutResolutionBudget,
+  depth: number,
 ): ResolvedStackItemConfig {
   const { id, maximised } = resolveHeaderedItemConfigIdAndMaximised(itemConfig);
   const { size, sizeUnit } = resolveItemConfigSize(itemConfig.size);
@@ -244,7 +384,11 @@ export function resolveStackItemConfig(
 
   const result: ResolvedStackItemConfig = {
     type: ItemType.stack,
-    content: resolveStackItemConfigContent(itemConfig.content),
+    content: resolveStackItemConfigContentWithBudget(
+      itemConfig.content,
+      budget,
+      depth + 1,
+    ),
     size,
     sizeUnit,
     minSize,
@@ -260,7 +404,10 @@ export function resolveStackItemConfig(
   return result;
 }
 
-/** @public */
+/**
+ * Creates stack item config from resolved.
+ * @public
+ */
 export function createStackItemConfigFromResolved(
   resolvedConfig: ResolvedStackItemConfig,
 ): StackItemConfig {
@@ -282,18 +429,44 @@ export function createStackItemConfigFromResolved(
   return result;
 }
 
-/** @public */
+/**
+ * Resolves the component children of a stack with bounded processing.
+ *
+ * @throws {@link ConfigurationError} When the content exceeds configuration resource limits.
+ * @public
+ */
 export function resolveStackItemConfigContent(
   content: ComponentItemConfig[] | undefined,
+): ResolvedComponentItemConfig[] {
+  return resolveStackItemConfigContentWithBudget(
+    content,
+    createResolutionBudget(),
+    0,
+  );
+}
+
+function resolveStackItemConfigContentWithBudget(
+  content: ComponentItemConfig[] | undefined,
+  budget: LayoutResolutionBudget,
+  depth: number,
 ): ResolvedComponentItemConfig[] {
   if (content === undefined) {
     return [];
   } else {
     const count = content.length;
+    if (count > maximumConfigNodes - budget.nodes) {
+      throw new ConfigurationError(
+        'Layout configuration exceeds resource limits',
+      );
+    }
     const result = Array<ResolvedComponentItemConfig>(count);
     for (let i = 0; i < count; i++) {
       const childItemConfig = content[i];
-      const itemConfig = resolveItemConfig(childItemConfig);
+      const itemConfig = resolveItemConfigWithBudget(
+        childItemConfig,
+        budget,
+        depth,
+      );
       if (!isResolvedComponentItemConfig(itemConfig)) {
         throw new AssertError('UCUSICRC91114', JSON.stringify(itemConfig));
       } else {
@@ -304,7 +477,10 @@ export function resolveStackItemConfigContent(
   }
 }
 
-/** @public */
+/**
+ * Creates stack item config content from resolved.
+ * @public
+ */
 export function createStackItemConfigContentFromResolved(
   resolvedContent: ResolvedComponentItemConfig[],
 ): ComponentItemConfig[] {
@@ -317,9 +493,11 @@ export function createStackItemConfigContentFromResolved(
   return result;
 }
 
-/** @public */
+/** Configuration for a component hosted within a layout item. @public */
 export interface ComponentItemConfig extends HeaderedItemConfig {
+  /** The type. */
   type: 'component';
+  /** The content. */
   readonly content?: [];
 
   /**
@@ -338,7 +516,8 @@ export interface ComponentItemConfig extends HeaderedItemConfig {
   /**
    * The state information with which a component will be initialised with.
    * Will be passed to the component constructor function and will be the value returned by
-   * container.initialState.
+   * container.initialState. APIs that copy this value reject cycles, depths above 128, and
+   * values containing more than 10,000 nodes with a {@link ConfigurationError}.
    */
   componentState?: SerializableValue;
 
@@ -348,7 +527,10 @@ export interface ComponentItemConfig extends HeaderedItemConfig {
   reorderEnabled?: boolean; // Takes precedence over LayoutConfig.reorderEnabled.
 }
 
-/** @public */
+/**
+ * Resolves component item config.
+ * @public
+ */
 export function resolveComponentItemConfig(
   itemConfig: ComponentItemConfig,
 ): ResolvedComponentItemConfig {
@@ -391,7 +573,10 @@ export function resolveComponentItemConfig(
   }
 }
 
-/** @public */
+/**
+ * Creates component item config from resolved.
+ * @public
+ */
 export function createComponentItemConfigFromResolved(
   resolvedConfig: ResolvedComponentItemConfig,
 ): ComponentItemConfig {
@@ -417,7 +602,10 @@ export function createComponentItemConfigFromResolved(
   return result;
 }
 
-/** @public */
+/**
+ * Performs the component type to title operation.
+ * @public
+ */
 export function componentTypeToTitle(componentType: ComponentType): string {
   const componentTypeType = typeof componentType;
   switch (componentTypeType) {
@@ -433,17 +621,28 @@ export function componentTypeToTitle(componentType: ComponentType): string {
 }
 
 // RowOrColumn
-/** @public */
+/**
+ * Defines the row or column item config contract.
+ * @public
+ */
 export interface RowOrColumnItemConfig extends ItemConfig {
+  /** The type. */
   type: 'row' | 'column';
+  /** The content. */
   content: (RowOrColumnItemConfig | StackItemConfig | ComponentItemConfig)[];
 }
 
-/** @public */
+/**
+ * Represents row or column item config child item config.
+ * @public
+ */
 export type RowOrColumnItemConfigChildItemConfig =
   RowOrColumnItemConfig | StackItemConfig | ComponentItemConfig;
 
-/** @public */
+/**
+ * Returns whether row or column item config child.
+ * @public
+ */
 export function isRowOrColumnItemConfigChild(
   itemConfig: ItemConfig,
 ): itemConfig is RowOrColumnItemConfigChildItemConfig {
@@ -460,9 +659,26 @@ export function isRowOrColumnItemConfigChild(
   }
 }
 
-/** @public */
+/**
+ * Resolves a row or column and all descendants using a shared resource budget.
+ *
+ * @throws {@link ConfigurationError} When the tree exceeds configuration resource limits.
+ * @public
+ */
 export function resolveRowOrColumnItemConfig(
   itemConfig: RowOrColumnItemConfig,
+): ResolvedRowOrColumnItemConfig {
+  return resolveItemConfigWithBudget(
+    itemConfig,
+    createResolutionBudget(),
+    0,
+  ) as ResolvedRowOrColumnItemConfig;
+}
+
+function resolveRowOrColumnItemConfigWithBudget(
+  itemConfig: RowOrColumnItemConfig,
+  budget: LayoutResolutionBudget,
+  depth: number,
 ): ResolvedRowOrColumnItemConfig {
   const { size, sizeUnit } = resolveItemConfigSize(itemConfig.size);
   const { size: minSize, sizeUnit: minSizeUnit } = resolveItemConfigMinSize(
@@ -470,7 +686,11 @@ export function resolveRowOrColumnItemConfig(
   );
   const result: ResolvedRowOrColumnItemConfig = {
     type: itemConfig.type,
-    content: resolveRowOrColumnItemConfigContent(itemConfig.content),
+    content: resolveRowOrColumnItemConfigContentWithBudget(
+      itemConfig.content,
+      budget,
+      depth + 1,
+    ),
     size,
     sizeUnit,
     minSize,
@@ -481,7 +701,10 @@ export function resolveRowOrColumnItemConfig(
   return result;
 }
 
-/** @public */
+/**
+ * Creates row or column item config from resolved.
+ * @public
+ */
 export function createRowOrColumnItemConfigFromResolved(
   resolvedConfig: ResolvedRowOrColumnItemConfig,
 ): RowOrColumnItemConfig {
@@ -502,14 +725,36 @@ export function createRowOrColumnItemConfigFromResolved(
   return result;
 }
 
-/** @public */
+/**
+ * Resolves row or column children using one bounded traversal.
+ *
+ * @throws {@link ConfigurationError} When the content exceeds configuration resource limits.
+ * @public
+ */
 export function resolveRowOrColumnItemConfigContent(
   content: RowOrColumnItemConfigChildItemConfig[] | undefined,
+): ResolvedRowOrColumnItemConfigChildItemConfig[] {
+  return resolveRowOrColumnItemConfigContentWithBudget(
+    content,
+    createResolutionBudget(),
+    0,
+  );
+}
+
+function resolveRowOrColumnItemConfigContentWithBudget(
+  content: RowOrColumnItemConfigChildItemConfig[] | undefined,
+  budget: LayoutResolutionBudget,
+  depth: number,
 ): ResolvedRowOrColumnItemConfigChildItemConfig[] {
   if (content === undefined) {
     return [];
   } else {
     const count = content.length;
+    if (count > maximumConfigNodes - budget.nodes) {
+      throw new ConfigurationError(
+        'Layout configuration exceeds resource limits',
+      );
+    }
     for (let i = 0; i < count; i++) {
       const childItemConfig = content[i];
       if (!isRowOrColumnItemConfigChild(childItemConfig)) {
@@ -523,7 +768,11 @@ export function resolveRowOrColumnItemConfigContent(
     const result = Array<ResolvedRowOrColumnItemConfigChildItemConfig>(count);
     for (let i = 0; i < count; i++) {
       const childItemConfig = content[i];
-      const resolvedChildItemConfig = resolveItemConfig(childItemConfig);
+      const resolvedChildItemConfig = resolveItemConfigWithBudget(
+        childItemConfig,
+        budget,
+        depth,
+      );
       if (!isResolvedRowOrColumnItemConfigChild(resolvedChildItemConfig)) {
         throw new AssertError(
           'UROCOSPIC99512',
@@ -537,7 +786,10 @@ export function resolveRowOrColumnItemConfigContent(
   }
 }
 
-/** @public */
+/**
+ * Creates row or column item config content from resolved.
+ * @public
+ */
 export function createRowOrColumnItemConfigContentFromResolved(
   resolvedContent: readonly ResolvedRowOrColumnItemConfigChildItemConfig[],
 ): RowOrColumnItemConfigChildItemConfig[] {
@@ -572,11 +824,17 @@ export function createRowOrColumnItemConfigContentFromResolved(
   return result;
 }
 
-/** @public */
+/**
+ * Represents root item config.
+ * @public
+ */
 export type RootItemConfig =
   RowOrColumnItemConfig | StackItemConfig | ComponentItemConfig;
 
-/** @public */
+/**
+ * Returns whether root item config.
+ * @public
+ */
 export function isRootItemConfig(
   itemConfig: ItemConfig,
 ): itemConfig is RootItemConfig {
@@ -593,14 +851,26 @@ export function isRootItemConfig(
   }
 }
 
-/** @public */
+/**
+ * Resolves an optional root item using bounded configuration processing.
+ *
+ * @throws {@link ConfigurationError} When the root exceeds configuration resource limits.
+ * @public
+ */
 export function resolveRootItemConfig(
   itemConfig: RootItemConfig | undefined,
+): ResolvedRootItemConfig | undefined {
+  return resolveRootItemConfigWithBudget(itemConfig, createResolutionBudget());
+}
+
+function resolveRootItemConfigWithBudget(
+  itemConfig: RootItemConfig | undefined,
+  budget: LayoutResolutionBudget,
 ): ResolvedRootItemConfig | undefined {
   if (itemConfig === undefined) {
     return undefined;
   } else {
-    const result = resolveItemConfig(itemConfig);
+    const result = resolveItemConfigWithBudget(itemConfig, budget, 0);
     if (!isResolvedRootItemConfig(result)) {
       throw new ConfigurationError(
         'ItemConfig is not Row, Column or Stack',
@@ -612,7 +882,10 @@ export function resolveRootItemConfig(
   }
 }
 
-/** @public */
+/**
+ * Creates root item config from resolved.
+ * @public
+ */
 export function createRootItemConfigFromResolved(
   resolvedItemConfig: ResolvedRootItemConfig | undefined,
 ): RootItemConfig | undefined {
@@ -634,12 +907,20 @@ export function createRootItemConfigFromResolved(
   }
 }
 
-/** @public */
+/**
+ * Defines the layout config contract.
+ * @public
+ */
 export interface LayoutConfig {
+  /** The root. */
   root?: RootItemConfig | undefined;
+  /** The open popouts. */
   openPopouts?: PopoutLayoutConfig[];
+  /** The dimensions. */
   dimensions?: LayoutConfigDimensions;
+  /** The settings. */
   settings?: LayoutConfigSettings;
+  /** The header. */
   header?: LayoutConfigHeader;
 }
 
@@ -712,7 +993,10 @@ export interface LayoutConfigSettings {
   popInOnClose?: boolean;
 }
 
-/** @public */
+/**
+ * Defines the layout config dimensions contract.
+ * @public
+ */
 export interface LayoutConfigDimensions {
   /**
    * The width of the borders between the layout items in pixel. Please note: The actual draggable area is wider
@@ -758,7 +1042,10 @@ export interface LayoutConfigDimensions {
   dragProxyHeight?: number;
 }
 
-/** @public */
+/**
+ * Defines the layout config header contract.
+ * @public
+ */
 export interface LayoutConfigHeader {
   /**
    * Specifies whether header should be displayed, and if so, on which side.
@@ -798,7 +1085,10 @@ export interface LayoutConfigHeader {
   tabDropdown?: false | string;
 }
 
-/** @public */
+/**
+ * Resolves layout config settings.
+ * @public
+ */
 export function resolveLayoutConfigSettings(
   settings: LayoutConfigSettings | undefined,
 ): ResolvedLayoutConfigSettings {
@@ -837,7 +1127,10 @@ export function resolveLayoutConfigSettings(
   return result;
 }
 
-/** @public */
+/**
+ * Resolves layout config dimensions.
+ * @public
+ */
 export function resolveLayoutConfigDimensions(
   dimensions: LayoutConfigDimensions | undefined,
 ): ResolvedLayoutConfigDimensions {
@@ -869,7 +1162,10 @@ export function resolveLayoutConfigDimensions(
   return result;
 }
 
-/** @public */
+/**
+ * Creates layout config dimensions from resolved.
+ * @public
+ */
 export function createLayoutConfigDimensionsFromResolved(
   resolvedDimensions: ResolvedLayoutConfigDimensions,
 ): LayoutConfigDimensions {
@@ -920,7 +1216,10 @@ function resolveDefaultMinItemWidth(
   }
 }
 
-/** @public */
+/**
+ * Resolves layout config header.
+ * @public
+ */
 export function resolveLayoutConfigHeader(
   header: LayoutConfigHeader | undefined,
 ): ResolvedLayoutConfigHeader {
@@ -937,7 +1236,10 @@ export function resolveLayoutConfigHeader(
   return result;
 }
 
-/** @public */
+/**
+ * Returns whether popout layout config.
+ * @public
+ */
 export function isPopoutLayoutConfig(
   config: LayoutConfig,
 ): config is PopoutLayoutConfig {
@@ -946,26 +1248,58 @@ export function isPopoutLayoutConfig(
   );
 }
 
-/** @public */
+/**
+ * Normalizes a layout, including nested items and open popouts, under one resource budget.
+ *
+ * @throws {@link ConfigurationError} When the configuration is cyclic, malformed, deeper than 128 items, or contains more than 10,000 resolved nodes.
+ * @public
+ */
 export function resolveLayoutConfig(
   layoutConfig: LayoutConfig,
 ): ResolvedLayoutConfig {
-  if (isPopoutLayoutConfig(layoutConfig)) {
-    return resolvePopoutLayoutConfig(layoutConfig);
-  } else {
-    const config: ResolvedLayoutConfig = {
+  return resolveLayoutConfigWithBudget(layoutConfig, createResolutionBudget());
+}
+
+function resolveLayoutConfigWithBudget(
+  layoutConfig: LayoutConfig,
+  budget: LayoutResolutionBudget,
+): ResolvedLayoutConfig {
+  if (budget.nodes >= maximumConfigNodes) {
+    throw new ConfigurationError(
+      'Layout configuration exceeds resource limits',
+    );
+  }
+  if (budget.active.has(layoutConfig)) {
+    throw new ConfigurationError('Layout configuration contains a cycle');
+  }
+
+  budget.nodes++;
+  budget.active.add(layoutConfig);
+  try {
+    if (isPopoutLayoutConfig(layoutConfig)) {
+      return resolvePopoutLayoutConfigWithBudget(layoutConfig, budget);
+    }
+
+    return {
       resolved: true,
-      root: resolveRootItemConfig(layoutConfig.root),
-      openPopouts: resolveOpenPopoutLayoutConfigs(layoutConfig.openPopouts),
+      root: resolveRootItemConfigWithBudget(layoutConfig.root, budget),
+      openPopouts: resolveOpenPopoutLayoutConfigsWithBudget(
+        layoutConfig.openPopouts,
+        budget,
+      ),
       dimensions: resolveLayoutConfigDimensions(layoutConfig.dimensions),
       settings: resolveLayoutConfigSettings(layoutConfig.settings),
       header: resolveLayoutConfigHeader(layoutConfig.header),
     };
-    return config;
+  } finally {
+    budget.active.delete(layoutConfig);
   }
 }
 
-/** @public */
+/**
+ * Creates layout config from resolved.
+ * @public
+ */
 export function createLayoutConfigFromResolved(
   config: ResolvedLayoutConfig,
 ): LayoutConfig {
@@ -979,7 +1313,10 @@ export function createLayoutConfigFromResolved(
   return result;
 }
 
-/** @public */
+/**
+ * Returns whether resolved layout config.
+ * @public
+ */
 export function isResolvedLayoutConfig(
   configOrResolvedConfig: ResolvedLayoutConfig | LayoutConfig,
 ): configOrResolvedConfig is ResolvedLayoutConfig {
@@ -987,23 +1324,49 @@ export function isResolvedLayoutConfig(
   return config.resolved !== undefined && config.resolved === true;
 }
 
-/** @public */
+/**
+ * Resolves open popout configurations using one bounded traversal.
+ *
+ * @throws {@link ConfigurationError} When the popout graph exceeds configuration resource limits.
+ * @public
+ */
 export function resolveOpenPopoutLayoutConfigs(
   popoutConfigs: PopoutLayoutConfig[] | undefined,
+): ResolvedPopoutLayoutConfig[] {
+  return resolveOpenPopoutLayoutConfigsWithBudget(
+    popoutConfigs,
+    createResolutionBudget(),
+  );
+}
+
+function resolveOpenPopoutLayoutConfigsWithBudget(
+  popoutConfigs: PopoutLayoutConfig[] | undefined,
+  budget: LayoutResolutionBudget,
 ): ResolvedPopoutLayoutConfig[] {
   if (popoutConfigs === undefined) {
     return [];
   } else {
     const count = popoutConfigs.length;
+    if (count > maximumConfigNodes - budget.nodes) {
+      throw new ConfigurationError(
+        'Layout configuration exceeds resource limits',
+      );
+    }
     const result = Array<ResolvedPopoutLayoutConfig>(count);
     for (let i = 0; i < count; i++) {
-      result[i] = resolvePopoutLayoutConfig(popoutConfigs[i]);
+      result[i] = resolveLayoutConfigWithBudget(
+        popoutConfigs[i],
+        budget,
+      ) as ResolvedPopoutLayoutConfig;
     }
     return result;
   }
 }
 
-/** @public */
+/**
+ * Defines the popout layout config contract.
+ * @public
+ */
 export interface PopoutLayoutConfig extends LayoutConfig {
   /** The id of the element the item will be appended to on popIn
    * If null, append to topmost layout element
@@ -1013,18 +1376,29 @@ export interface PopoutLayoutConfig extends LayoutConfig {
    * If null, position is last
    */
   indexInParent: number | null | undefined;
+  /** The window. */
   window: PopoutLayoutConfigWindow | undefined;
 }
 
-/** @public */
+/**
+ * Defines the popout layout config window contract.
+ * @public
+ */
 export interface PopoutLayoutConfigWindow {
+  /** The width. */
   width?: number;
+  /** The height. */
   height?: number;
+  /** The left. */
   left?: number;
+  /** The top. */
   top?: number;
 }
 
-/** @public */
+/**
+ * Resolves popout layout config window.
+ * @public
+ */
 export function resolvePopoutLayoutConfigWindow(
   window: PopoutLayoutConfigWindow | undefined,
 ): ResolvedPopoutLayoutConfigWindow {
@@ -1037,7 +1411,10 @@ export function resolvePopoutLayoutConfigWindow(
   };
 }
 
-/** @public */
+/**
+ * Creates popout layout config window from resolved.
+ * @public
+ */
 export function createPopoutLayoutConfigWindowFromResolved(
   resolvedWindow: ResolvedPopoutLayoutConfigWindow,
 ): PopoutLayoutConfigWindow {
@@ -1051,13 +1428,31 @@ export function createPopoutLayoutConfigWindowFromResolved(
   return result;
 }
 
-/** @public */
+/**
+ * Resolves a popout and its nested layout using bounded configuration processing.
+ *
+ * @throws {@link ConfigurationError} When the popout graph exceeds configuration resource limits.
+ * @public
+ */
 export function resolvePopoutLayoutConfig(
   popoutConfig: PopoutLayoutConfig,
 ): ResolvedPopoutLayoutConfig {
-  const config: ResolvedPopoutLayoutConfig = {
-    root: resolveRootItemConfig(popoutConfig.root),
-    openPopouts: resolveOpenPopoutLayoutConfigs(popoutConfig.openPopouts),
+  return resolveLayoutConfigWithBudget(
+    popoutConfig,
+    createResolutionBudget(),
+  ) as ResolvedPopoutLayoutConfig;
+}
+
+function resolvePopoutLayoutConfigWithBudget(
+  popoutConfig: PopoutLayoutConfig,
+  budget: LayoutResolutionBudget,
+): ResolvedPopoutLayoutConfig {
+  return {
+    root: resolveRootItemConfigWithBudget(popoutConfig.root, budget),
+    openPopouts: resolveOpenPopoutLayoutConfigsWithBudget(
+      popoutConfig.openPopouts,
+      budget,
+    ),
     dimensions: resolveLayoutConfigDimensions(popoutConfig.dimensions),
     settings: resolveLayoutConfigSettings(popoutConfig.settings),
     header: resolveLayoutConfigHeader(popoutConfig.header),
@@ -1066,10 +1461,12 @@ export function resolvePopoutLayoutConfig(
     window: resolvePopoutLayoutConfigWindow(popoutConfig.window),
     resolved: true,
   };
-  return config;
 }
 
-/** @public */
+/**
+ * Creates popout layout config from resolved.
+ * @public
+ */
 export function createPopoutLayoutConfigFromResolved(
   resolvedConfig: ResolvedPopoutLayoutConfig,
 ): PopoutLayoutConfig {
@@ -1091,7 +1488,10 @@ export function createPopoutLayoutConfigFromResolved(
   return result;
 }
 
-/** @public */
+/**
+ * Creates popout layout config array from resolved.
+ * @public
+ */
 export function createPopoutLayoutConfigArrayFromResolved(
   resolvedArray: ResolvedPopoutLayoutConfig[],
 ): PopoutLayoutConfig[] {
@@ -1105,15 +1505,25 @@ export function createPopoutLayoutConfigArrayFromResolved(
   return result;
 }
 
-/** @public */
+/**
+ * Defines the size with unit contract.
+ * @public
+ */
 export interface SizeWithUnit {
+  /** The size. */
   size: number;
+  /** The size unit. */
   sizeUnit: SizeUnit;
 }
 
-/** @public */
+/**
+ * Defines the undefinable size with unit contract.
+ * @public
+ */
 export interface UndefinableSizeWithUnit {
+  /** The size. */
   size: number | undefined;
+  /** The size unit. */
   sizeUnit: SizeUnit;
 }
 

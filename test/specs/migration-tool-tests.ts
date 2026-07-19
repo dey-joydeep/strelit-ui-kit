@@ -1,9 +1,12 @@
 import { execFileSync } from 'node:child_process';
 import {
   copyFileSync,
+  linkSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -224,6 +227,63 @@ const resolved = LayoutConfig.resolve(config);
     },
   );
 
+  it('rejects directory links and junctions before traversing outside the target', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'strelit-migration-link-'));
+    temporaryDirectories.push(fixture);
+    const selected = join(fixture, 'target');
+    const outside = join(fixture, 'target-two');
+    const outsideFile = join(outside, 'legacy.js');
+    mkdirSync(selected);
+    mkdirSync(outside);
+    writeFileSync(outsideFile, 'const layout = new GoldenLayout();\n');
+    symlinkSync(
+      outside,
+      join(selected, 'linked'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+
+    expect(() => migrate(selected)).toThrow(
+      /Refusing symbolic link or reparse point/,
+    );
+    expect(readFileSync(outsideFile, 'utf8')).toContain('GoldenLayout');
+  });
+
+  it('rejects multiply-linked files before writing through them', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'strelit-migration-hardlink-'));
+    temporaryDirectories.push(fixture);
+    const selected = join(fixture, 'target');
+    const outside = join(fixture, 'outside');
+    const outsideFile = join(outside, 'legacy.js');
+    mkdirSync(selected);
+    mkdirSync(outside);
+    writeFileSync(outsideFile, 'const layout = new GoldenLayout();\n');
+    linkSync(outsideFile, join(selected, 'legacy.js'));
+
+    expect(() => migrate(selected)).toThrow(/Refusing multiply-linked file/);
+    expect(readFileSync(outsideFile, 'utf8')).toContain('GoldenLayout');
+  });
+
+  it('keeps regular nested targets contained and dry runs non-writing', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'strelit-migration-regular-'));
+    temporaryDirectories.push(fixture);
+    const selected = join(fixture, 'target');
+    const nested = join(selected, 'nested');
+    const legacyFile = join(nested, 'legacy.js');
+    mkdirSync(nested, { recursive: true });
+    writeFileSync(legacyFile, 'const layout = new GoldenLayout();\n');
+
+    const dryRunOutput = execFileSync(
+      process.execPath,
+      [migrationScript, '--target', selected],
+      { encoding: 'utf8' },
+    );
+    expect(dryRunOutput).toContain('would update');
+    expect(readFileSync(legacyFile, 'utf8')).toContain('GoldenLayout');
+
+    migrate(selected);
+    expect(readFileSync(legacyFile, 'utf8')).toContain('StrelitLayout');
+  });
+
   it('rewrites proven container and stack receivers and flags unknown ones', () => {
     const filePath = createFixture(`
 import { ComponentContainer, Stack } from 'golden-layout';
@@ -315,6 +375,51 @@ const config: DragSource.ComponentItemConfig = {
     expect(readFileSync(filePath, 'utf8')).toBe(firstMigration);
   });
 
+  it('migrates numeric sizing from the original v2 demo layout pattern', () => {
+    const filePath = createFixture(`
+import { ItemType, LayoutConfig } from 'golden-layout';
+
+const demoLayout: LayoutConfig = {
+  dimensions: { minItemWidth: 250 },
+  root: {
+    type: ItemType.row,
+    content: [
+      {
+        type: ItemType.component,
+        componentType: 'editor',
+        width: 30,
+        minWidth: 120,
+      },
+      {
+        type: ItemType.column,
+        height: 70,
+        content: [],
+      },
+    ],
+  },
+};
+
+const componentState = { minItemWidth: 12 };
+`);
+
+    const output = migrate(filePath, ['--from', 'v2']);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain("from 'strelit-ui-kit'");
+    expect(migrated).toContain("size: '30%'");
+    expect(migrated).toContain("minSize: '120px'");
+    expect(migrated).toContain("defaultMinItemWidth: '250px'");
+    expect(migrated).toContain("size: '70%'");
+    expect(migrated).not.toContain('dimensions: { minItemWidth:');
+    expect(migrated).not.toContain('width: 30');
+    expect(migrated).not.toContain('minWidth: 120');
+    expect(migrated).not.toContain('height: 70');
+    expect(migrated).toContain('componentState = { minItemWidth: 12 }');
+    expect(output).not.toContain(
+      'item width/height fields must become size strings',
+    );
+  });
+
   it('flags v1-only framework and nested-stack layouts', () => {
     const filePath = createFixture(
       JSON.stringify({
@@ -344,11 +449,11 @@ const config: DragSource.ComponentItemConfig = {
     expect(output).toContain('nested stack content and requires redesign');
   });
 
-  it.each(['v1-consumer.ts', 'v2-consumer.ts'])(
+  it.each(['v1-consumer.ts', 'v2-consumer.ts', 'v2-api-demo.ts'])(
     'compiles the migrated %s fixture against Strelit',
     (fixtureName) => {
       compileFixture(fixtureName);
     },
-    30_000,
+    180_000,
   );
 });

@@ -57,18 +57,20 @@ const steps = [
   },
 ];
 
+/** Recreates the disposable verification output directory for each run. */
 function resetOutputDir() {
   fs.rmSync(outputDir, { recursive: true, force: true });
   fs.mkdirSync(outputDir, { recursive: true });
 }
 
+/** Overwrites machine-readable and concise human-readable run summaries. */
 function writeSummary(results) {
+  const hasFailure = results.some((result) => result.status === 'failed');
+  const isComplete = results.length === steps.length;
   const summary = {
     generatedAt: new Date().toISOString(),
     repoRoot,
-    overallStatus: results.every((result) => result.status === 'passed')
-      ? 'passed'
-      : 'failed',
+    overallStatus: hasFailure ? 'failed' : isComplete ? 'passed' : 'running',
     steps: results,
   };
 
@@ -91,6 +93,7 @@ function writeSummary(results) {
   fs.writeFileSync(latestPath, latestLines.join('\n'));
 }
 
+/** Runs one verification stage while mirroring output to its dedicated log. */
 function runStep(step) {
   return new Promise((resolve) => {
     const logPath = path.join(outputDir, step.logFile);
@@ -146,6 +149,7 @@ function runStep(step) {
   });
 }
 
+/** Runs verification sequentially and marks all later stages skipped on failure. */
 async function main() {
   resetOutputDir();
 

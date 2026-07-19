@@ -1,3 +1,5 @@
+import { ConfigurationError } from '../errors/external-error';
+import { maximumConfigDepth, maximumConfigNodes } from './resource-limits';
 import { WidthAndHeight } from './types';
 
 /** @internal */
@@ -110,23 +112,97 @@ export function ensureElementPositionAbsolute(element: HTMLElement): void {
   }
 }
 
-/** @internal */
+/**
+ * Clones serializable component state without recursive call-stack growth.
+ *
+ * @throws {@link ConfigurationError} When the value is cyclic, deeper than 128 levels, or contains more than 10,000 nodes.
+ * @internal
+ */
 export function deepCloneValue(value: unknown): unknown {
-  if (typeof value !== 'object') {
-    return value;
-  }
-  if (value === null) {
-    return null;
-  }
-  if (Array.isArray(value)) {
-    return value.map((element) => deepCloneValue(element));
+  interface CloneFrame {
+    readonly source: object;
+    readonly target: unknown[] | Record<string, unknown>;
+    readonly entries: readonly (readonly [string, unknown])[];
+    readonly depth: number;
+    index: number;
   }
 
-  const result: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    result[key] = deepCloneValue(entry);
+  const active = new WeakSet<object>();
+  let visitedNodes = 0;
+
+  function createClone(
+    source: unknown,
+    depth: number,
+  ): { clone: unknown; frame?: CloneFrame } {
+    visitedNodes++;
+    if (depth > maximumConfigDepth || visitedNodes > maximumConfigNodes) {
+      throw new ConfigurationError(
+        'Serializable value exceeds resource limits',
+      );
+    }
+    if (typeof source !== 'object' || source === null) {
+      return { clone: source };
+    }
+    if (active.has(source)) {
+      throw new ConfigurationError('Serializable value contains a cycle');
+    }
+
+    active.add(source);
+    if (Array.isArray(source)) {
+      if (source.length > maximumConfigNodes - visitedNodes) {
+        throw new ConfigurationError(
+          'Serializable value exceeds resource limits',
+        );
+      }
+      const entries: [string, unknown][] = [];
+      for (let index = 0; index < source.length; index++) {
+        if (index in source) {
+          entries.push([index.toString(), source[index]]);
+        }
+      }
+      const clone = Array<unknown>(source.length);
+      return {
+        clone,
+        frame: { source, target: clone, entries, depth, index: 0 },
+      };
+    }
+
+    const entries = Object.entries(source);
+    if (entries.length > maximumConfigNodes - visitedNodes) {
+      throw new ConfigurationError(
+        'Serializable value exceeds resource limits',
+      );
+    }
+    const clone: Record<string, unknown> = {};
+    return {
+      clone,
+      frame: { source, target: clone, entries, depth, index: 0 },
+    };
   }
-  return result;
+
+  const root = createClone(value, 0);
+  if (root.frame === undefined) {
+    return root.clone;
+  }
+
+  const stack = [root.frame];
+  while (stack.length > 0) {
+    const frame = stack[stack.length - 1];
+    if (frame.index >= frame.entries.length) {
+      active.delete(frame.source);
+      stack.pop();
+      continue;
+    }
+
+    const [key, entry] = frame.entries[frame.index++];
+    const child = createClone(entry, frame.depth + 1);
+    frame.target[key as keyof typeof frame.target] = child.clone as never;
+    if (child.frame !== undefined) {
+      stack.push(child.frame);
+    }
+  }
+
+  return root.clone;
 }
 
 /** @internal */

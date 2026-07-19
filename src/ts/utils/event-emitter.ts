@@ -7,52 +7,97 @@ import { ComponentItem } from '../items/component-item';
  * @public
  */
 export const eventEmitterAllEventName = '__all';
-/** @public */
+/**
+ * Provides the event emitter header click event name.
+ * @public
+ */
 export const eventEmitterHeaderClickEventName = 'stackHeaderClick';
-/** @public */
+/**
+ * Provides the event emitter header touch start event name.
+ * @public
+ */
 export const eventEmitterHeaderTouchStartEventName = 'stackHeaderTouchStart';
 
-/** @public */
+/**
+ * Represents event emitter unknown params.
+ * @public
+ */
 export type EventEmitterUnknownParams = unknown[];
-/** @public */
+/**
+ * Represents event emitter no params.
+ * @public
+ */
 export type EventEmitterNoParams = [];
-/** @public */
+/**
+ * Represents event emitter unknown param.
+ * @public
+ */
 export type EventEmitterUnknownParam = [unknown];
-/** @public */
+/**
+ * Represents event emitter popout param.
+ * @public
+ */
 export type EventEmitterPopoutParam = [BrowserPopout];
-/** @public */
+/**
+ * Represents event emitter component item param.
+ * @public
+ */
 export type EventEmitterComponentItemParam = [ComponentItem];
-/** @public */
+/**
+ * Represents event emitter tab param.
+ * @public
+ */
 export type EventEmitterTabParam = [Tab];
-/** @public */
+/**
+ * Represents event emitter string param.
+ * @public
+ */
 export type EventEmitterStringParam = [string];
-/** @public */
+/**
+ * Represents event emitter drag start params.
+ * @public
+ */
 export type EventEmitterDragStartParams = [
   originalX: number,
   originalY: number,
 ];
-/** @public */
+/**
+ * Represents event emitter drag stop params.
+ * @public
+ */
 export type EventEmitterDragStopParams = [event: PointerEvent | undefined];
-/** @public */
+/**
+ * Represents event emitter drag params.
+ * @public
+ */
 export type EventEmitterDragParams = [
   offsetX: number,
   offsetY: number,
   event: PointerEvent,
 ];
-/** @public */
+/**
+ * Represents event emitter before component release params.
+ * @public
+ */
 export type EventEmitterBeforeComponentReleaseParams = [component: unknown];
 
-/** @public */
+/**
+ * Provides event emitter bubbling event behavior.
+ * @public
+ */
 export class EventEmitterBubblingEvent {
   /** @internal */
   private _isPropagationStopped = false;
 
+  /** Gets the name. */
   get name(): string {
     return this._name;
   }
+  /** Gets the target. */
   get target(): EventEmitter {
     return this._target;
   }
+  /** Gets the is propagation stopped. */
   get isPropagationStopped(): boolean {
     return this._isPropagationStopped;
   }
@@ -65,13 +110,18 @@ export class EventEmitterBubblingEvent {
     private readonly _target: EventEmitter,
   ) {}
 
+  /** Performs the stop propagation operation. */
   stopPropagation(): void {
     this._isPropagationStopped = true;
   }
 }
 
-/** @public */
+/**
+ * Provides click bubbling event behavior.
+ * @public
+ */
 export class ClickBubblingEvent extends EventEmitterBubblingEvent {
+  /** Gets the mouse event. */
   get mouseEvent(): MouseEvent {
     return this._mouseEvent;
   }
@@ -87,8 +137,12 @@ export class ClickBubblingEvent extends EventEmitterBubblingEvent {
   }
 }
 
-/** @public */
+/**
+ * Provides touch start bubbling event behavior.
+ * @public
+ */
 export class TouchStartBubblingEvent extends EventEmitterBubblingEvent {
+  /** Gets the touch event. */
   get touchEvent(): TouchEvent {
     return this._touchEvent;
   }
@@ -104,11 +158,20 @@ export class TouchStartBubblingEvent extends EventEmitterBubblingEvent {
   }
 }
 
-/** @public */
+/**
+ * Represents event emitter bubbling event param.
+ * @public
+ */
 export type EventEmitterBubblingEventParam = [EventEmitterBubblingEvent];
-/** @public */
+/**
+ * Represents event emitter click bubbling event param.
+ * @public
+ */
 export type EventEmitterClickBubblingEventParam = [ClickBubblingEvent];
-/** @public */
+/**
+ * Represents event emitter touch start bubbling event param.
+ * @public
+ */
 export type EventEmitterTouchStartBubblingEventParam = [
   TouchStartBubblingEvent,
 ];
@@ -118,45 +181,83 @@ export type EventEmitterUnknownCallback = (
   this: void,
   ...args: EventEmitterUnknownParams
 ) => void;
-/** @public */
+/**
+ * Represents event emitter callback.
+ * @public
+ */
 export type EventEmitterCallback<K extends keyof EventEmitterEventParamsMap> = (
   this: void,
   ...args: EventEmitterEventParamsMap[K]
 ) => void;
 
-/** @public */
+/**
+ * Defines the event emitter event params map contract.
+ * @public
+ */
 export interface EventEmitterEventParamsMap {
+  /** Defines the parameters emitted for the __all event. */
   __all: EventEmitterUnknownParams;
+  /** Defines the parameters emitted for the activeContentItemChanged event. */
   activeContentItemChanged: EventEmitterComponentItemParam;
+  /** Defines the parameters emitted for the close event. */
   close: EventEmitterNoParams;
+  /** Defines the parameters emitted for the closed event. */
   closed: EventEmitterNoParams;
+  /** Defines the parameters emitted for the destroy event. */
   destroy: EventEmitterNoParams;
+  /** Defines the parameters emitted for the drag event. */
   drag: EventEmitterDragParams;
+  /** Defines the parameters emitted for the dragStart event. */
   dragStart: EventEmitterDragStartParams;
+  /** Defines the parameters emitted for the dragStop event. */
   dragStop: EventEmitterDragStopParams;
+  /** Defines the parameters emitted for the hide event. */
   hide: EventEmitterNoParams;
+  /** Defines the parameters emitted for the initialised event. */
   initialised: EventEmitterNoParams;
+  /** Defines the parameters emitted for the itemDropped event. */
   itemDropped: EventEmitterComponentItemParam;
+  /** Defines the parameters emitted for the maximised event. */
   maximised: EventEmitterNoParams;
+  /** Defines the parameters emitted for the minimised event. */
   minimised: EventEmitterNoParams;
+  /** Defines the parameters emitted for the open event. */
   open: EventEmitterNoParams;
+  /** Defines the parameters emitted for the popIn event. */
   popIn: EventEmitterNoParams;
+  /** Defines the parameters emitted for the resize event. */
   resize: EventEmitterNoParams;
+  /** Defines the parameters emitted for the show event. */
   show: EventEmitterNoParams;
+  /** Defines the parameters emitted for the stateChanged event. */
   stateChanged: EventEmitterNoParams;
+  /** Defines the parameters emitted for the tab event. */
   tab: EventEmitterTabParam;
+  /** Defines the parameters emitted for the tabCreated event. */
   tabCreated: EventEmitterTabParam;
+  /** Defines the parameters emitted for the titleChanged event. */
   titleChanged: EventEmitterStringParam;
+  /** Defines the parameters emitted for the windowClosed event. */
   windowClosed: EventEmitterPopoutParam;
+  /** Defines the parameters emitted for the windowOpened event. */
   windowOpened: EventEmitterPopoutParam;
+  /** Defines the parameters emitted for the beforeComponentRelease event. */
   beforeComponentRelease: EventEmitterBeforeComponentReleaseParams;
+  /** Defines the parameters emitted for the beforeItemDestroyed event. */
   beforeItemDestroyed: EventEmitterBubblingEventParam;
+  /** Defines the parameters emitted for the itemCreated event. */
   itemCreated: EventEmitterBubblingEventParam;
+  /** Defines the parameters emitted for the itemDestroyed event. */
   itemDestroyed: EventEmitterBubblingEventParam;
+  /** Defines the parameters emitted for the focus event. */
   focus: EventEmitterBubblingEventParam;
+  /** Defines the parameters emitted for the blur event. */
   blur: EventEmitterBubblingEventParam;
+  /** Defines the parameters emitted for the stackHeaderClick event. */
   stackHeaderClick: EventEmitterClickBubblingEventParam;
+  /** Defines the parameters emitted for the stackHeaderTouchStart event. */
   stackHeaderTouchStart: EventEmitterTouchStartBubblingEventParam;
+  /** Defines the parameters emitted for the userBroadcast event. */
   userBroadcast: EventEmitterUnknownParams;
 }
 
@@ -171,6 +272,7 @@ export class EventEmitter {
   /** @internal */
   private _subscriptionsMap = new Map<string, EventEmitterUnknownCallback[]>();
 
+  /** Performs the try bubble event operation. */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   tryBubbleEvent(name: string, args: unknown[]): void {
     // overridden by ContentItem
@@ -216,6 +318,7 @@ export class EventEmitter {
   }
 
   /* @internal **/
+  /** Emits base bubbling event. */
   emitBaseBubblingEvent<K extends keyof EventEmitterEventParamsMap>(
     eventName: K,
   ): void {
@@ -242,6 +345,7 @@ export class EventEmitter {
     this.removeUnknownEventListener(eventName, unknownCallback);
   }
 
+  /** Performs the off operation. */
   off<K extends keyof EventEmitterEventParamsMap>(
     eventName: K,
     callback: EventEmitterCallback<K>,
@@ -279,6 +383,7 @@ export class EventEmitter {
     this.addUnknownEventListener(eventName, unknownCallback);
   }
 
+  /** Performs the on operation. */
   on<K extends keyof EventEmitterEventParamsMap>(
     eventName: K,
     callback: EventEmitterCallback<K>,

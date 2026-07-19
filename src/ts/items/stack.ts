@@ -43,24 +43,36 @@ import { ComponentItem } from './component-item';
 import { ComponentParentableItem } from './component-parentable-item';
 import { ContentItem, type ContentItemArea } from './content-item';
 
+/** Identifies supported stack segment values. */
 export const enum StackSegment {
+  /** Uses the header value. */
   Header = 'header',
+  /** Uses the body value. */
   Body = 'body',
+  /** Uses the left value. */
   Left = 'left',
+  /** Uses the right value. */
   Right = 'right',
+  /** Uses the top value. */
   Top = 'top',
+  /** Uses the bottom value. */
   Bottom = 'bottom',
 }
 
+/** Defines the stack content area dimension contract. */
 export interface StackContentAreaDimension {
+  /** The hover area. */
   hoverArea: AreaLinkedRect;
+  /** The highlight area. */
   highlightArea: AreaLinkedRect;
 }
 
+/** Represents stack content area dimensions. */
 export type StackContentAreaDimensions = {
   [segment: string]: StackContentAreaDimension;
 };
 
+/** Creates stack element. */
 export function createStackElement(document: Document): HTMLDivElement {
   const element = document.createElement('div');
   element.classList.add(DomConstants.ClassName.Item);
@@ -68,7 +80,10 @@ export function createStackElement(document: Document): HTMLDivElement {
   return element;
 }
 
-/** @public */
+/**
+ * Provides stack behavior.
+ * @public
+ */
 export class Stack extends ComponentParentableItem {
   /** @internal */
   private readonly _headerConfig: ResolvedHeaderedItemConfigHeader | undefined;
@@ -100,18 +115,23 @@ export class Stack extends ComponentParentableItem {
   /** @internal */
   private _minimisedListener = () => this.handleMinimised();
 
+  /** Gets the child element container. */
   get childElementContainer(): HTMLElement {
     return this._childElementContainer;
   }
+  /** Gets the header. */
   get header(): Header {
     return this._header;
   }
+  /** Gets the header show. */
   get headerShow(): boolean {
     return this._header.show;
   }
+  /** Gets the header side. */
   get headerSide(): Side {
     return this._header.side;
   }
+  /** Gets the header left right sided. */
   get headerLeftRightSided(): boolean {
     return this._header.leftRightSided;
   }
@@ -123,9 +143,11 @@ export class Stack extends ComponentParentableItem {
   get initialWantMaximise(): boolean {
     return this._initialWantMaximise;
   }
+  /** Gets the is maximised. */
   get isMaximised(): boolean {
     return this === this.layoutManager.maximisedStack;
   }
+  /** Gets the stack parent. */
   get stackParent(): ContentItem {
     if (!this.parent) {
       throw new Error('Stack should always have a parent');
@@ -297,6 +319,7 @@ export class Stack extends ComponentParentableItem {
     this.initContentItems();
   }
 
+  /** Sets active component item. */
   setActiveComponentItem(
     componentItem: ComponentItem,
     focus: boolean,
@@ -332,6 +355,7 @@ export class Stack extends ComponentParentableItem {
     }
   }
 
+  /** Returns active component item. */
   getActiveComponentItem(): ComponentItem | undefined {
     return this._activeComponentItem;
   }
@@ -352,6 +376,7 @@ export class Stack extends ComponentParentableItem {
     this._header.setRowColumnClosable(value);
   }
 
+  /** Creates component. */
   newComponent(
     componentType: ComponentType,
     componentState?: SerializableValue,
@@ -367,6 +392,7 @@ export class Stack extends ComponentParentableItem {
     return this.newItem(itemConfig, index) as ComponentItem;
   }
 
+  /** Adds component. */
   addComponent(
     componentType: ComponentType,
     componentState?: SerializableValue,
@@ -382,11 +408,13 @@ export class Stack extends ComponentParentableItem {
     return this.addItem(itemConfig, index);
   }
 
+  /** Creates item. */
   newItem(itemConfig: ComponentItemConfig, index?: number): ContentItem {
     index = this.addItem(itemConfig, index);
     return this.contentItems[index];
   }
 
+  /** Adds item. */
   addItem(itemConfig: ComponentItemConfig, index?: number): number {
     this.layoutManager.checkMinimiseMaximisedStack();
 
@@ -398,6 +426,7 @@ export class Stack extends ComponentParentableItem {
     return this.addChild(contentItem, index);
   }
 
+  /** Adds child. */
   override addChild(
     contentItem: ContentItem,
     index?: number,
@@ -424,6 +453,7 @@ export class Stack extends ComponentParentableItem {
     }
   }
 
+  /** Removes child. */
   override removeChild(contentItem: ContentItem, keepChild: boolean): void {
     const componentItem = contentItem as ComponentItem;
     const index = this.contentItems.indexOf(componentItem);
@@ -467,6 +497,7 @@ export class Stack extends ComponentParentableItem {
     }
   }
 
+  /** Performs the maximise operation. */
   maximise(): void {
     if (!this.isMaximised) {
       this.layoutManager.setMaximisedStack(this);
@@ -484,6 +515,7 @@ export class Stack extends ComponentParentableItem {
     }
   }
 
+  /** Performs the minimise operation. */
   minimise(): void {
     if (this.isMaximised) {
       this.layoutManager.setMaximisedStack(undefined);
@@ -515,6 +547,7 @@ export class Stack extends ComponentParentableItem {
     this._header.destroy();
   }
 
+  /** Performs the to config operation. */
   toConfig(): ResolvedStackItemConfig {
     let activeItemIndex: number | undefined;
     if (this._activeComponentItem) {

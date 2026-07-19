@@ -20,7 +20,7 @@ export {
   type ComponentItemComponent,
 } from './ts/items/component-item';
 export { ComponentParentableItem } from './ts/items/component-parentable-item';
-export { ContentItem } from './ts/items/content-item';
+export { ContentItem, type ContentItemArea } from './ts/items/content-item';
 export { RowOrColumn } from './ts/items/row-or-column';
 export { Stack } from './ts/items/stack';
 export * from './ts/layout-manager';

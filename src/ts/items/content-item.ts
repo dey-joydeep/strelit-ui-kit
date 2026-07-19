@@ -18,9 +18,22 @@ import { ComponentItem } from './component-item';
 import { ComponentParentableItem } from './component-parentable-item';
 import { Stack } from './stack';
 
-/** @public */
-export interface ContentItemArea extends AreaLinkedRect {
+/**
+ * Defines the content item area contract.
+ * @public
+ */
+export interface ContentItemArea {
+  /** The left edge. */
+  x1: number;
+  /** The right edge. */
+  x2: number;
+  /** The top edge. */
+  y1: number;
+  /** The bottom edge. */
+  y2: number;
+  /** The surface. */
   surface: number;
+  /** The content item. */
   contentItem: ContentItem;
 }
 
@@ -125,15 +138,22 @@ export abstract class ContentItem extends EventEmitter {
   /** @internal */
   minSizeUnit: SizeUnit;
 
+  /** Whether ground. */
   isGround: boolean;
+  /** Whether row. */
   isRow: boolean;
+  /** Whether column. */
   isColumn: boolean;
+  /** Whether stack. */
   isStack: boolean;
+  /** Whether component. */
   isComponent: boolean;
 
+  /** Gets the type. */
   get type(): ItemType {
     return this._type;
   }
+  /** Gets the id. */
   get id(): string {
     return this._id;
   }
@@ -144,30 +164,38 @@ export abstract class ContentItem extends EventEmitter {
   get popInParentIds(): string[] {
     return this._popInParentIds;
   }
+  /** Gets the parent. */
   get parent(): ContentItem | null {
     return this._parent;
   }
+  /** Gets the content items. */
   get contentItems(): ContentItem[] {
     return this._contentItems;
   }
+  /** Gets the is closable. */
   get isClosable(): boolean {
     return this._isClosable;
   }
+  /** Gets the element. */
   get element(): HTMLElement {
     return this._element;
   }
+  /** Gets the is initialised. */
   get isInitialised(): boolean {
     return this._isInitialised;
   }
 
+  /** Returns whether stack. */
   static isStack(item: ContentItem): item is Stack {
     return item.isStack;
   }
 
+  /** Returns whether component item. */
   static isComponentItem(item: ContentItem): item is ComponentItem {
     return item.isComponent;
   }
 
+  /** Returns whether component parentable item. */
   static isComponentParentableItem(
     item: ContentItem,
   ): item is ComponentParentableItem {
@@ -176,6 +204,7 @@ export abstract class ContentItem extends EventEmitter {
 
   /** @internal */
   constructor(
+    /** The layout manager that owns this item. */
     public readonly layoutManager: LayoutManager,
     config: ResolvedItemConfig,
     /** @internal */
@@ -342,7 +371,8 @@ export abstract class ContentItem extends EventEmitter {
       newChild.minSize = oldChild.minSize;
       newChild.minSizeUnit = oldChild.minSizeUnit;
 
-      //TODO This doesn't update the config... refactor to leave item nodes untouched after creation
+      // Saved layouts are derived from the live tree, so there is no retained
+      // configuration object to update when replacing a runtime item.
       if (newChild._parent === null) {
         throw new UnexpectedNullError('CIRCNC45699');
       } else {
@@ -410,6 +440,7 @@ export abstract class ContentItem extends EventEmitter {
     ) as ComponentItem[];
   }
 
+  /** Performs the to config operation. */
   abstract toConfig(): ResolvedItemConfig;
 
   /** @internal */
@@ -434,7 +465,10 @@ export abstract class ContentItem extends EventEmitter {
     }
   }
 
-  /** @internal */
+  /**
+   * Adds a dropped item as a child in the base implementation.
+   * @internal
+   */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onDrop(contentItem: ContentItem, area: ContentItemArea): void {
     this.addChild(contentItem);
@@ -444,11 +478,7 @@ export abstract class ContentItem extends EventEmitter {
   show(): void {
     this.layoutManager.beginSizeInvalidation();
     try {
-      // Not sure why showAllActiveContentItems() was called. StrelitLayout seems to work fine without it.  Left commented code
-      // in source in case a reason for it becomes apparent.
-      // this.layoutManager.showAllActiveContentItems();
       setElementDisplayVisibility(this._element, true);
-      // this.layoutManager.updateSizeFromContainer();
 
       for (let i = 0; i < this._contentItems.length; i++) {
         this._contentItems[i].show();
@@ -593,6 +623,7 @@ export abstract class ContentItem extends EventEmitter {
     }
   }
 
+  /** Performs the try bubble event operation. */
   override tryBubbleEvent(name: string, args: unknown[]): void {
     if (args.length === 1) {
       const event = args[0];

@@ -3,6 +3,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const ts = require('typescript');
 
+/**
+ * Reproducible compatibility inventory generator. See
+ * docs/architecture/compatibility-audit-maintenance.md before changing
+ * mappings or refreshing tracked snapshots.
+ */
+
 const repoRoot = path.resolve(__dirname, '..');
 const workspaceRoot = path.dirname(repoRoot);
 const v2Repo = path.join(workspaceRoot, 'golden-layout');
@@ -189,6 +195,7 @@ const testFileTargets = new Map([
   ['query-helpers-tests.ts', 'query-helpers-tests.ts'],
 ]);
 
+/** Parses validate, check, and intentional snapshot-write modes. */
 function parseArguments() {
   const check = process.argv.includes('--check');
   const validate = process.argv.includes('--validate');
@@ -233,6 +240,7 @@ function declarationKind(node) {
   return ts.SyntaxKind[node.kind];
 }
 
+/** Collects the externally relevant declarations from an API Extractor report. */
 function collectApiSurface(report) {
   const match = /```ts\s*([\s\S]*?)```/.exec(report);
   if (match === null) {
@@ -317,6 +325,7 @@ function collectApiSurface(report) {
   return entries;
 }
 
+/** Maps a baseline qualified symbol to its Strelit module-level target. */
 function mapQualifiedSymbol(symbol) {
   const exact = qualifiedRenames.get(symbol);
   if (exact !== undefined) {
@@ -337,6 +346,7 @@ function mapQualifiedSymbol(symbol) {
   return [renamedTopLevel, ...rest].join('.');
 }
 
+/** Resolves a proposed mapping against the current public declaration set. */
 function findCurrentTarget(mappedTarget, current) {
   if (current.has(mappedTarget)) {
     return mappedTarget;
@@ -377,6 +387,7 @@ function findCurrentTarget(mappedTarget, current) {
   return undefined;
 }
 
+/** Builds a complete disposition for every Golden Layout v2 declaration. */
 function createApiDisposition(baseline, current) {
   return [...baseline.values()]
     .sort((left, right) => left.symbol.localeCompare(right.symbol))
@@ -449,6 +460,7 @@ function extractBalancedObject(source, marker) {
   throw new Error('Unterminated v1 LayoutManager prototype object');
 }
 
+/** Records decisions for selected useful or intentionally rejected v1 features. */
 function createV1Disposition() {
   const source = fs.readFileSync(v1Bundle, 'utf8');
   const prototypeObject = extractBalancedObject(
@@ -513,6 +525,7 @@ function extractTestCases(source) {
   );
 }
 
+/** Maps every baseline test case to current coverage or an explicit decision. */
 function createTestDisposition() {
   const files = git('ls-tree', '-r', '--name-only', baselineCommit, 'test')
     .split(/\r?\n/)
@@ -560,6 +573,7 @@ function serialize(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
+/** Writes an intentional refresh or fails when a tracked snapshot is stale. */
 function writeOrCheck(filePath, content, options) {
   if (options.check) {
     if (
@@ -586,6 +600,7 @@ function readSnapshot(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
+/** Validates committed inventory provenance, completeness, and current targets. */
 function validateSnapshots() {
   const apiSnapshot = readSnapshot(apiOutputPath);
   const v1Snapshot = readSnapshot(v1OutputPath);
@@ -672,6 +687,7 @@ function validateSnapshots() {
   );
 }
 
+/** Generates or validates all compatibility inventories for the selected mode. */
 function main() {
   const options = parseArguments();
   if (options.validate) {
