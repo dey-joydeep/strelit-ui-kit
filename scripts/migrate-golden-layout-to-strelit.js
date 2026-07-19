@@ -601,13 +601,58 @@ function isLayoutItemObjectLiteral(objectLiteral) {
   );
 }
 
+function hasLayoutConfigTypeContext(objectLiteral) {
+  const parent = objectLiteral.parent;
+  const typeNode =
+    ts.isVariableDeclaration(parent) && parent.initializer === objectLiteral
+      ? parent.type
+      : (ts.isAsExpression(parent) || ts.isSatisfiesExpression(parent)) &&
+          parent.expression === objectLiteral
+        ? parent.type
+        : undefined;
+  return (
+    typeNode !== undefined &&
+    /^(?:[A-Za-z_$][\w$]*\.)*(?:LayoutConfig|PopoutLayoutConfig)$/.test(
+      typeNode.getText(),
+    )
+  );
+}
+
+function isLayoutConfigObjectLiteral(objectLiteral) {
+  if (hasLayoutConfigTypeContext(objectLiteral)) {
+    return true;
+  }
+
+  const rootProperty = findObjectProperty(objectLiteral, 'root');
+  if (
+    rootProperty !== undefined &&
+    ts.isObjectLiteralExpression(rootProperty.initializer) &&
+    isLayoutItemObjectLiteral(rootProperty.initializer)
+  ) {
+    return true;
+  }
+
+  const contentProperty = findObjectProperty(objectLiteral, 'content');
+  return (
+    contentProperty !== undefined &&
+    ts.isArrayLiteralExpression(contentProperty.initializer) &&
+    contentProperty.initializer.elements.some(
+      (element) =>
+        ts.isObjectLiteralExpression(element) &&
+        isLayoutItemObjectLiteral(element),
+    )
+  );
+}
+
 function isLayoutDimensionsObjectLiteral(objectLiteral) {
   const parent = objectLiteral.parent;
   return (
     ts.isPropertyAssignment(parent) &&
     parent.initializer === objectLiteral &&
     ((ts.isIdentifier(parent.name) && parent.name.text === 'dimensions') ||
-      (ts.isStringLiteral(parent.name) && parent.name.text === 'dimensions'))
+      (ts.isStringLiteral(parent.name) && parent.name.text === 'dimensions')) &&
+    ts.isObjectLiteralExpression(parent.parent) &&
+    isLayoutConfigObjectLiteral(parent.parent)
   );
 }
 
@@ -635,7 +680,11 @@ function getNumericPropertyMigration(node) {
       return undefined;
     }
     const axis = propertyName === 'minItemWidth' ? 'Width' : 'Height';
-    return `defaultMinItem${axis}: '${node.initializer.text}px'`;
+    const target = `defaultMinItem${axis}`;
+    if (findObjectProperty(node.parent, target) !== undefined) {
+      return undefined;
+    }
+    return `${target}: '${node.initializer.text}px'`;
   }
 
   if (!isLayoutItemObjectLiteral(node.parent)) {
@@ -1299,13 +1348,12 @@ function assertSafeMigrationPath(entryPath, canonicalRoot) {
 
 /** Discovers supported files without traversing ignored or unsafe entries. */
 function walk(entryPath, result, canonicalRoot) {
+  if (ignoredDirectories.has(path.basename(entryPath))) {
+    return;
+  }
+
   const stat = assertSafeMigrationPath(entryPath, canonicalRoot);
   if (stat.isDirectory()) {
-    const name = path.basename(entryPath);
-    if (ignoredDirectories.has(name)) {
-      return;
-    }
-
     for (const entry of fs.readdirSync(entryPath)) {
       walk(path.join(entryPath, entry), result, canonicalRoot);
     }

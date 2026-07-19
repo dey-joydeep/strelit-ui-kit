@@ -248,6 +248,28 @@ const resolved = LayoutConfig.resolve(config);
     expect(readFileSync(outsideFile, 'utf8')).toContain('GoldenLayout');
   });
 
+  it('skips ignored directory links without inspecting their targets', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'strelit-migration-ignored-'));
+    temporaryDirectories.push(fixture);
+    const selected = join(fixture, 'target');
+    const outside = join(fixture, 'outside');
+    const outsideFile = join(outside, 'legacy.js');
+    const selectedFile = join(selected, 'legacy.js');
+    mkdirSync(selected);
+    mkdirSync(outside);
+    writeFileSync(outsideFile, 'const layout = new GoldenLayout();\n');
+    writeFileSync(selectedFile, 'const layout = new GoldenLayout();\n');
+    symlinkSync(
+      outside,
+      join(selected, 'node_modules'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+
+    expect(() => migrate(selected)).not.toThrow();
+    expect(readFileSync(selectedFile, 'utf8')).toContain('StrelitLayout');
+    expect(readFileSync(outsideFile, 'utf8')).toContain('GoldenLayout');
+  });
+
   it('rejects multiply-linked files before writing through them', () => {
     const fixture = mkdtempSync(join(tmpdir(), 'strelit-migration-hardlink-'));
     temporaryDirectories.push(fixture);
@@ -418,6 +440,30 @@ const componentState = { minItemWidth: 12 };
     expect(output).not.toContain(
       'item width/height fields must become size strings',
     );
+  });
+
+  it('does not rewrite unrelated dimensions or duplicate modern defaults', () => {
+    const filePath = createFixture(`
+import { LayoutConfig } from 'golden-layout';
+
+const chart = {
+  dimensions: { minItemWidth: 12 },
+};
+const layout: LayoutConfig = {
+  dimensions: { defaultMinItemWidth: '30px', minItemWidth: 10 },
+  root: { type: 'component', componentType: 'editor' },
+};
+`);
+
+    const output = migrate(filePath, ['--from', 'v2']);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain('dimensions: { minItemWidth: 12 }');
+    expect(migrated).toContain(
+      "dimensions: { defaultMinItemWidth: '30px', minItemWidth: 10 }",
+    );
+    expect(migrated.match(/defaultMinItemWidth/g)).toHaveLength(1);
+    expect(output).toContain('removed config fields must be converted');
   });
 
   it('flags v1-only framework and nested-stack layouts', () => {

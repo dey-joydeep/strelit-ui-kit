@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   type LayoutConfig,
+  type PopoutLayoutConfig,
   createResolvedLayoutConfigDefault,
   resolveLayoutConfig,
 } from '../../src';
@@ -77,5 +78,19 @@ describe('Layout configuration resolution and defaults', function () {
       resolveLayoutConfig({ settings: { closePopoutsOnUnload: false } })
         .settings.closePopoutsOnUnload,
     ).toBe(false);
+  });
+
+  it('applies popout defaults when optional runtime fields are omitted', () => {
+    const popout = {
+      root: { type: 'component', componentType: 'panel' },
+    } as PopoutLayoutConfig;
+
+    const resolved = resolveLayoutConfig({ openPopouts: [popout] });
+
+    expect(resolved.openPopouts[0]).toMatchObject({
+      parentId: null,
+      indexInParent: null,
+      window: { width: null, height: null, left: null, top: null },
+    });
   });
 });

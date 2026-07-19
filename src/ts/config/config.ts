@@ -1263,6 +1263,7 @@ export function resolveLayoutConfig(
 function resolveLayoutConfigWithBudget(
   layoutConfig: LayoutConfig,
   budget: LayoutResolutionBudget,
+  forcePopout = false,
 ): ResolvedLayoutConfig {
   if (budget.nodes >= maximumConfigNodes) {
     throw new ConfigurationError(
@@ -1276,8 +1277,11 @@ function resolveLayoutConfigWithBudget(
   budget.nodes++;
   budget.active.add(layoutConfig);
   try {
-    if (isPopoutLayoutConfig(layoutConfig)) {
-      return resolvePopoutLayoutConfigWithBudget(layoutConfig, budget);
+    if (forcePopout || isPopoutLayoutConfig(layoutConfig)) {
+      return resolvePopoutLayoutConfigWithBudget(
+        layoutConfig as PopoutLayoutConfig,
+        budget,
+      );
     }
 
     return {
@@ -1357,6 +1361,7 @@ function resolveOpenPopoutLayoutConfigsWithBudget(
       result[i] = resolveLayoutConfigWithBudget(
         popoutConfigs[i],
         budget,
+        true,
       ) as ResolvedPopoutLayoutConfig;
     }
     return result;
@@ -1440,6 +1445,7 @@ export function resolvePopoutLayoutConfig(
   return resolveLayoutConfigWithBudget(
     popoutConfig,
     createResolutionBudget(),
+    true,
   ) as ResolvedPopoutLayoutConfig;
 }
 
