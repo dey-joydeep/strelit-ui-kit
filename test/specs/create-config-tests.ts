@@ -111,6 +111,31 @@ describe('Layout configuration resolution and defaults', function () {
     expect(reloaded.header.dock).toBe('Dock me');
   });
 
+  it('round-trips public popin labels for nested popouts', () => {
+    const popout = {
+      root: { type: 'component', componentType: 'panel' },
+      header: { popin: 'Dock nested popout' },
+    } as PopoutLayoutConfig;
+    const resolved = resolveLayoutConfig({ openPopouts: [popout] });
+
+    const config = createLayoutConfigFromResolved(resolved);
+    const reloaded = resolveLayoutConfig(config);
+
+    expect(config.openPopouts?.[0].header?.popin).toBe('Dock nested popout');
+    expect(reloaded.openPopouts[0].header.dock).toBe('Dock nested popout');
+  });
+
+  it('rejects malformed openPopouts values', () => {
+    expect(() =>
+      resolveLayoutConfig({
+        openPopouts: 'not-an-array',
+      } as unknown as LayoutConfig),
+    ).toThrow(ConfigurationError);
+    expect(() =>
+      resolveLayoutConfig({ openPopouts: {} } as unknown as LayoutConfig),
+    ).toThrow(ConfigurationError);
+  });
+
   it('deep-copies object component types when copying resolved configs', () => {
     const componentType = { kind: 'panel', metadata: ['left'] };
     const resolved = resolveLayoutConfig({

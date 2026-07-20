@@ -520,7 +520,7 @@ const dynamicLayout = new GoldenLayout.GoldenLayout();
 
   it('uses CommonJS syntax for generated imports in .cjs files', () => {
     const filePath = createFixture(
-      `const resolved = LayoutConfig.resolve(config);\n`,
+      `const { LayoutConfig } = require('golden-layout');\nconst resolved = LayoutConfig.resolve(config);\n`,
       'consumer.cjs',
     );
 
@@ -528,10 +528,53 @@ const dynamicLayout = new GoldenLayout.GoldenLayout();
     const migrated = readFileSync(filePath, 'utf8');
 
     expect(migrated).toContain(
-      "const { resolveLayoutConfig } = require('strelit-ui-kit')",
+      "const { LayoutConfig, resolveLayoutConfig } = require('strelit-ui-kit')",
     );
     expect(migrated).toContain('resolveLayoutConfig(config)');
     expect(migrated).not.toContain('import {');
+  });
+
+  it('preserves unbound legacy-looking identifiers for manual review', () => {
+    const source = `class GoldenLayout {}\nconst Json = { local: true };\nnew GoldenLayout();\n`;
+    const filePath = createFixture(source);
+
+    const output = migrate(filePath);
+
+    expect(readFileSync(filePath, 'utf8')).toBe(source);
+    expect(output).toContain(
+      'unbound Golden Layout-like identifiers require manual migration',
+    );
+  });
+
+  it('does not rewrite a local that shadows a proven package binding', () => {
+    const filePath = createFixture(
+      `import { GoldenLayout } from 'golden-layout';\nfunction create(GoldenLayout: new () => object) { return new GoldenLayout(); }\nconst layout = new GoldenLayout();\n`,
+    );
+
+    const output = migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain(
+      'function create(GoldenLayout: new () => object)',
+    );
+    expect(migrated).toContain('return new GoldenLayout()');
+    expect(migrated).toContain('const layout = new StrelitLayout()');
+    expect(output).toContain(
+      'unbound Golden Layout-like identifiers require manual migration',
+    );
+  });
+
+  it('migrates aliased APIs using their proven import symbols', () => {
+    const filePath = createFixture(
+      `import { GoldenLayout as GL, LayoutConfig as LC } from 'golden-layout';\nconst resolved = LC.resolve(config);\nnew GL();\n`,
+    );
+
+    migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain('StrelitLayout as GL');
+    expect(migrated).toContain('resolveLayoutConfig(config)');
+    expect(migrated).toContain('new GL()');
   });
 
   it('preserves malformed source for manual migration', () => {
@@ -593,7 +636,10 @@ import 'golden-layout/src/css/goldenlayout-light-theme.css';
     mkdirSync(selected);
     mkdirSync(outside);
     writeFileSync(outsideFile, 'const layout = new GoldenLayout();\n');
-    writeFileSync(selectedFile, 'const layout = new GoldenLayout();\n');
+    writeFileSync(
+      selectedFile,
+      "import { GoldenLayout } from 'golden-layout';\nconst layout = new GoldenLayout();\n",
+    );
     symlinkSync(
       outside,
       join(selected, 'node_modules'),
@@ -627,7 +673,10 @@ import 'golden-layout/src/css/goldenlayout-light-theme.css';
     const nested = join(selected, 'nested');
     const legacyFile = join(nested, 'legacy.js');
     mkdirSync(nested, { recursive: true });
-    writeFileSync(legacyFile, 'const layout = new GoldenLayout();\n');
+    writeFileSync(
+      legacyFile,
+      "import { GoldenLayout } from 'golden-layout';\nconst layout = new GoldenLayout();\n",
+    );
 
     const dryRunOutput = execFileSync(
       process.execPath,
@@ -730,6 +779,34 @@ const config: DragSource.ComponentItemConfig = {
     const firstMigration = readFileSync(filePath, 'utf8');
     migrate(filePath, ['--from', 'v2']);
     expect(readFileSync(filePath, 'utf8')).toBe(firstMigration);
+  });
+
+  it('migrates standalone item JSON without dropping its wrapper or children', () => {
+    const filePath = createFixture(
+      JSON.stringify({
+        type: 'row',
+        width: 75,
+        content: [
+          { type: 'component', componentName: 'editor' },
+          { type: 'component', componentName: 'preview' },
+        ],
+      }),
+      'item.json',
+    );
+
+    migrate(filePath, ['--from', 'v1']);
+    const migrated = JSON.parse(readFileSync(filePath, 'utf8')) as {
+      type: string;
+      size: string;
+      content: Array<{ componentType: string }>;
+    };
+
+    expect(migrated.type).toBe('row');
+    expect(migrated.size).toBe('75%');
+    expect(migrated.content.map((item) => item.componentType)).toEqual([
+      'editor',
+      'preview',
+    ]);
   });
 
   it('migrates numeric sizing from the original v2 demo layout pattern', () => {

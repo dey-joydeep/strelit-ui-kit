@@ -46,4 +46,31 @@ describe('Component State Saving & Initial State', function () {
       testValue: 'updated',
     });
   });
+
+  it('clears the previous state request hook when replacing a component', function () {
+    layout.registerComponentFactoryFunction('oldComponent', (container) => {
+      container.stateRequestEvent = () => ({ source: 'old-hook' });
+    });
+    layout.registerComponentFactoryFunction('newComponent', () => undefined);
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        componentType: 'oldComponent',
+        componentState: { source: 'old-initial' },
+      },
+    });
+
+    const oldItem = layout.getComponentItemsByType('oldComponent')[0];
+    oldItem.container.replaceComponent({
+      type: 'component',
+      componentType: 'newComponent',
+      componentState: { source: 'new-initial' },
+    });
+
+    const savedRoot = layout.saveLayout().root;
+    expect(savedRoot?.content[0].componentType).toBe('newComponent');
+    expect(savedRoot?.content[0].componentState).toEqual({
+      source: 'new-initial',
+    });
+  });
 });

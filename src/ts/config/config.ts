@@ -21,7 +21,6 @@ import {
 } from '../utils/resource-limits';
 import {
   createResolvedHeaderedItemConfigHeaderCopy,
-  createResolvedLayoutConfigHeaderCopy,
   createResolvedLayoutConfigSettingsCopy,
   isResolvedComponentItemConfig,
   isResolvedRootItemConfig,
@@ -111,7 +110,12 @@ export interface ItemConfig {
  * @public
  */
 export function resolveItemConfig(itemConfig: ItemConfig): ResolvedItemConfig {
-  return resolveItemConfigWithBudget(itemConfig, createResolutionBudget(), 0);
+  return resolveItemConfigWithBudget(
+    itemConfig,
+    createResolutionBudget(),
+    0,
+    resolvedComponentItemConfigDefaultReorderEnabled,
+  );
 }
 
 interface LayoutResolutionBudget {
@@ -127,6 +131,7 @@ function resolveItemConfigWithBudget(
   itemConfig: ItemConfig,
   budget: LayoutResolutionBudget,
   depth: number,
+  componentReorderEnabledDefault: boolean,
 ): ResolvedItemConfig {
   if (depth > maximumConfigDepth || budget.nodes >= maximumConfigNodes) {
     throw new ConfigurationError(
@@ -152,6 +157,7 @@ function resolveItemConfigWithBudget(
           itemConfig as RowOrColumnItemConfig,
           budget,
           depth,
+          componentReorderEnabledDefault,
         );
 
       case ItemType.stack:
@@ -159,10 +165,14 @@ function resolveItemConfigWithBudget(
           itemConfig as StackItemConfig,
           budget,
           depth,
+          componentReorderEnabledDefault,
         );
 
       case ItemType.component:
-        return resolveComponentItemConfig(itemConfig as ComponentItemConfig);
+        return resolveComponentItemConfigWithDefault(
+          itemConfig as ComponentItemConfig,
+          componentReorderEnabledDefault,
+        );
 
       default:
         throw new UnreachableCaseError('UCUICR55499', itemConfig.type);
@@ -185,6 +195,7 @@ export function resolveItemConfigContent(
     content,
     createResolutionBudget(),
     0,
+    resolvedComponentItemConfigDefaultReorderEnabled,
   );
 }
 
@@ -192,6 +203,7 @@ function resolveItemConfigContentWithBudget(
   content: ItemConfig[] | undefined,
   budget: LayoutResolutionBudget,
   depth: number,
+  componentReorderEnabledDefault: boolean,
 ): ResolvedItemConfig[] {
   assertContentArray(content, 'ItemConfig');
   if (content === undefined) {
@@ -205,7 +217,12 @@ function resolveItemConfigContentWithBudget(
     }
     const result = Array<ResolvedItemConfig>(count);
     for (let i = 0; i < count; i++) {
-      result[i] = resolveItemConfigWithBudget(content[i], budget, depth);
+      result[i] = resolveItemConfigWithBudget(
+        content[i],
+        budget,
+        depth,
+        componentReorderEnabledDefault,
+      );
     }
     return result;
   }
@@ -381,6 +398,7 @@ export function resolveStackItemConfig(
     itemConfig,
     createResolutionBudget(),
     0,
+    resolvedComponentItemConfigDefaultReorderEnabled,
   ) as ResolvedStackItemConfig;
 }
 
@@ -388,6 +406,7 @@ function resolveStackItemConfigWithBudget(
   itemConfig: StackItemConfig,
   budget: LayoutResolutionBudget,
   depth: number,
+  componentReorderEnabledDefault: boolean,
 ): ResolvedStackItemConfig {
   const { id, maximised } = resolveHeaderedItemConfigIdAndMaximised(itemConfig);
   const { size, sizeUnit } = resolveItemConfigSize(itemConfig.size);
@@ -401,6 +420,7 @@ function resolveStackItemConfigWithBudget(
       itemConfig.content,
       budget,
       depth + 1,
+      componentReorderEnabledDefault,
     ),
     size,
     sizeUnit,
@@ -455,6 +475,7 @@ export function resolveStackItemConfigContent(
     content,
     createResolutionBudget(),
     0,
+    resolvedComponentItemConfigDefaultReorderEnabled,
   );
 }
 
@@ -462,6 +483,7 @@ function resolveStackItemConfigContentWithBudget(
   content: ComponentItemConfig[] | undefined,
   budget: LayoutResolutionBudget,
   depth: number,
+  componentReorderEnabledDefault: boolean,
 ): ResolvedComponentItemConfig[] {
   assertContentArray(content, 'StackItemConfig');
   if (content === undefined) {
@@ -480,6 +502,7 @@ function resolveStackItemConfigContentWithBudget(
         childItemConfig,
         budget,
         depth,
+        componentReorderEnabledDefault,
       );
       if (!isResolvedComponentItemConfig(itemConfig)) {
         throw new AssertError('UCUSICRC91114', JSON.stringify(itemConfig));
@@ -548,6 +571,16 @@ export interface ComponentItemConfig extends HeaderedItemConfig {
 export function resolveComponentItemConfig(
   itemConfig: ComponentItemConfig,
 ): ResolvedComponentItemConfig {
+  return resolveComponentItemConfigWithDefault(
+    itemConfig,
+    resolvedComponentItemConfigDefaultReorderEnabled,
+  );
+}
+
+function resolveComponentItemConfigWithDefault(
+  itemConfig: ComponentItemConfig,
+  reorderEnabledDefault: boolean,
+): ResolvedComponentItemConfig {
   const componentType = itemConfig.componentType;
   if (componentType === undefined) {
     throw new Error('ComponentItemConfig.componentType is undefined');
@@ -575,9 +608,7 @@ export function resolveComponentItemConfig(
       maximised,
       isClosable:
         itemConfig.isClosable ?? resolvedItemConfigDefaults.isClosable,
-      reorderEnabled:
-        itemConfig.reorderEnabled ??
-        resolvedComponentItemConfigDefaultReorderEnabled,
+      reorderEnabled: itemConfig.reorderEnabled ?? reorderEnabledDefault,
       title,
       header: resolveHeaderedItemConfigHeader(itemConfig.header),
       componentType,
@@ -686,6 +717,7 @@ export function resolveRowOrColumnItemConfig(
     itemConfig,
     createResolutionBudget(),
     0,
+    resolvedComponentItemConfigDefaultReorderEnabled,
   ) as ResolvedRowOrColumnItemConfig;
 }
 
@@ -693,6 +725,7 @@ function resolveRowOrColumnItemConfigWithBudget(
   itemConfig: RowOrColumnItemConfig,
   budget: LayoutResolutionBudget,
   depth: number,
+  componentReorderEnabledDefault: boolean,
 ): ResolvedRowOrColumnItemConfig {
   const { size, sizeUnit } = resolveItemConfigSize(itemConfig.size);
   const { size: minSize, sizeUnit: minSizeUnit } = resolveItemConfigMinSize(
@@ -704,6 +737,7 @@ function resolveRowOrColumnItemConfigWithBudget(
       itemConfig.content,
       budget,
       depth + 1,
+      componentReorderEnabledDefault,
     ),
     size,
     sizeUnit,
@@ -752,6 +786,7 @@ export function resolveRowOrColumnItemConfigContent(
     content,
     createResolutionBudget(),
     0,
+    resolvedComponentItemConfigDefaultReorderEnabled,
   );
 }
 
@@ -759,6 +794,7 @@ function resolveRowOrColumnItemConfigContentWithBudget(
   content: RowOrColumnItemConfigChildItemConfig[] | undefined,
   budget: LayoutResolutionBudget,
   depth: number,
+  componentReorderEnabledDefault: boolean,
 ): ResolvedRowOrColumnItemConfigChildItemConfig[] {
   assertContentArray(content, 'RowOrColumnItemConfig');
   if (content === undefined) {
@@ -787,6 +823,7 @@ function resolveRowOrColumnItemConfigContentWithBudget(
         childItemConfig,
         budget,
         depth,
+        componentReorderEnabledDefault,
       );
       if (!isResolvedRowOrColumnItemConfigChild(resolvedChildItemConfig)) {
         throw new AssertError(
@@ -875,17 +912,27 @@ export function isRootItemConfig(
 export function resolveRootItemConfig(
   itemConfig: RootItemConfig | undefined,
 ): ResolvedRootItemConfig | undefined {
-  return resolveRootItemConfigWithBudget(itemConfig, createResolutionBudget());
+  return resolveRootItemConfigWithBudget(
+    itemConfig,
+    createResolutionBudget(),
+    resolvedComponentItemConfigDefaultReorderEnabled,
+  );
 }
 
 function resolveRootItemConfigWithBudget(
   itemConfig: RootItemConfig | undefined,
   budget: LayoutResolutionBudget,
+  componentReorderEnabledDefault: boolean,
 ): ResolvedRootItemConfig | undefined {
   if (itemConfig === undefined) {
     return undefined;
   } else {
-    const result = resolveItemConfigWithBudget(itemConfig, budget, 0);
+    const result = resolveItemConfigWithBudget(
+      itemConfig,
+      budget,
+      0,
+      componentReorderEnabledDefault,
+    );
     if (!isResolvedRootItemConfig(result)) {
       throw new ConfigurationError(
         'ItemConfig is not Row, Column or Stack',
@@ -1299,15 +1346,20 @@ function resolveLayoutConfigWithBudget(
       );
     }
 
+    const settings = resolveLayoutConfigSettings(layoutConfig.settings);
     return {
       resolved: true,
-      root: resolveRootItemConfigWithBudget(layoutConfig.root, budget),
+      root: resolveRootItemConfigWithBudget(
+        layoutConfig.root,
+        budget,
+        settings.reorderEnabled,
+      ),
       openPopouts: resolveOpenPopoutLayoutConfigsWithBudget(
         layoutConfig.openPopouts,
         budget,
       ),
       dimensions: resolveLayoutConfigDimensions(layoutConfig.dimensions),
-      settings: resolveLayoutConfigSettings(layoutConfig.settings),
+      settings,
       header: resolveLayoutConfigHeader(layoutConfig.header),
     };
   } finally {
@@ -1378,6 +1430,11 @@ function resolveOpenPopoutLayoutConfigsWithBudget(
 ): ResolvedPopoutLayoutConfig[] {
   if (popoutConfigs === undefined) {
     return [];
+  } else if (!Array.isArray(popoutConfigs)) {
+    throw new ConfigurationError(
+      'LayoutConfig.openPopouts must be an array',
+      popoutConfigs,
+    );
   } else {
     const count = popoutConfigs.length;
     if (count > maximumConfigNodes - budget.nodes) {
@@ -1482,14 +1539,19 @@ function resolvePopoutLayoutConfigWithBudget(
   popoutConfig: PopoutLayoutConfig,
   budget: LayoutResolutionBudget,
 ): ResolvedPopoutLayoutConfig {
+  const settings = resolveLayoutConfigSettings(popoutConfig.settings);
   return {
-    root: resolveRootItemConfigWithBudget(popoutConfig.root, budget),
+    root: resolveRootItemConfigWithBudget(
+      popoutConfig.root,
+      budget,
+      settings.reorderEnabled,
+    ),
     openPopouts: resolveOpenPopoutLayoutConfigsWithBudget(
       popoutConfig.openPopouts,
       budget,
     ),
     dimensions: resolveLayoutConfigDimensions(popoutConfig.dimensions),
-    settings: resolveLayoutConfigSettings(popoutConfig.settings),
+    settings,
     header: resolveLayoutConfigHeader(popoutConfig.header),
     parentId: popoutConfig.parentId ?? null,
     indexInParent: popoutConfig.indexInParent ?? null,
@@ -1514,7 +1576,7 @@ export function createPopoutLayoutConfigFromResolved(
       resolvedConfig.dimensions,
     ),
     settings: createResolvedLayoutConfigSettingsCopy(resolvedConfig.settings),
-    header: createResolvedLayoutConfigHeaderCopy(resolvedConfig.header),
+    header: createLayoutConfigHeaderFromResolved(resolvedConfig.header),
     parentId: resolvedConfig.parentId,
     indexInParent: resolvedConfig.indexInParent,
     window: createPopoutLayoutConfigWindowFromResolved(resolvedConfig.window),

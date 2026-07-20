@@ -354,6 +354,144 @@ function collectSourceBindings(sourceFile) {
   return { bindings, importedNames };
 }
 
+function createSourceAnalysis(content, filePath, extension) {
+  const compilerOptions = {
+    allowJs: true,
+    checkJs: false,
+    module: ts.ModuleKind.ESNext,
+    noLib: true,
+    noResolve: true,
+    target: ts.ScriptTarget.Latest,
+  };
+  const sourceFile = ts.createSourceFile(
+    filePath,
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    scriptKindForExtension(extension),
+  );
+  const resolvedFilePath = path.resolve(filePath);
+  const host = ts.createCompilerHost(compilerOptions, true);
+  const defaultGetSourceFile = host.getSourceFile.bind(host);
+  host.fileExists = (candidate) =>
+    path.resolve(candidate) === resolvedFilePath ||
+    ts.sys.fileExists(candidate);
+  host.readFile = (candidate) =>
+    path.resolve(candidate) === resolvedFilePath
+      ? content
+      : ts.sys.readFile(candidate);
+  host.getSourceFile = (
+    candidate,
+    languageVersion,
+    onError,
+    shouldCreateNewSourceFile,
+  ) =>
+    path.resolve(candidate) === resolvedFilePath
+      ? sourceFile
+      : defaultGetSourceFile(
+          candidate,
+          languageVersion,
+          onError,
+          shouldCreateNewSourceFile,
+        );
+  const program = ts.createProgram([filePath], compilerOptions, host);
+  return {
+    checker: program.getTypeChecker(),
+    sourceFile: program.getSourceFile(filePath) ?? sourceFile,
+  };
+}
+
+function collectGoldenLayoutBindingSymbols(sourceFile, checker) {
+  const bindings = new Map();
+
+  function record(identifier, exportName, replacementName) {
+    const symbol = checker.getSymbolAtLocation(identifier);
+    if (symbol !== undefined) {
+      bindings.set(symbol, { exportName, replacementName });
+    }
+  }
+
+  function recordImportClause(importClause) {
+    if (importClause?.name !== undefined) {
+      const localName = importClause.name.text;
+      record(
+        importClause.name,
+        'GoldenLayout',
+        localName === 'GoldenLayout' ? 'StrelitLayout' : localName,
+      );
+    }
+    const namedBindings = importClause?.namedBindings;
+    if (namedBindings === undefined || ts.isNamespaceImport(namedBindings)) {
+      return;
+    }
+    for (const element of namedBindings.elements) {
+      const exportName = element.propertyName?.text ?? element.name.text;
+      const migratedName =
+        sourceIdentifierReplacements.get(exportName) ?? exportName;
+      record(
+        element.name,
+        exportName,
+        element.propertyName === undefined ? migratedName : element.name.text,
+      );
+    }
+  }
+
+  function recordRequireBinding(name) {
+    if (ts.isIdentifier(name)) {
+      record(
+        name,
+        'GoldenLayout',
+        name.text === 'GoldenLayout' ? 'StrelitLayout' : name.text,
+      );
+      return;
+    }
+    if (!ts.isObjectBindingPattern(name)) {
+      return;
+    }
+    for (const element of name.elements) {
+      if (!ts.isIdentifier(element.name)) {
+        continue;
+      }
+      const exportName = element.propertyName?.text ?? element.name.text;
+      const migratedName =
+        sourceIdentifierReplacements.get(exportName) ?? exportName;
+      record(
+        element.name,
+        exportName,
+        element.propertyName === undefined ? migratedName : element.name.text,
+      );
+    }
+  }
+
+  function visit(node) {
+    if (
+      ts.isImportDeclaration(node) &&
+      ts.isStringLiteral(node.moduleSpecifier) &&
+      isGoldenLayoutPackageOrJsEntrySpecifier(node.moduleSpecifier.text)
+    ) {
+      recordImportClause(node.importClause);
+      return;
+    }
+    if (ts.isVariableDeclaration(node)) {
+      const specifier =
+        node.initializer === undefined
+          ? undefined
+          : getStaticRequireSpecifier(node.initializer);
+      if (
+        specifier !== undefined &&
+        isGoldenLayoutPackageOrJsEntrySpecifier(specifier)
+      ) {
+        recordRequireBinding(node.name);
+        return;
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return bindings;
+}
+
 function getStaticRequireSpecifier(node) {
   if (
     ts.isCallExpression(node) &&
@@ -652,7 +790,7 @@ function collectManualOnlySourceContext(sourceFile) {
   return { bindings, nodes, reviews };
 }
 
-function getRootIdentifierName(node) {
+function getRootIdentifier(node) {
   let current = node;
   while (
     ts.isPropertyAccessExpression(current) ||
@@ -662,56 +800,68 @@ function getRootIdentifierName(node) {
       ? current.expression
       : current.left;
   }
-  return ts.isIdentifier(current) ? current.text : undefined;
+  return ts.isIdentifier(current) ? current : undefined;
 }
 
-function classifyReceiverType(
-  typeNode,
-  sourceFile,
-  manualOnlyBindings = new Set(),
-) {
+function classifyReceiverType(typeNode, checker, goldenLayoutBindings) {
   if (typeNode === undefined) {
     return undefined;
   }
-  const typeName = typeNode.getText(sourceFile).replace(/<.*$/, '');
-  if (manualOnlyBindings.has(typeName)) {
+  let typeName;
+  if (ts.isTypeReferenceNode(typeNode)) {
+    typeName = typeNode.typeName;
+  } else if (ts.isTypeQueryNode(typeNode)) {
+    typeName = typeNode.exprName;
+  } else {
     return undefined;
   }
-  return receiverTypeKinds.get(typeName);
+  const root = getRootIdentifier(typeName);
+  const symbol =
+    root === undefined ? undefined : checker.getSymbolAtLocation(root);
+  const binding =
+    symbol === undefined ? undefined : goldenLayoutBindings.get(symbol);
+  return binding === undefined
+    ? undefined
+    : receiverTypeKinds.get(binding.exportName);
 }
 
 /** Classifies statically provable API receivers used by method migrations. */
-function collectReceiverKinds(sourceFile, manualOnlyBindings = new Set()) {
+function collectReceiverKinds(sourceFile, checker, goldenLayoutBindings) {
   const receiverKinds = new Map();
 
   function record(name, kind) {
     if (!ts.isIdentifier(name) || kind === undefined) {
       return;
     }
-    const existing = receiverKinds.get(name.text);
+    const symbol = checker.getSymbolAtLocation(name);
+    if (symbol === undefined) {
+      return;
+    }
+    const existing = receiverKinds.get(symbol);
     receiverKinds.set(
-      name.text,
+      symbol,
       existing === undefined || existing === kind ? kind : 'ambiguous',
     );
   }
 
   function visit(node) {
     if (ts.isVariableDeclaration(node) || ts.isParameter(node)) {
-      let kind = classifyReceiverType(
-        node.type,
-        sourceFile,
-        manualOnlyBindings,
-      );
+      let kind = classifyReceiverType(node.type, checker, goldenLayoutBindings);
       if (
         kind === undefined &&
         ts.isVariableDeclaration(node) &&
         node.initializer !== undefined &&
         ts.isNewExpression(node.initializer)
       ) {
-        const constructorName = node.initializer.expression.getText(sourceFile);
-        if (!manualOnlyBindings.has(constructorName)) {
-          kind = receiverTypeKinds.get(constructorName);
-        }
+        const root = getRootIdentifier(node.initializer.expression);
+        const symbol =
+          root === undefined ? undefined : checker.getSymbolAtLocation(root);
+        const binding =
+          symbol === undefined ? undefined : goldenLayoutBindings.get(symbol);
+        kind =
+          binding === undefined
+            ? undefined
+            : receiverTypeKinds.get(binding.exportName);
       }
       record(node.name, kind);
     }
@@ -989,12 +1139,10 @@ function transformSourceContent(content, filePath) {
   const applied = [];
 
   const extension = path.extname(filePath).toLowerCase();
-  const sourceFile = ts.createSourceFile(
-    filePath,
+  const { checker, sourceFile } = createSourceAnalysis(
     normalized,
-    ts.ScriptTarget.Latest,
-    true,
-    scriptKindForExtension(extension),
+    filePath,
+    extension,
   );
   if (sourceFile.parseDiagnostics.length > 0) {
     return {
@@ -1008,9 +1156,17 @@ function transformSourceContent(content, filePath) {
   const edits = [];
   const requiredImports = new Map();
   const { bindings, importedNames } = collectSourceBindings(sourceFile);
+  const goldenLayoutBindings = collectGoldenLayoutBindingSymbols(
+    sourceFile,
+    checker,
+  );
   const manualOnly = collectManualOnlySourceContext(sourceFile);
   const manualOnlyBindings = manualOnly.bindings;
-  const receiverKinds = collectReceiverKinds(sourceFile, manualOnlyBindings);
+  const receiverKinds = collectReceiverKinds(
+    sourceFile,
+    checker,
+    goldenLayoutBindings,
+  );
   const sourceManualReviews = new Set(manualOnly.reviews);
 
   function resolveImportName(exportName) {
@@ -1097,6 +1253,23 @@ function transformSourceContent(content, filePath) {
     }
 
     if (
+      ts.isImportSpecifier(node) &&
+      ts.isNamedImports(node.parent) &&
+      ts.isImportClause(node.parent.parent) &&
+      ts.isImportDeclaration(node.parent.parent.parent) &&
+      ts.isStringLiteral(node.parent.parent.parent.moduleSpecifier) &&
+      isGoldenLayoutPackageOrJsEntrySpecifier(
+        node.parent.parent.parent.moduleSpecifier.text,
+      )
+    ) {
+      const migrated = migrateImportSpecifier(node);
+      if (migrated !== node.getText(sourceFile)) {
+        addEdit(node, migrated, 'named package import');
+      }
+      return;
+    }
+
+    if (
       ts.isCallExpression(node) &&
       node.arguments.length === 1 &&
       ts.isIdentifier(node.expression) &&
@@ -1152,6 +1325,30 @@ function transformSourceContent(content, filePath) {
     }
 
     if (
+      ts.isBindingElement(node) &&
+      node.propertyName !== undefined &&
+      ts.isIdentifier(node.propertyName) &&
+      ts.isObjectBindingPattern(node.parent) &&
+      ts.isVariableDeclaration(node.parent.parent) &&
+      node.parent.parent.initializer !== undefined
+    ) {
+      const specifier = getStaticRequireSpecifier(
+        node.parent.parent.initializer,
+      );
+      if (
+        specifier !== undefined &&
+        isGoldenLayoutPackageOrJsEntrySpecifier(specifier)
+      ) {
+        const replacement = sourceIdentifierReplacements.get(
+          node.propertyName.text,
+        );
+        if (replacement !== undefined) {
+          addEdit(node.propertyName, replacement, 'CommonJS named binding');
+        }
+      }
+    }
+
+    if (
       ts.isImportTypeNode(node) &&
       ts.isLiteralTypeNode(node.argument) &&
       ts.isStringLiteral(node.argument.literal) &&
@@ -1191,9 +1388,13 @@ function transformSourceContent(content, filePath) {
       receiverDependentMethodNames.has(node.expression.name.text)
     ) {
       const receiver = node.expression.expression;
-      const receiverKind = ts.isIdentifier(receiver)
-        ? receiverKinds.get(receiver.text)
+      const receiverSymbol = ts.isIdentifier(receiver)
+        ? checker.getSymbolAtLocation(receiver)
         : undefined;
+      const receiverKind =
+        receiverSymbol === undefined
+          ? undefined
+          : receiverKinds.get(receiverSymbol);
       const methodName = node.expression.name.text;
       const replacement = receiverMethodReplacements.get(
         `${receiverKind}.${methodName}`,
@@ -1220,23 +1421,44 @@ function transformSourceContent(content, filePath) {
     }
 
     if (ts.isPropertyAccessExpression(node) || ts.isQualifiedName(node)) {
-      const rootName = getRootIdentifierName(node);
+      const root = getRootIdentifier(node);
+      const rootName = root?.text;
       if (rootName !== undefined && manualOnlyBindings.has(rootName)) {
         return;
       }
-      const dottedName = getDottedName(node, sourceFile);
+      const rootSymbol =
+        root === undefined ? undefined : checker.getSymbolAtLocation(root);
+      const rootBinding =
+        rootSymbol === undefined
+          ? undefined
+          : goldenLayoutBindings.get(rootSymbol);
+      const localDottedName = getDottedName(node, sourceFile);
+      const dottedName =
+        rootBinding === undefined || rootName === undefined
+          ? localDottedName
+          : `${rootBinding.exportName}${localDottedName.slice(rootName.length)}`;
       if (dottedName === 'DragSource.ComponentItemConfig') {
         sourceManualReviews.add(
           'legacy DragSource.ComponentItemConfig fields require type/state to componentType/componentState conversion',
         );
       }
       const replacement =
-        dottedApiReplacements.get(dottedName) ??
-        nestedTypeReplacements.get(dottedName);
+        rootBinding === undefined
+          ? undefined
+          : (dottedApiReplacements.get(dottedName) ??
+            nestedTypeReplacements.get(dottedName));
       if (replacement !== undefined) {
         const localName = resolveImportName(replacement);
         addEdit(node, localName, `module API ${dottedName}`);
         return;
+      } else if (
+        rootBinding === undefined &&
+        (dottedApiReplacements.has(localDottedName) ||
+          nestedTypeReplacements.has(localDottedName))
+      ) {
+        sourceManualReviews.add(
+          'unbound Golden Layout-like source APIs require manual migration',
+        );
       }
     }
 
@@ -1271,9 +1493,18 @@ function transformSourceContent(content, filePath) {
           ts.isMethodDeclaration(parent)) &&
           parent.name === node);
       if (!isPropertyName) {
-        const replacement = sourceIdentifierReplacements.get(node.text);
-        if (replacement !== undefined) {
-          addEdit(node, replacement, `identifier ${node.text}`);
+        const symbol = checker.getSymbolAtLocation(node);
+        const binding =
+          symbol === undefined ? undefined : goldenLayoutBindings.get(symbol);
+        if (binding !== undefined && binding.replacementName !== node.text) {
+          addEdit(node, binding.replacementName, `identifier ${node.text}`);
+        } else if (
+          binding === undefined &&
+          sourceIdentifierReplacements.has(node.text)
+        ) {
+          sourceManualReviews.add(
+            'unbound Golden Layout-like identifiers require manual migration',
+          );
         }
       }
     }
@@ -1327,6 +1558,7 @@ function isLayoutItem(value) {
 function isLayoutConfig(value) {
   return (
     isRecord(value) &&
+    !isLayoutItem(value) &&
     (isLayoutItem(value.root) ||
       (Array.isArray(value.content) && value.content.some(isLayoutItem)) ||
       Array.isArray(value.openPopouts))
@@ -1545,12 +1777,16 @@ function transformJsonContent(content, sourceVersion = 'auto') {
   } catch {
     return undefined;
   }
-  if (!isLayoutConfig(parsed)) {
+  if (!isLayoutConfig(parsed) && !isLayoutItem(parsed)) {
     return undefined;
   }
 
   const manualReviews = new Set();
-  transformLayoutConfig(parsed, '$', manualReviews, sourceVersion);
+  if (isLayoutItem(parsed)) {
+    transformLayoutItem(parsed, '$', manualReviews, sourceVersion);
+  } else {
+    transformLayoutConfig(parsed, '$', manualReviews, sourceVersion);
+  }
   const indentation = /^([ \t]+)"/m.exec(content)?.[1] ?? '  ';
   return {
     transformed: `${JSON.stringify(parsed, null, indentation)}\n`,

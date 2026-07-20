@@ -54,6 +54,30 @@ describe('Tabs configuration and behavior', function () {
     expect(stack.header.tabs[1].reorderEnabled).toBe(false);
   });
 
+  it('uses the layout reorder setting when a component omits an override', function () {
+    const config: LayoutConfig = {
+      settings: { reorderEnabled: false },
+      root: {
+        type: 'stack',
+        content: [
+          { type: 'component', componentType: 'testComponent' },
+          {
+            type: 'component',
+            componentType: 'testComponent',
+            reorderEnabled: true,
+          },
+        ],
+      },
+    };
+
+    layout.loadLayout(config);
+
+    const stack = layout.rootItem as Stack;
+    expect(stack.header.tabs[0].reorderEnabled).toBe(false);
+    expect(stack.header.tabs[1].reorderEnabled).toBe(true);
+    expect(layout.saveLayout().root?.content[0].reorderEnabled).toBe(false);
+  });
+
   it('applies the bottom header class when header.show is bottom', function () {
     const config: LayoutConfig = {
       root: {

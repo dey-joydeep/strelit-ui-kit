@@ -357,8 +357,10 @@ export class ComponentContainer extends EventEmitter {
       const previousInitialState = this._initialState;
       const previousState = this._state;
       const previousComponentType = this._componentType;
+      const previousStateRequestEvent = this.stateRequestEvent;
 
       this.releaseComponent();
+      this.stateRequestEvent = undefined;
       this._initialState = config.componentState;
       this._state = config.componentState;
       this._componentType = config.componentType;
@@ -367,6 +369,7 @@ export class ComponentContainer extends EventEmitter {
       try {
         nextBoundComponent = this.layoutManager.bindComponent(this, config);
       } catch (error) {
+        this.stateRequestEvent = previousStateRequestEvent;
         this._initialState = previousInitialState;
         this._state = previousState;
         this._componentType = previousComponentType;
