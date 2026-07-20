@@ -736,7 +736,11 @@ export class Stack extends ComponentParentableItem {
   /** @internal */
   private removeEmptiedExtractedContainer(item: ContentItem): void {
     const parent = item.parent;
-    if (parent !== null && item.contentItems.length === 0) {
+    if (
+      parent !== null &&
+      item.contentItems.length === 0 &&
+      parent.contentItems.includes(item)
+    ) {
       parent.removeChild(item, false);
     }
   }

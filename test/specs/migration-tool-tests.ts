@@ -239,15 +239,16 @@ const resolved = LayoutConfig.resolve(config);
     );
   });
 
-  it('collapses JS subpath imports to root package entry', () => {
+  it('collapses supported JS entries and flags unsupported deep imports', () => {
     const filePath = createFixture(`
 import GoldenLayout from 'golden-layout/dist/esm/index.js';
 import { LayoutConfig } from 'golden-layout/dist/cjs/index.js';
+import 'golden-layout/dist/index.js';
 import 'golden-layout/index.js';
 import helper from 'golden-layout/src/utils/helper.js';
 `);
 
-    migrate(filePath);
+    const output = migrate(filePath);
     const migrated = readFileSync(filePath, 'utf8');
     expect(migrated).toContain(
       "import { StrelitLayout } from 'strelit-ui-kit';",
@@ -257,7 +258,10 @@ import helper from 'golden-layout/src/utils/helper.js';
     );
     expect(migrated).toContain("import 'strelit-ui-kit';");
     expect(migrated).toContain(
-      "import helper from 'strelit-ui-kit/src/utils/helper.js';",
+      "import helper from 'golden-layout/src/utils/helper.js';",
+    );
+    expect(output).toContain(
+      'unsupported Golden Layout JavaScript deep import requires manual migration',
     );
   });
 

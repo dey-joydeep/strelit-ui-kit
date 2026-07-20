@@ -153,7 +153,6 @@ describe('Runtime layout tree manipulation', function () {
           {
             type: 'column',
             id: 'droppedColumn',
-            isClosable: false,
             content: [
               {
                 type: 'component',

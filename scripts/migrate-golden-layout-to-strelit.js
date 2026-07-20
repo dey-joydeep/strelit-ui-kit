@@ -771,8 +771,20 @@ function isGoldenLayoutPackageOrJsEntrySpecifier(specifier) {
 }
 
 function isGoldenLayoutJsEntryRelativePath(relativePath) {
-  return /^(?:(?:dist\/(?:esm|cjs|browser)|src)\/)?index\.m?js(?:[?#].*)?$/.test(
+  return /^(?:(?:dist(?:\/(?:esm|cjs|browser))?|src)\/)?index\.m?js(?:[?#].*)?$/.test(
     relativePath,
+  );
+}
+
+function isUnsupportedGoldenLayoutJsDeepSpecifier(specifier) {
+  if (!specifier.startsWith('golden-layout/')) {
+    return false;
+  }
+
+  const relativePath = specifier.slice('golden-layout/'.length);
+  return (
+    /\.m?js(?:[?#].*)?$/.test(relativePath) &&
+    !isGoldenLayoutJsEntryRelativePath(relativePath)
   );
 }
 
@@ -836,6 +848,11 @@ function transformSourceContent(content, filePath) {
       node.moduleSpecifier !== undefined &&
       ts.isStringLiteral(node.moduleSpecifier)
     ) {
+      if (isUnsupportedGoldenLayoutJsDeepSpecifier(node.moduleSpecifier.text)) {
+        sourceManualReviews.add(
+          'unsupported Golden Layout JavaScript deep import requires manual migration',
+        );
+      }
       const migrated = migratePackagePath(node.moduleSpecifier.text);
       if (migrated !== node.moduleSpecifier.text) {
         const quote = normalized[node.moduleSpecifier.getStart(sourceFile)];
@@ -878,6 +895,11 @@ function transformSourceContent(content, filePath) {
       ts.isStringLiteral(node.arguments[0])
     ) {
       const moduleSpecifier = node.arguments[0];
+      if (isUnsupportedGoldenLayoutJsDeepSpecifier(moduleSpecifier.text)) {
+        sourceManualReviews.add(
+          'unsupported Golden Layout JavaScript deep import requires manual migration',
+        );
+      }
       const migrated = migratePackagePath(moduleSpecifier.text);
       if (migrated !== moduleSpecifier.text) {
         const quote = normalized[moduleSpecifier.getStart(sourceFile)];
@@ -1040,6 +1062,9 @@ function migratePackagePath(specifier) {
   if (styleMatch === null) {
     if (isGoldenLayoutJsEntryRelativePath(relativePath)) {
       return 'strelit-ui-kit';
+    }
+    if (isUnsupportedGoldenLayoutJsDeepSpecifier(specifier)) {
+      return specifier;
     }
     return `strelit-ui-kit/${relativePath}`;
   }
