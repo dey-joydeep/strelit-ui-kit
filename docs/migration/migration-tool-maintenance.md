@@ -8,9 +8,11 @@ The command discovers supported text files under `--target`, rejects unsafe file
 
 Source migration proceeds in three stages:
 
-1. Collect declared and imported bindings so generated imports cannot collide with consumer names.
-2. Classify known receivers and collect non-overlapping source edits.
-3. Apply edits from the end of the file and add required named imports.
+1. Parse valid source and collect declared, imported, and manual-only bindings.
+2. Classify package specifiers and known receivers, then collect non-overlapping source edits.
+3. Apply edits from the end of the file and add collision-safe ESM or CommonJS imports.
+
+`classifyGoldenLayoutPackageSpecifier()` is the single package-path policy for syntax-aware and text-mode migration. It migrates only published root, style, and package metadata paths. Unknown or internal paths must remain unchanged with a blocking diagnostic. Do not add a separate regex path policy for markup, import maps, or non-layout JSON.
 
 Saved-layout migration walks recognized layout items, converts deterministic v1/v2 fields, and records a manual-review diagnostic whenever a conversion could be lossy or context-dependent.
 
@@ -22,6 +24,9 @@ Saved-layout migration walks recognized layout items, converts deterministic v1/
 - Do not guess receiver ownership, dynamic property access, serializability, multiple-root intent, or framework binding behavior.
 - Preserve URL query and hash suffixes on migrated style imports.
 - Preserve unrelated source text and formatting; this is a targeted codemod, not a formatter.
+- Once an import is classified as manual-only, preserve its declaration, local bindings, and binding-owned API expressions as a unit.
+- Never run identifier or API replacements over unparsed markup or non-layout JSON; only bounded package and selector rewrites are safe there.
+- Preserve malformed source unchanged and report it instead of applying edits to a recovery parse tree.
 - A warning-free run means only that all recognized transformations were deterministic. The migrated application still requires its own typecheck and behavioral tests.
 
 ## Adding A Transformation

@@ -38,6 +38,7 @@ const ignoredDirectories = new Set([
   'node_modules',
   'dist',
   '.generated-docs',
+  '.tmp',
   'temp',
   'lib',
   '.verification',
@@ -177,215 +178,17 @@ const receiverDependentMethodNames = new Set([
   'setActiveContentItem',
 ]);
 
-const replacements = [
-  {
-    name: 'mixed default and named import',
-    pattern:
-      /import\s+([A-Za-z_$][\w$]*)\s*,\s*\{([^}]*)\}\s+from\s+(['"])golden-layout\3/g,
-    replacement: (_match, localName, bindings) =>
-      localName === 'GoldenLayout'
-        ? `import { StrelitLayout, ${bindings} } from 'strelit-ui-kit'`
-        : `import { StrelitLayout as ${localName}, ${bindings} } from 'strelit-ui-kit'`,
-  },
-  {
-    name: 'default import',
-    pattern: /import\s+([A-Za-z_$][\w$]*)\s+from\s+(['"])golden-layout\2/g,
-    replacement: (_match, localName) =>
-      localName === 'GoldenLayout'
-        ? "import { StrelitLayout } from 'strelit-ui-kit'"
-        : `import { StrelitLayout as ${localName} } from 'strelit-ui-kit'`,
-  },
-  {
-    name: 'commonjs require',
-    pattern:
-      /const\s+([A-Za-z_$][\w$]*)\s*=\s*require\((['"])golden-layout\2\)/g,
-    replacement: "const { StrelitLayout: $1 } = require('strelit-ui-kit')",
-  },
-  {
-    name: 'css subpath import',
-    pattern:
-      /(['"])golden-layout\/(?:dist|src)\/css\/((?:themes\/)?goldenlayout(?:-([a-z-]+)-theme|-base)\.css)([?#][^'"]*)?\1/g,
-    replacement: (_match, quote, fileName, themeName, suffix = '') => {
-      if (themeName !== undefined) {
-        return `${quote}strelit-ui-kit/dist/css/themes/strelit-${themeName}-theme.css${suffix}${quote}`;
-      }
-
-      if (fileName === 'goldenlayout-base.css') {
-        return `${quote}strelit-ui-kit/dist/css/strelit-base.css${suffix}${quote}`;
-      }
-
-      return `${quote}strelit-ui-kit/dist/css/${fileName}${suffix}${quote}`;
-    },
-  },
-  {
-    name: 'less subpath import',
-    pattern:
-      /(['"])golden-layout\/(?:dist|src)\/less\/((?:themes\/)?goldenlayout(?:-([a-z-]+)-theme|-base)\.less)([?#][^'"]*)?\1/g,
-    replacement: (_match, quote, fileName, themeName, suffix = '') => {
-      if (themeName !== undefined) {
-        return `${quote}strelit-ui-kit/dist/less/themes/strelit-${themeName}-theme.less${suffix}${quote}`;
-      }
-
-      if (fileName === 'goldenlayout-base.less') {
-        return `${quote}strelit-ui-kit/dist/less/strelit-base.less${suffix}${quote}`;
-      }
-
-      return `${quote}strelit-ui-kit/dist/less/${fileName}${suffix}${quote}`;
-    },
-  },
-  {
-    name: 'scss subpath import',
-    pattern:
-      /(['"])golden-layout\/(?:dist|src)\/scss\/((?:themes\/)?goldenlayout(?:-([a-z-]+)-theme|-base)\.scss)([?#][^'"]*)?\1/g,
-    replacement: (_match, quote, fileName, themeName, suffix = '') => {
-      if (themeName !== undefined || fileName.includes('-theme.scss')) {
-        // Leave SCSS theme imports for manual review since only _strelit-var-theme.scss exists
-        return _match;
-      }
-
-      if (fileName === 'goldenlayout-base.scss') {
-        return `${quote}strelit-ui-kit/dist/scss/strelit-base.scss${suffix}${quote}`;
-      }
-
-      return `${quote}strelit-ui-kit/dist/scss/${fileName}${suffix}${quote}`;
-    },
-  },
+const textReplacements = [
   {
     name: 'package import',
-    pattern: /(['"])golden-layout((?:\/[^'"]+)?)\1/g,
-    replacement: (_match, quote, subpath) => {
-      if (subpath) {
-        if (
-          subpath.includes('/scss/themes/') ||
-          subpath.includes('/src/scss/themes/') ||
-          subpath.includes('/dist/scss/themes/') ||
-          (subpath.includes('/scss/') &&
-            /\/?_?goldenlayout-[^/?#]+-theme\.scss(?:[?#].*)?$/.test(subpath))
-        ) {
-          return _match;
-        }
-        if (
-          /^\/(?:dist\/(?:esm|cjs|browser|index)|index|src)\/?.*\.m?js(?:[?#].*)?$/.test(
-            subpath,
-          ) ||
-          subpath === '/dist/index.js' ||
-          subpath === '/index.js'
-        ) {
-          return `${quote}strelit-ui-kit${quote}`;
-        }
-        if (subpath.startsWith('/src/css/')) {
-          const fileName = subpath.split('/').pop();
-          if (fileName === 'goldenlayout-base.css' || fileName === 'base.css') {
-            return `${quote}strelit-ui-kit/dist/css/strelit-base.css${quote}`;
-          }
-          if (fileName && fileName.includes('-theme')) {
-            const themeName = fileName
-              .replace(/^goldenlayout-/, '')
-              .replace(/-theme\.css$/, '');
-            return `${quote}strelit-ui-kit/dist/css/themes/strelit-${themeName}-theme.css${quote}`;
-          }
-          return `${quote}strelit-ui-kit/dist/css/${fileName}${quote}`;
-        }
-      }
-      return `${quote}strelit-ui-kit${subpath}${quote}`;
-    },
-  },
-  {
-    name: 'main class',
-    pattern: /\bGoldenLayout\b/g,
-    replacement: 'StrelitLayout',
-  },
-  {
-    name: 'layout config resolver',
-    pattern: /\bLayoutConfig\.resolve\b/g,
-    replacement: 'resolveLayoutConfig',
-    importName: 'resolveLayoutConfig',
-  },
-  {
-    name: 'layout config serializer',
-    pattern: /\bLayoutConfig\.fromResolved\b/g,
-    replacement: 'createLayoutConfigFromResolved',
-    importName: 'createLayoutConfigFromResolved',
-  },
-  {
-    name: 'resolved config factory',
-    pattern: /\bResolvedLayoutConfig\.createDefault\b/g,
-    replacement: 'createResolvedLayoutConfigDefault',
-    importName: 'createResolvedLayoutConfigDefault',
-  },
-  {
-    name: 'resolved config copier',
-    pattern: /\bResolvedLayoutConfig\.createCopy\b/g,
-    replacement: 'createResolvedLayoutConfigCopy',
-    importName: 'createResolvedLayoutConfigCopy',
-  },
-  {
-    name: 'resolved config minifier',
-    pattern: /\bResolvedLayoutConfig\.minifyConfig\b/g,
-    replacement: 'minifyResolvedLayoutConfig',
-    importName: 'minifyResolvedLayoutConfig',
-  },
-  {
-    name: 'resolved config unminifier',
-    pattern: /\bResolvedLayoutConfig\.unminifyConfig\b/g,
-    replacement: 'unminifyResolvedLayoutConfig',
-    importName: 'unminifyResolvedLayoutConfig',
-  },
-  {
-    name: 'component type resolver',
-    pattern: /\bResolvedComponentItemConfig\.resolveComponentTypeName\b/g,
-    replacement: 'resolveComponentTypeName',
-    importName: 'resolveComponentTypeName',
+    pattern: /(['"])(golden-layout(?:\/[^'"]+)?)\1/g,
+    replacement: (_match, quote, specifier) =>
+      `${quote}${migratePackagePath(specifier)}${quote}`,
   },
   {
     name: 'branded root selector',
     pattern: /\blm_goldenlayout\b/g,
     replacement: 'lm_strelit',
-  },
-  {
-    name: 'config property',
-    pattern: /\bcomponentName\b/g,
-    replacement: 'componentType',
-  },
-  {
-    name: 'query helper',
-    pattern: /\bgetComponentsByName\b/g,
-    replacement: 'getComponentItemsByType',
-  },
-  {
-    name: 'container type',
-    pattern: /\bItemContainer\b/g,
-    replacement: 'ComponentContainer',
-  },
-  {
-    name: 'content item type',
-    pattern: /\bAbstractContentItem\b/g,
-    replacement: 'ContentItem',
-  },
-  {
-    name: 'save layout method',
-    pattern: /\btoConfig\b/g,
-    replacement: 'saveLayout',
-  },
-  {
-    name: 'resize method',
-    pattern: /\bupdateSize\b/g,
-    replacement: 'setSize',
-  },
-  {
-    name: 'container element accessor',
-    pattern: /\bgetElement\(\)/g,
-    replacement: 'element',
-  },
-  {
-    name: 'active component getter',
-    pattern: /\bgetActiveContentItem\b/g,
-    replacement: 'getActiveComponentItem',
-  },
-  {
-    name: 'active component setter',
-    pattern: /\bsetActiveContentItem\b/g,
-    replacement: 'setActiveComponentItem',
   },
 ];
 
@@ -431,6 +234,14 @@ const manualReviewPatterns = [
     name: 'namespace package imports require member-by-member migration',
     pattern:
       /import\s+(?:[A-Za-z_$][\w$]*\s*,\s*)?\*\s+as\s+[A-Za-z_$][\w$]*\s+from\s+['"]strelit-ui-kit['"]/,
+  },
+];
+
+const textManualReviewPatterns = [
+  {
+    name: 'embedded Golden Layout source APIs require manual migration',
+    pattern:
+      /\b(?:GoldenLayout|ItemContainer|AbstractContentItem|LayoutConfig\.(?:resolve|fromResolved))\b/,
   },
 ];
 
@@ -543,16 +354,138 @@ function collectSourceBindings(sourceFile) {
   return { bindings, importedNames };
 }
 
-function classifyReceiverType(typeNode, sourceFile) {
+function getStaticRequireSpecifier(node) {
+  if (
+    ts.isCallExpression(node) &&
+    node.arguments.length === 1 &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === 'require' &&
+    ts.isStringLiteral(node.arguments[0])
+  ) {
+    return node.arguments[0].text;
+  }
+  return undefined;
+}
+
+function getStaticDynamicImportSpecifier(node) {
+  const expression = ts.isAwaitExpression(node) ? node.expression : node;
+  if (
+    ts.isCallExpression(expression) &&
+    expression.expression.kind === ts.SyntaxKind.ImportKeyword &&
+    expression.arguments.length === 1 &&
+    ts.isStringLiteral(expression.arguments[0])
+  ) {
+    return expression.arguments[0].text;
+  }
+  return undefined;
+}
+
+function isNamespacePackageImport(node) {
+  return (
+    ts.isImportDeclaration(node) &&
+    node.importClause?.namedBindings !== undefined &&
+    ts.isNamespaceImport(node.importClause.namedBindings) &&
+    ts.isStringLiteral(node.moduleSpecifier) &&
+    isGoldenLayoutPackageOrJsEntrySpecifier(node.moduleSpecifier.text)
+  );
+}
+
+function addImportClauseBindings(importClause, bindings) {
+  if (importClause?.name !== undefined) {
+    bindings.add(importClause.name.text);
+  }
+  const namedBindings = importClause?.namedBindings;
+  if (namedBindings === undefined) {
+    return;
+  }
+  if (ts.isNamespaceImport(namedBindings)) {
+    bindings.add(namedBindings.name.text);
+  } else {
+    for (const element of namedBindings.elements) {
+      bindings.add(element.name.text);
+    }
+  }
+}
+
+function collectManualOnlyBindings(sourceFile) {
+  const bindings = new Set();
+
+  function visit(node) {
+    if (
+      ts.isImportDeclaration(node) &&
+      ts.isStringLiteral(node.moduleSpecifier) &&
+      (isManualOnlyGoldenLayoutSpecifier(node.moduleSpecifier.text) ||
+        isNamespacePackageImport(node))
+    ) {
+      addImportClauseBindings(node.importClause, bindings);
+      return;
+    }
+    if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference) &&
+      node.moduleReference.expression !== undefined &&
+      ts.isStringLiteral(node.moduleReference.expression) &&
+      isGoldenLayoutPackageSpecifier(node.moduleReference.expression.text)
+    ) {
+      bindings.add(node.name.text);
+      return;
+    }
+    if (ts.isVariableDeclaration(node)) {
+      const requireSpecifier =
+        node.initializer === undefined
+          ? undefined
+          : getStaticRequireSpecifier(node.initializer);
+      const dynamicImportSpecifier =
+        node.initializer === undefined
+          ? undefined
+          : getStaticDynamicImportSpecifier(node.initializer);
+      if (
+        (requireSpecifier !== undefined &&
+          isManualOnlyGoldenLayoutSpecifier(requireSpecifier)) ||
+        (dynamicImportSpecifier !== undefined &&
+          isGoldenLayoutPackageSpecifier(dynamicImportSpecifier))
+      ) {
+        addBindingName(node.name, bindings);
+        return;
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return bindings;
+}
+
+function getRootIdentifierName(node) {
+  let current = node;
+  while (
+    ts.isPropertyAccessExpression(current) ||
+    ts.isQualifiedName(current)
+  ) {
+    current = ts.isPropertyAccessExpression(current)
+      ? current.expression
+      : current.left;
+  }
+  return ts.isIdentifier(current) ? current.text : undefined;
+}
+
+function classifyReceiverType(
+  typeNode,
+  sourceFile,
+  manualOnlyBindings = new Set(),
+) {
   if (typeNode === undefined) {
     return undefined;
   }
   const typeName = typeNode.getText(sourceFile).replace(/<.*$/, '');
+  if (manualOnlyBindings.has(typeName)) {
+    return undefined;
+  }
   return receiverTypeKinds.get(typeName);
 }
 
 /** Classifies statically provable API receivers used by method migrations. */
-function collectReceiverKinds(sourceFile) {
+function collectReceiverKinds(sourceFile, manualOnlyBindings = new Set()) {
   const receiverKinds = new Map();
 
   function record(name, kind) {
@@ -568,16 +501,21 @@ function collectReceiverKinds(sourceFile) {
 
   function visit(node) {
     if (ts.isVariableDeclaration(node) || ts.isParameter(node)) {
-      let kind = classifyReceiverType(node.type, sourceFile);
+      let kind = classifyReceiverType(
+        node.type,
+        sourceFile,
+        manualOnlyBindings,
+      );
       if (
         kind === undefined &&
         ts.isVariableDeclaration(node) &&
         node.initializer !== undefined &&
         ts.isNewExpression(node.initializer)
       ) {
-        kind = receiverTypeKinds.get(
-          node.initializer.expression.getText(sourceFile),
-        );
+        const constructorName = node.initializer.expression.getText(sourceFile);
+        if (!manualOnlyBindings.has(constructorName)) {
+          kind = receiverTypeKinds.get(constructorName);
+        }
       }
       record(node.name, kind);
     }
@@ -770,21 +708,82 @@ function isGoldenLayoutPackageOrJsEntrySpecifier(specifier) {
   return isGoldenLayoutJsEntryRelativePath(relativePath);
 }
 
+function isGoldenLayoutPackageSpecifier(specifier) {
+  return (
+    specifier === 'golden-layout' || specifier.startsWith('golden-layout/')
+  );
+}
+
 function isGoldenLayoutJsEntryRelativePath(relativePath) {
-  return /^(?:(?:dist(?:\/(?:esm|cjs|browser))?|src)\/)?index\.m?js(?:[?#].*)?$/.test(
+  return /^(?:(?:dist(?:\/(?:esm|cjs|browser))?|src)\/)?index\.m?js$/.test(
     relativePath,
   );
 }
 
-function isUnsupportedGoldenLayoutJsDeepSpecifier(specifier) {
+const unsupportedJsDeepImportReview =
+  'unsupported Golden Layout JavaScript deep import requires manual migration';
+const unsupportedPackageSubpathReview =
+  'unsupported Golden Layout package subpath requires manual migration';
+const scssThemeImportReview =
+  'SCSS theme imports require a manual Strelit theme selection';
+
+function classifyGoldenLayoutPackageSpecifier(specifier) {
+  if (specifier === 'golden-layout') {
+    return { migrated: 'strelit-ui-kit' };
+  }
   if (!specifier.startsWith('golden-layout/')) {
-    return false;
+    return { migrated: specifier };
   }
 
   const relativePath = specifier.slice('golden-layout/'.length);
+  if (isGoldenLayoutJsEntryRelativePath(relativePath)) {
+    return { migrated: 'strelit-ui-kit' };
+  }
+  if (/^package\.json(?:[?#].*)?$/.test(relativePath)) {
+    return {
+      migrated: relativePath.replace(
+        /^package\.json/,
+        'strelit-ui-kit/package.json',
+      ),
+    };
+  }
+
+  const styleMatch = /^(?:dist|src)\/(css|less|scss)\/(.+)$/.exec(relativePath);
+  if (styleMatch !== null) {
+    const [, styleType, originalFile] = styleMatch;
+    if (
+      styleType === 'scss' &&
+      /(?:^|\/)_?goldenlayout-[^/?#]+-theme\.scss(?:[?#].*)?$/.test(
+        originalFile,
+      )
+    ) {
+      return { migrated: specifier, manualReview: scssThemeImportReview };
+    }
+
+    let file = originalFile
+      .replace(/(^|\/)(?:goldenlayout-)?base\./, '$1strelit-base.')
+      .replace(/(^|\/)goldenlayout-/, '$1strelit-');
+    if (
+      (styleType === 'css' || styleType === 'less') &&
+      /(?:^|\/)strelit-[^/?#]+-theme\.(?:css|less)(?:[?#].*)?$/.test(file) &&
+      !file.startsWith('themes/')
+    ) {
+      file = `themes/${file}`;
+    }
+    return { migrated: `strelit-ui-kit/dist/${styleType}/${file}` };
+  }
+
+  return {
+    migrated: specifier,
+    manualReview: /\.m?js(?:[?#].*)?$/.test(relativePath)
+      ? unsupportedJsDeepImportReview
+      : unsupportedPackageSubpathReview,
+  };
+}
+
+function isManualOnlyGoldenLayoutSpecifier(specifier) {
   return (
-    /\.m?js(?:[?#].*)?$/.test(relativePath) &&
-    !isGoldenLayoutJsEntryRelativePath(relativePath)
+    classifyGoldenLayoutPackageSpecifier(specifier).manualReview !== undefined
   );
 }
 
@@ -801,10 +800,20 @@ function transformSourceContent(content, filePath) {
     true,
     scriptKindForExtension(extension),
   );
+  if (sourceFile.parseDiagnostics.length > 0) {
+    return {
+      transformed: content,
+      applied: [],
+      manualReviews: [
+        'source file contains syntax errors and requires manual migration',
+      ],
+    };
+  }
   const edits = [];
   const requiredImports = new Map();
   const { bindings, importedNames } = collectSourceBindings(sourceFile);
-  const receiverKinds = collectReceiverKinds(sourceFile);
+  const manualOnlyBindings = collectManualOnlyBindings(sourceFile);
+  const receiverKinds = collectReceiverKinds(sourceFile, manualOnlyBindings);
   const sourceManualReviews = new Set();
 
   function resolveImportName(exportName) {
@@ -848,12 +857,20 @@ function transformSourceContent(content, filePath) {
       node.moduleSpecifier !== undefined &&
       ts.isStringLiteral(node.moduleSpecifier)
     ) {
-      if (isUnsupportedGoldenLayoutJsDeepSpecifier(node.moduleSpecifier.text)) {
-        sourceManualReviews.add(
-          'unsupported Golden Layout JavaScript deep import requires manual migration',
-        );
+      const classification = classifyGoldenLayoutPackageSpecifier(
+        node.moduleSpecifier.text,
+      );
+      if (classification.manualReview !== undefined) {
+        sourceManualReviews.add(classification.manualReview);
+        return;
       }
-      const migrated = migratePackagePath(node.moduleSpecifier.text);
+      if (isNamespacePackageImport(node)) {
+        sourceManualReviews.add(
+          'namespace package imports require member-by-member migration',
+        );
+        return;
+      }
+      const migrated = classification.migrated;
       if (migrated !== node.moduleSpecifier.text) {
         const quote = normalized[node.moduleSpecifier.getStart(sourceFile)];
         addEdit(
@@ -870,14 +887,6 @@ function transformSourceContent(content, filePath) {
       isGoldenLayoutPackageOrJsEntrySpecifier(node.moduleSpecifier.text) &&
       node.importClause !== undefined
     ) {
-      if (
-        node.importClause.namedBindings !== undefined &&
-        ts.isNamespaceImport(node.importClause.namedBindings)
-      ) {
-        sourceManualReviews.add(
-          'namespace package imports require member-by-member migration',
-        );
-      }
       if (node.importClause.name !== undefined) {
         const migratedClause = createDefaultImportClause(node.importClause);
         if (migratedClause !== undefined) {
@@ -895,12 +904,14 @@ function transformSourceContent(content, filePath) {
       ts.isStringLiteral(node.arguments[0])
     ) {
       const moduleSpecifier = node.arguments[0];
-      if (isUnsupportedGoldenLayoutJsDeepSpecifier(moduleSpecifier.text)) {
-        sourceManualReviews.add(
-          'unsupported Golden Layout JavaScript deep import requires manual migration',
-        );
+      const classification = classifyGoldenLayoutPackageSpecifier(
+        moduleSpecifier.text,
+      );
+      if (classification.manualReview !== undefined) {
+        sourceManualReviews.add(classification.manualReview);
+        return;
       }
-      const migrated = migratePackagePath(moduleSpecifier.text);
+      const migrated = classification.migrated;
       if (migrated !== moduleSpecifier.text) {
         const quote = normalized[moduleSpecifier.getStart(sourceFile)];
         addEdit(
@@ -920,21 +931,57 @@ function transformSourceContent(content, filePath) {
       node.initializer.expression.text === 'require' &&
       node.initializer.arguments.length === 1 &&
       ts.isStringLiteral(node.initializer.arguments[0]) &&
-      node.initializer.arguments[0].text === 'golden-layout'
+      isGoldenLayoutPackageOrJsEntrySpecifier(
+        node.initializer.arguments[0].text,
+      )
     ) {
       const localName = node.name.text;
       const binding =
         localName === 'GoldenLayout'
           ? 'StrelitLayout'
           : `StrelitLayout: ${localName}`;
-      const migratedModule = node.initializer
-        .getText(sourceFile)
-        .replace(/(['"])golden-layout\1/, '$1strelit-ui-kit$1');
+      const moduleSpecifier = node.initializer.arguments[0];
+      const quote = normalized[moduleSpecifier.getStart(sourceFile)];
+      const migratedModule = `require(${quote}strelit-ui-kit${quote})`;
       addEdit(
         node,
         `{ ${binding} } = ${migratedModule}`,
         'CommonJS package import',
       );
+      return;
+    }
+
+    if (
+      ts.isImportTypeNode(node) &&
+      ts.isLiteralTypeNode(node.argument) &&
+      ts.isStringLiteral(node.argument.literal) &&
+      isGoldenLayoutPackageSpecifier(node.argument.literal.text)
+    ) {
+      sourceManualReviews.add('import types require manual migration');
+      return;
+    }
+
+    if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference) &&
+      node.moduleReference.expression !== undefined &&
+      ts.isStringLiteral(node.moduleReference.expression) &&
+      isGoldenLayoutPackageSpecifier(node.moduleReference.expression.text)
+    ) {
+      sourceManualReviews.add(
+        'TypeScript import-equals declarations require manual migration',
+      );
+      return;
+    }
+
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments.length === 1 &&
+      ts.isStringLiteral(node.arguments[0]) &&
+      isGoldenLayoutPackageSpecifier(node.arguments[0].text)
+    ) {
+      sourceManualReviews.add('dynamic imports require manual migration');
       return;
     }
 
@@ -973,6 +1020,10 @@ function transformSourceContent(content, filePath) {
     }
 
     if (ts.isPropertyAccessExpression(node) || ts.isQualifiedName(node)) {
+      const rootName = getRootIdentifierName(node);
+      if (rootName !== undefined && manualOnlyBindings.has(rootName)) {
+        return;
+      }
       const dottedName = getDottedName(node, sourceFile);
       if (dottedName === 'DragSource.ComponentItemConfig') {
         sourceManualReviews.add(
@@ -1008,6 +1059,9 @@ function transformSourceContent(content, filePath) {
     }
 
     if (ts.isIdentifier(node)) {
+      if (manualOnlyBindings.has(node.text)) {
+        return;
+      }
       const parent = node.parent;
       const isPropertyName =
         (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
@@ -1038,7 +1092,11 @@ function transformSourceContent(content, filePath) {
   visit(sourceFile);
   let transformed = applyTextEdits(normalized, edits);
   if (requiredImports.size > 0) {
-    transformed = addRequiredImports(transformed, requiredImports);
+    transformed = addRequiredImports(
+      transformed,
+      requiredImports,
+      extension === '.cjs',
+    );
   }
 
   return {
@@ -1050,44 +1108,7 @@ function transformSourceContent(content, filePath) {
 
 /** Migrates a package or published style subpath while preserving URL suffixes. */
 function migratePackagePath(specifier) {
-  if (specifier === 'golden-layout') {
-    return 'strelit-ui-kit';
-  }
-  if (!specifier.startsWith('golden-layout/')) {
-    return specifier;
-  }
-
-  const relativePath = specifier.slice('golden-layout/'.length);
-  const styleMatch = /^(?:dist|src)\/(css|less|scss)\/(.+)$/.exec(relativePath);
-  if (styleMatch === null) {
-    if (isGoldenLayoutJsEntryRelativePath(relativePath)) {
-      return 'strelit-ui-kit';
-    }
-    if (isUnsupportedGoldenLayoutJsDeepSpecifier(specifier)) {
-      return specifier;
-    }
-    return `strelit-ui-kit/${relativePath}`;
-  }
-
-  const [, styleType, originalFile] = styleMatch;
-  if (
-    styleType === 'scss' &&
-    /(?:^|\/)_?goldenlayout-[^/?#]+-theme\.scss(?:[?#].*)?$/.test(originalFile)
-  ) {
-    return specifier;
-  }
-
-  let file = originalFile
-    .replace(/^goldenlayout-base\./, 'strelit-base.')
-    .replace(/(^|\/)goldenlayout-/, '$1strelit-');
-  if (
-    (styleType === 'css' || styleType === 'less') &&
-    /(?:^|\/)strelit-[^/?#]+-theme\.(?:css|less)(?:[?#].*)?$/.test(file) &&
-    !file.startsWith('themes/')
-  ) {
-    file = `themes/${file}`;
-  }
-  return `strelit-ui-kit/dist/${styleType}/${file}`;
+  return classifyGoldenLayoutPackageSpecifier(specifier).migrated;
 }
 
 function isRecord(value) {
@@ -1435,6 +1456,18 @@ function walk(entryPath, result, canonicalRoot) {
   }
 }
 
+function collectTextPackageManualReviews(content) {
+  const manualReviews = new Set();
+  const packagePattern = /(['"])(golden-layout(?:\/[^'"]+)?)\1/g;
+  for (const match of content.matchAll(packagePattern)) {
+    const classification = classifyGoldenLayoutPackageSpecifier(match[2]);
+    if (classification.manualReview !== undefined) {
+      manualReviews.add(classification.manualReview);
+    }
+  }
+  return manualReviews;
+}
+
 /** Dispatches one file to its syntax-, schema-, or text-aware transformer. */
 function transformContent(content, filePath, options = {}) {
   if (path.extname(filePath).toLowerCase() === '.json') {
@@ -1452,47 +1485,50 @@ function transformContent(content, filePath, options = {}) {
     return {
       ...sourceResult,
       manualReviews: [
-        ...sourceResult.manualReviews,
-        ...manualReviewPatterns
-          .filter(({ pattern }) => pattern.test(sourceResult.transformed))
-          .map(({ name }) => name),
+        ...new Set([
+          ...sourceResult.manualReviews,
+          ...manualReviewPatterns
+            .filter(({ pattern }) => pattern.test(sourceResult.transformed))
+            .map(({ name }) => name),
+        ]),
       ],
     };
   }
 
   let transformed = content;
   const applied = [];
-  const requiredImports = new Set();
+  const manualReviews = collectTextPackageManualReviews(content);
 
-  for (const replacement of replacements) {
+  for (const replacement of textReplacements) {
     const next = transformed.replace(
       replacement.pattern,
       replacement.replacement,
     );
     if (next !== transformed) {
       applied.push(replacement.name);
-      if (replacement.importName !== undefined) {
-        requiredImports.add(replacement.importName);
-      }
       transformed = next;
     }
-  }
-
-  if (requiredImports.size > 0) {
-    transformed = addRequiredImports(transformed, requiredImports);
   }
 
   return {
     transformed,
     applied,
-    manualReviews: manualReviewPatterns
-      .filter(({ pattern }) => pattern.test(transformed))
-      .map(({ name }) => name),
+    manualReviews: [
+      ...new Set([
+        ...manualReviews,
+        ...manualReviewPatterns
+          .filter(({ pattern }) => pattern.test(transformed))
+          .map(({ name }) => name),
+        ...textManualReviewPatterns
+          .filter(({ pattern }) => pattern.test(transformed))
+          .map(({ name }) => name),
+      ]),
+    ],
   };
 }
 
 /** Adds collision-safe named imports requested by source transformations. */
-function addRequiredImports(content, requiredImports) {
+function addRequiredImports(content, requiredImports, preferRequire = false) {
   const entries =
     requiredImports instanceof Map
       ? [...requiredImports]
@@ -1540,6 +1576,12 @@ function addRequiredImports(content, requiredImports) {
     });
   }
 
+  if (preferRequire) {
+    const bindings = entries.map(([exportName, localName]) =>
+      exportName === localName ? exportName : `${exportName}: ${localName}`,
+    );
+    return `const { ${bindings.join(', ')} } = require('strelit-ui-kit');\n${content}`;
+  }
   return `import { ${names.join(', ')} } from 'strelit-ui-kit';\n${content}`;
 }
 

@@ -21,6 +21,8 @@ Use `--from v1` or `--from v2` when migrating saved layouts from a known Golden 
 The tool currently rewrites:
 
 - package name `golden-layout` -> `strelit-ui-kit`
+- published JavaScript entries such as `dist/index.js` and `dist/esm/index.js` -> the Strelit package root
+- published CSS, Less, and supported Sass paths -> their exported Strelit style paths, preserving query and hash suffixes
 - class name `GoldenLayout` -> `StrelitLayout`
 - branded root selector `lm_goldenlayout` -> `lm_strelit`
 - legacy type names `ItemContainer` -> `ComponentContainer`
@@ -33,6 +35,10 @@ The tool currently rewrites:
 - numeric `width`, `height`, `minWidth`, `minHeight`, `minItemWidth`, and `minItemHeight` fields in typed layout literals when their replacement is unambiguous
 
 The migration is idempotent: running it again on migrated input makes no further changes.
+
+Package-path migration is allowlist-based. Unsupported internal or unknown package subpaths are left unchanged and reported for manual review; the tool never invents a matching Strelit deep path. Namespace imports, dynamic imports, TypeScript import-equals declarations, and unavailable Sass themes are also preserved until a developer resolves their diagnostic. Bindings owned by a preserved import are excluded from later identifier, dotted-API, and receiver-method rewrites.
+
+HTML and non-layout JSON receive only bounded package-specifier and branded-selector replacements. Embedded source APIs are left unchanged and reported rather than being rewritten as unparsed text. JavaScript or TypeScript files with syntax errors are likewise preserved for manual migration.
 
 Dry-run is the default and is verified to leave every target file byte-for-byte unchanged. Write mode rejects symbolic links, Windows reparse points, and multiply linked files, and rechecks real-path containment before every read and write.
 
@@ -58,6 +64,8 @@ The migration helper is intentionally conservative. You should still review:
 - receiver-dependent method calls when the receiver type cannot be proven
 - deprecated drag-source callback objects using `type` and `state`; convert them explicitly to `ComponentItemConfig` with `componentType` and `componentState`
 - computed API access and dynamic imports
+- namespace imports, TypeScript import-equals declarations, unsupported package deep imports, and unavailable Sass themes
+- JavaScript embedded in HTML or other non-source files
 - custom theme overrides or DOM selectors
 - framework integrations that relied on older binding patterns
 - project-specific build tooling, aliases, relative package-internal imports, local variable names, and visible product copy

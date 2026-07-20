@@ -169,6 +169,25 @@ const resolved = LayoutConfig.resolve(config);
   });
 
   it.each([
+    'golden-layout/dist/index.js',
+    'golden-layout/dist/cjs/index.js',
+    'golden-layout/index.js',
+  ])('migrates CommonJS entry binding %s structurally', (legacyPath) => {
+    const filePath = createFixture(
+      `const GoldenLayout = require('${legacyPath}');\nnew GoldenLayout();\n`,
+      'consumer.cjs',
+    );
+
+    migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain(
+      "const { StrelitLayout } = require('strelit-ui-kit')",
+    );
+    expect(migrated).toContain('new StrelitLayout()');
+  });
+
+  it.each([
     'golden-layout/dist/scss/goldenlayout-dark-theme.scss',
     'golden-layout/dist/scss/themes/goldenlayout-dark-theme.scss',
     'golden-layout/dist/scss/_goldenlayout-var-theme.scss',
@@ -239,13 +258,18 @@ const resolved = LayoutConfig.resolve(config);
     );
   });
 
-  it('collapses supported JS entries and flags unsupported deep imports', () => {
+  it('collapses supported JS entries and preserves unsupported deep imports', () => {
     const filePath = createFixture(`
 import GoldenLayout from 'golden-layout/dist/esm/index.js';
 import { LayoutConfig } from 'golden-layout/dist/cjs/index.js';
 import 'golden-layout/dist/index.js';
 import 'golden-layout/index.js';
-import helper from 'golden-layout/src/utils/helper.js';
+import GoldenLayoutInternal, { ItemContainer, LayoutConfig as InternalLayoutConfig } from 'golden-layout/src/utils/helper.js';
+import GoldenLayoutWorker from 'golden-layout/dist/index.js?worker';
+const internal = new GoldenLayoutInternal();
+const container: ItemContainer = internal.container;
+const element = container.getElement();
+const resolved = InternalLayoutConfig.resolve(config);
 `);
 
     const output = migrate(filePath);
@@ -258,26 +282,182 @@ import helper from 'golden-layout/src/utils/helper.js';
     );
     expect(migrated).toContain("import 'strelit-ui-kit';");
     expect(migrated).toContain(
-      "import helper from 'golden-layout/src/utils/helper.js';",
+      "import GoldenLayoutInternal, { ItemContainer, LayoutConfig as InternalLayoutConfig } from 'golden-layout/src/utils/helper.js';",
+    );
+    expect(migrated).toContain('new GoldenLayoutInternal()');
+    expect(migrated).toContain('container: ItemContainer');
+    expect(migrated).toContain('container.getElement()');
+    expect(migrated).toContain('InternalLayoutConfig.resolve(config)');
+    expect(migrated).toContain(
+      "import GoldenLayoutWorker from 'golden-layout/dist/index.js?worker';",
     );
     expect(output).toContain(
       'unsupported Golden Layout JavaScript deep import requires manual migration',
     );
   });
 
-  it('flags mixed default/namespace imports for manual review', () => {
+  it('preserves namespace imports and their bindings for manual review', () => {
     const filePath = createFixture(
-      `import GoldenLayout, * as GL from 'golden-layout';\n`,
+      `import GoldenLayout, * as GL from 'golden-layout';\nconst layout = new GoldenLayout();\nconst config: GL.LayoutConfig = {};\n`,
     );
 
     const output = migrate(filePath);
     const migrated = readFileSync(filePath, 'utf8');
 
     expect(migrated).toContain(
-      "import StrelitLayout, * as GL from 'strelit-ui-kit';",
+      "import GoldenLayout, * as GL from 'golden-layout';",
     );
+    expect(migrated).toContain('new GoldenLayout()');
+    expect(migrated).toContain('GL.LayoutConfig');
     expect(output).toContain(
       'namespace package imports require member-by-member migration',
+    );
+  });
+
+  it('preserves unsupported CommonJS deep-import bindings', () => {
+    const filePath = createFixture(
+      `const GoldenLayout = require('golden-layout/src/js/legacy.js');\nnew GoldenLayout();\n`,
+      'consumer.cjs',
+    );
+
+    const output = migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain(
+      "const GoldenLayout = require('golden-layout/src/js/legacy.js')",
+    );
+    expect(migrated).toContain('new GoldenLayout()');
+    expect(output).toContain(
+      'unsupported Golden Layout JavaScript deep import requires manual migration',
+    );
+  });
+
+  it('preserves unsupported deep re-exports', () => {
+    const source = `export { ItemContainer, GoldenLayout } from 'golden-layout/src/internal.js';\n`;
+    const filePath = createFixture(source);
+
+    const output = migrate(filePath);
+
+    expect(readFileSync(filePath, 'utf8')).toBe(source);
+    expect(output).toContain(
+      'unsupported Golden Layout JavaScript deep import requires manual migration',
+    );
+  });
+
+  it('preserves dynamic and TypeScript import-equals forms for manual review', () => {
+    const filePath = createFixture(`
+import GoldenLayoutModule = require('golden-layout');
+const modulePromise = import('golden-layout');
+const GoldenLayout = await import('golden-layout');
+type LegacyModule = typeof import('golden-layout');
+const layout = new GoldenLayoutModule.GoldenLayout();
+const dynamicLayout = new GoldenLayout.GoldenLayout();
+`);
+
+    const output = migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain(
+      "import GoldenLayoutModule = require('golden-layout')",
+    );
+    expect(migrated).toContain("import('golden-layout')");
+    expect(migrated).toContain('GoldenLayoutModule.GoldenLayout');
+    expect(migrated).toContain('const GoldenLayout = await import');
+    expect(migrated).toContain('GoldenLayout.GoldenLayout');
+    expect(output).toContain(
+      'TypeScript import-equals declarations require manual migration',
+    );
+    expect(output).toContain('dynamic imports require manual migration');
+    expect(output).toContain('import types require manual migration');
+  });
+
+  it.each([
+    {
+      fileName: 'consumer.html',
+      content: `<script type="importmap">
+{"imports":{"golden-layout":"golden-layout","helper":"golden-layout/src/utils/helper.js"}}
+</script>
+<p>GoldenLayout ItemContainer LayoutConfig.resolve</p>
+`,
+      unrelatedText: '<p>GoldenLayout ItemContainer LayoutConfig.resolve</p>',
+    },
+    {
+      fileName: 'import-map.json',
+      content: JSON.stringify({
+        imports: {
+          'golden-layout': 'golden-layout',
+          helper: 'golden-layout/src/utils/helper.js',
+        },
+        label: 'GoldenLayout ItemContainer LayoutConfig.resolve',
+      }),
+      unrelatedText: 'GoldenLayout ItemContainer LayoutConfig.resolve',
+    },
+  ])(
+    'uses conservative package migration in $fileName',
+    ({ fileName, content, unrelatedText }) => {
+      const filePath = createFixture(content, fileName);
+
+      const output = migrate(filePath);
+      const migrated = readFileSync(filePath, 'utf8');
+
+      expect(migrated).toContain('"strelit-ui-kit":"strelit-ui-kit"');
+      expect(migrated).toContain(
+        '"helper":"golden-layout/src/utils/helper.js"',
+      );
+      expect(migrated).toContain(unrelatedText);
+      expect(output).toContain(
+        'unsupported Golden Layout JavaScript deep import requires manual migration',
+      );
+      expect(output).toContain(
+        'embedded Golden Layout source APIs require manual migration',
+      );
+
+      const firstMigration = readFileSync(filePath, 'utf8');
+      migrate(filePath);
+      expect(readFileSync(filePath, 'utf8')).toBe(firstMigration);
+    },
+  );
+
+  it('preserves unknown package subpaths and reports them', () => {
+    const filePath = createFixture(
+      `import metadata from 'golden-layout/dist/internal/metadata.json';\n`,
+    );
+
+    const output = migrate(filePath);
+
+    expect(readFileSync(filePath, 'utf8')).toContain(
+      "from 'golden-layout/dist/internal/metadata.json'",
+    );
+    expect(output).toContain(
+      'unsupported Golden Layout package subpath requires manual migration',
+    );
+  });
+
+  it('uses CommonJS syntax for generated imports in .cjs files', () => {
+    const filePath = createFixture(
+      `const resolved = LayoutConfig.resolve(config);\n`,
+      'consumer.cjs',
+    );
+
+    migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain(
+      "const { resolveLayoutConfig } = require('strelit-ui-kit')",
+    );
+    expect(migrated).toContain('resolveLayoutConfig(config)');
+    expect(migrated).not.toContain('import {');
+  });
+
+  it('preserves malformed source for manual migration', () => {
+    const source = `import GoldenLayout from 'golden-layout';\nconst layout = new GoldenLayout(;\n`;
+    const filePath = createFixture(source);
+
+    const output = migrate(filePath);
+
+    expect(readFileSync(filePath, 'utf8')).toBe(source);
+    expect(output).toContain(
+      'source file contains syntax errors and requires manual migration',
     );
   });
 
