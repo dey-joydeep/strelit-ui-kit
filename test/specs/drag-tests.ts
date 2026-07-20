@@ -73,10 +73,11 @@ describe('drag source', function () {
   }
 
   function startDrag(): void {
+    const rect = dragSourceElement.getBoundingClientRect();
     const pointerDownEvent = new PointerEvent('pointerdown', {
       bubbles: true,
-      clientX: dragSourceElement.clientLeft,
-      clientY: dragSourceElement.clientTop,
+      clientX: rect.left,
+      clientY: rect.top,
       isPrimary: true,
     });
     dragSourceElement.dispatchEvent(pointerDownEvent);

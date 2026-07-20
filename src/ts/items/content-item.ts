@@ -128,6 +128,8 @@ export abstract class ContentItem extends EventEmitter {
   private _throttledEvents: string[];
   /** @internal */
   private _isInitialised;
+  /** @internal */
+  protected _isDestroyed = false;
 
   /** @internal */
   size: number;
@@ -493,6 +495,10 @@ export abstract class ContentItem extends EventEmitter {
    * @internal
    */
   destroy(): void {
+    if (this._isDestroyed) {
+      return;
+    }
+    this._isDestroyed = true;
     for (let i = 0; i < this._contentItems.length; i++) {
       this._contentItems[i].destroy();
     }

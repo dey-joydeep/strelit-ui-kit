@@ -105,6 +105,33 @@ describe('BrowserPopout functionality (item.popout())', function () {
     expect(layout.openPopouts.length).toBe(0);
   });
 
+  it('does not throw when calling close() on a blocked popout', function () {
+    vi.spyOn(window, 'open').mockReturnValue(null);
+
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: [
+          {
+            type: 'component',
+            id: 'blockedPopoutComponent2',
+            componentType: 'testComponent',
+          },
+        ],
+      },
+      settings: {
+        blockedPopoutsThrowError: false,
+      },
+    });
+
+    const item = layout.findFirstComponentItemById(
+      'blockedPopoutComponent2',
+    ) as ComponentItem;
+    const popout = item.popout();
+
+    expect(() => popout.close()).not.toThrow();
+  });
+
   it('restores incoming openPopouts when loading a new layout config', function () {
     const mockWindow = {
       closed: false,

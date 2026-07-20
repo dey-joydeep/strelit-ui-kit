@@ -229,6 +229,9 @@ export class ComponentContainer extends EventEmitter {
   destroy(): void {
     this.releaseComponent();
     this.stateRequestEvent = undefined;
+    this.virtualRectingRequiredEvent = undefined;
+    this.virtualVisibilityChangeRequiredEvent = undefined;
+    this.virtualZIndexChangeRequiredEvent = undefined;
     this.emit('destroy');
   }
 
@@ -372,10 +375,14 @@ export class ComponentContainer extends EventEmitter {
           componentType: previousComponentType,
           componentState: previousInitialState,
         };
-        this._boundComponent = this.layoutManager.bindComponent(
-          this,
-          previousConfig,
-        );
+        try {
+          this._boundComponent = this.layoutManager.bindComponent(
+            this,
+            previousConfig,
+          );
+        } catch {
+          // If rollback fails, keep existing _boundComponent
+        }
         throw error;
       }
 
@@ -389,7 +396,7 @@ export class ComponentContainer extends EventEmitter {
           this.virtualVisibilityChangeRequiredEvent(this, this._visible);
         }
         if (this.virtualRectingRequiredEvent !== undefined) {
-          this._layoutManager.fireBeforeVirtualRectingEvent(1);
+          this._layoutManager.fireBeforeVirtualRectingEvent(1, [this]);
           try {
             this.virtualRectingRequiredEvent(this, this._width, this._height);
           } finally {
@@ -504,7 +511,7 @@ export class ComponentContainer extends EventEmitter {
   drag(): void {
     if (this._boundComponent.virtual) {
       if (this.virtualRectingRequiredEvent !== undefined) {
-        this._layoutManager.fireBeforeVirtualRectingEvent(1);
+        this._layoutManager.fireBeforeVirtualRectingEvent(1, [this]);
         try {
           this.virtualRectingRequiredEvent(this, this._width, this._height);
         } finally {

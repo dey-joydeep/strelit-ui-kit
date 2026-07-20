@@ -346,7 +346,7 @@ export function createResolvedComponentItemConfigCopy(
     reorderEnabled: original.reorderEnabled,
     title: original.title,
     header: createResolvedHeaderedItemConfigHeaderCopy(original.header),
-    componentType: original.componentType,
+    componentType: createComponentTypeCopy(original.componentType),
     componentState: deepCloneValue(
       original.componentState,
     ) as SerializableValue,
@@ -873,6 +873,13 @@ export function createResolvedOpenPopoutsCopy(
 }
 
 /**
+ * Represents a minified layout configuration object where property names
+ * and values are shortened to single-letter or compact counterparts.
+ * @public
+ */
+export type MinifiedLayoutConfig = Record<string, unknown>;
+
+/**
  * Takes a StrelitLayout configuration object and
  * replaces its keys and values recursively with
  * one letter counterparts
@@ -880,11 +887,11 @@ export function createResolvedOpenPopoutsCopy(
  */
 export function minifyResolvedLayoutConfig(
   layoutConfig: ResolvedLayoutConfig,
-): ResolvedLayoutConfig {
+): MinifiedLayoutConfig {
   return translateMinifiedConfigObject(
     layoutConfig as unknown as Record<string, unknown>,
     true,
-  ) as unknown as ResolvedLayoutConfig;
+  ) as MinifiedLayoutConfig;
 }
 
 /**
@@ -893,7 +900,7 @@ export function minifyResolvedLayoutConfig(
  * @public
  */
 export function unminifyResolvedLayoutConfig(
-  minifiedConfig: ResolvedLayoutConfig,
+  minifiedConfig: MinifiedLayoutConfig,
 ): ResolvedLayoutConfig {
   return translateMinifiedConfigObject(
     minifiedConfig as unknown as Record<string, unknown>,

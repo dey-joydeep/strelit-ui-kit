@@ -89,7 +89,23 @@ HTMLElement.prototype.getBoundingClientRect =
   function getBoundingClientRect(): DOMRect {
     const width = getDimensionFromStyle(this, 'width');
     const height = getDimensionFromStyle(this, 'height');
-    return DOMRect.fromRect({ x: 0, y: 0, width, height });
+    let x = 0;
+    let y = 0;
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    let current: HTMLElement | null = this;
+    while (current !== null && current !== document.documentElement) {
+      const computed = globalThis.getComputedStyle(current);
+      const left = Number.parseFloat(computed.left);
+      const top = Number.parseFloat(computed.top);
+      if (!Number.isNaN(left)) {
+        x += left;
+      }
+      if (!Number.isNaN(top)) {
+        y += top;
+      }
+      current = current.parentElement;
+    }
+    return DOMRect.fromRect({ x, y, width, height });
   };
 
 HTMLElement.prototype.scrollIntoView = vi.fn();

@@ -134,7 +134,7 @@ export function isSerializableObject(
     !Array.isArray(value) &&
     value !== null &&
     typeof value === 'object' &&
-    isSerializableValueInternal(value, new WeakSet())
+    isSerializableValueInternal(value, new WeakSet(), new WeakSet())
   );
 }
 
@@ -155,12 +155,13 @@ export function isSerializableRecord(
 export function isSerializableValue(
   value: unknown,
 ): value is SerializableValue {
-  return isSerializableValueInternal(value, new WeakSet());
+  return isSerializableValueInternal(value, new WeakSet(), new WeakSet());
 }
 
 function isSerializableValueInternal(
   value: unknown,
   seen: WeakSet<object>,
+  verified: WeakSet<object>,
 ): value is SerializableValue {
   if (
     value === null ||
@@ -173,28 +174,40 @@ function isSerializableValueInternal(
     return Number.isFinite(value);
   }
   if (Array.isArray(value)) {
+    if (verified.has(value)) {
+      return true;
+    }
     if (seen.has(value)) {
       return false;
     }
     seen.add(value);
     const result = value.every((entry) =>
-      isSerializableValueInternal(entry, seen),
+      isSerializableValueInternal(entry, seen, verified),
     );
     seen.delete(value);
+    if (result) {
+      verified.add(value);
+    }
     return result;
   }
   if (value !== null && typeof value === 'object') {
     if (!hasPlainObjectPrototype(value)) {
       return false;
     }
+    if (verified.has(value)) {
+      return true;
+    }
     if (seen.has(value)) {
       return false;
     }
     seen.add(value);
     const result = Object.values(value).every((entry) =>
-      isSerializableValueInternal(entry, seen),
+      isSerializableValueInternal(entry, seen, verified),
     );
     seen.delete(value);
+    if (result) {
+      verified.add(value);
+    }
     return result;
   }
   return false;

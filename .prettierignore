@@ -4,4 +4,6 @@ temp
 .generated-docs
 etc/*.api.md
 .verification
+.scannerwork
+coverage
 package-lock.json

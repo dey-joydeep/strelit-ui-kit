@@ -13,6 +13,12 @@ describe('serializable value guards', () => {
 
     expect(isSerializableValue(value)).toBe(true);
     expect(isSerializableObject(value)).toBe(true);
+
+    let deepDag: Record<string, unknown> = { leaf: true };
+    for (let i = 0; i < 35; i++) {
+      deepDag = { left: deepDag, right: deepDag };
+    }
+    expect(isSerializableValue(deepDag)).toBe(true);
   });
 
   it('rejects unsupported primitives, non-finite numbers, and cycles', () => {

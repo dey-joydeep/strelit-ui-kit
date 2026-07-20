@@ -250,9 +250,10 @@ export class TabsContainer {
             //Overlap spreads among non-active, non-first tabs
             let overlap: number;
             if (activeIndex > 0 && activeIndex <= i) {
-              overlap = (visibleTabWidth - availableWidth) / (i - 1);
+              overlap =
+                i > 1 ? (visibleTabWidth - availableWidth) / (i - 1) : 0;
             } else {
-              overlap = (visibleTabWidth - availableWidth) / i;
+              overlap = i > 0 ? (visibleTabWidth - availableWidth) / i : 0;
             }
 
             //Check overlap against allowance.

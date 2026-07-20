@@ -118,6 +118,9 @@ export class BrowserPopout extends EventEmitter {
 
   /** Performs the close operation. */
   close(): void {
+    if (this._popoutWindow === null) {
+      return;
+    }
     if (this.getStrelitInstance()) {
       this.getStrelitInstance().closeWindow();
     } else {
@@ -259,18 +262,26 @@ export class BrowserPopout extends EventEmitter {
   /** @internal */
   private checkReady() {
     if (this._popoutWindow === null) {
-      throw new UnexpectedNullError('BPCR01844');
+      this.clearCheckReadyInterval();
+      return;
     } else {
-      if (
+      if (this._popoutWindow.closed) {
+        this.clearCheckReadyInterval();
+        this._onClose();
+      } else if (
         this._popoutWindow.__strelitInstance &&
         this._popoutWindow.__strelitInstance.isInitialised
       ) {
         this.onInitialised();
-        if (this._checkReadyInterval !== undefined) {
-          clearInterval(this._checkReadyInterval);
-          this._checkReadyInterval = undefined;
-        }
+        this.clearCheckReadyInterval();
       }
+    }
+  }
+
+  private clearCheckReadyInterval() {
+    if (this._checkReadyInterval !== undefined) {
+      clearInterval(this._checkReadyInterval);
+      this._checkReadyInterval = undefined;
     }
   }
 

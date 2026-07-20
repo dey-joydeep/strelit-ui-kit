@@ -118,6 +118,9 @@ export class ComponentItem extends ContentItem {
 
   /** @internal */
   override destroy(): void {
+    if (this._isDestroyed) {
+      return;
+    }
     this._container.destroy();
     super.destroy();
   }

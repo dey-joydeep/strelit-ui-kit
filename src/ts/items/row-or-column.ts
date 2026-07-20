@@ -329,9 +329,13 @@ export class RowOrColumn extends ContentItem {
   /**
    * Replaces a child of this Row or Column with another contentItem
    */
-  override replaceChild(oldChild: ContentItem, newChild: ContentItem): void {
+  override replaceChild(
+    oldChild: ContentItem,
+    newChild: ContentItem,
+    destroyOldChild = false,
+  ): void {
     const size = oldChild.size;
-    super.replaceChild(oldChild, newChild);
+    super.replaceChild(oldChild, newChild, destroyOldChild);
     newChild.size = size;
     this.updateSize(false);
     this.emitBaseBubblingEvent('stateChanged');
@@ -461,11 +465,11 @@ export class RowOrColumn extends ContentItem {
     let totalSize: number;
     let crossAxisSize: number;
     if (this._isColumn) {
-      totalSize = elementHeight - totalSplitterSize;
-      crossAxisSize = elementWidth;
+      totalSize = Math.max(0, elementHeight - totalSplitterSize);
+      crossAxisSize = Math.max(0, elementWidth);
     } else {
-      totalSize = elementWidth - totalSplitterSize;
-      crossAxisSize = elementHeight;
+      totalSize = Math.max(0, elementWidth - totalSplitterSize);
+      crossAxisSize = Math.max(0, elementHeight);
     }
 
     let totalAssigned = 0;
@@ -573,12 +577,21 @@ export class RowOrColumn extends ContentItem {
           total += 50;
         }
 
-        /**
-         * Set every items size relative to 100 relative to its size to total
-         */
-        for (let i = 0; i < this.contentItems.length; i++) {
-          const contentItem = this.contentItems[i];
-          contentItem.size = (contentItem.size / total) * 100;
+        if (total === 0) {
+          const equalShare = 100 / this.contentItems.length;
+          for (let i = 0; i < this.contentItems.length; i++) {
+            const contentItem = this.contentItems[i];
+            contentItem.size = equalShare;
+            contentItem.sizeUnit = SizeUnit.Percent;
+          }
+        } else {
+          /**
+           * Set every items size relative to 100 relative to its size to total
+           */
+          for (let i = 0; i < this.contentItems.length; i++) {
+            const contentItem = this.contentItems[i];
+            contentItem.size = (contentItem.size / total) * 100;
+          }
         }
 
         this.respectMinItemSize();

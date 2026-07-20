@@ -105,6 +105,11 @@ export class StrelitLayout extends VirtualLayout {
   >();
   /** @internal */
   private _strelitLayoutBoundingClientRect!: DOMRect;
+  /** @internal */
+  private _containerBoundingClientRectCache = new Map<
+    ComponentContainer,
+    DOMRect
+  >();
 
   /** @internal */
   private _containerVirtualRectingRequiredEventListener = (
@@ -350,10 +355,28 @@ export class StrelitLayout extends VirtualLayout {
   }
 
   /** Performs the fire before virtual recting event operation. */
-  override fireBeforeVirtualRectingEvent(count: number): void {
+  override fireBeforeVirtualRectingEvent(
+    count: number,
+    containers?: readonly ComponentContainer[],
+  ): void {
+    this._containerBoundingClientRectCache.clear();
     this._strelitLayoutBoundingClientRect =
       this.container.getBoundingClientRect();
-    super.fireBeforeVirtualRectingEvent(count);
+    if (containers !== undefined) {
+      for (const container of containers) {
+        this._containerBoundingClientRectCache.set(
+          container,
+          container.element.getBoundingClientRect(),
+        );
+      }
+    }
+    super.fireBeforeVirtualRectingEvent(count, containers);
+  }
+
+  /** Performs the fire after virtual recting event operation. */
+  override fireAfterVirtualRectingEvent(): void {
+    this._containerBoundingClientRectCache.clear();
+    super.fireAfterVirtualRectingEvent();
   }
 
   /** @internal */
@@ -374,8 +397,16 @@ export class StrelitLayout extends VirtualLayout {
             container.title,
         );
       } else {
-        const containerBoundingClientRect =
-          container.element.getBoundingClientRect();
+        let containerBoundingClientRect =
+          this._containerBoundingClientRectCache.get(container);
+        if (containerBoundingClientRect === undefined) {
+          containerBoundingClientRect =
+            container.element.getBoundingClientRect();
+          this._containerBoundingClientRectCache.set(
+            container,
+            containerBoundingClientRect,
+          );
+        }
         const left =
           containerBoundingClientRect.left -
           this._strelitLayoutBoundingClientRect.left;

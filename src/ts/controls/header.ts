@@ -504,10 +504,17 @@ export class Header extends EventEmitter {
   /** @internal */
   private processTabDropdownActiveChanged() {
     if (this._tabDropdownButton !== undefined) {
+      const wasVisible =
+        this._tabDropdownButton.element.style.display !== 'none';
       setElementDisplayVisibility(
         this._tabDropdownButton.element,
         this._tabsContainer.dropdownActive,
       );
+      const isVisible =
+        this._tabDropdownButton.element.style.display !== 'none';
+      if (wasVisible !== isVisible) {
+        this.updateTabSizes();
+      }
     }
   }
 

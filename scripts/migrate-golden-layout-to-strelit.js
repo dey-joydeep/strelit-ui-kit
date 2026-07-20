@@ -236,18 +236,18 @@ const replacements = [
   {
     name: 'scss subpath import',
     pattern:
-      /(['"])golden-layout\/(?:dist|src)\/scss\/((?:themes\/)?goldenlayout(?:-([a-z-]+)-theme|-base)\.scss)\1/g,
-    replacement: (_match, quote, fileName, themeName) => {
+      /(['"])golden-layout\/(?:dist|src)\/scss\/((?:themes\/)?goldenlayout(?:-([a-z-]+)-theme|-base)\.scss)([?#][^'"]*)?\1/g,
+    replacement: (_match, quote, fileName, themeName, suffix = '') => {
       if (themeName !== undefined || fileName.includes('-theme.scss')) {
         // Leave SCSS theme imports for manual review since only _strelit-var-theme.scss exists
         return _match;
       }
 
       if (fileName === 'goldenlayout-base.scss') {
-        return `${quote}strelit-ui-kit/dist/scss/strelit-base.scss${quote}`;
+        return `${quote}strelit-ui-kit/dist/scss/strelit-base.scss${suffix}${quote}`;
       }
 
-      return `${quote}strelit-ui-kit/dist/scss/${fileName}${quote}`;
+      return `${quote}strelit-ui-kit/dist/scss/${fileName}${suffix}${quote}`;
     },
   },
   {
@@ -263,6 +263,15 @@ const replacements = [
             /\/?_?goldenlayout-[^/?#]+-theme\.scss(?:[?#].*)?$/.test(subpath))
         ) {
           return _match;
+        }
+        if (
+          /^\/(?:dist\/(?:esm|cjs|browser|index)|index|src)\/?.*\.m?js(?:[?#].*)?$/.test(
+            subpath,
+          ) ||
+          subpath === '/dist/index.js' ||
+          subpath === '/index.js'
+        ) {
+          return `${quote}strelit-ui-kit${quote}`;
         }
         if (subpath.startsWith('/src/css/')) {
           const fileName = subpath.split('/').pop();
@@ -420,7 +429,8 @@ const manualReviewPatterns = [
   },
   {
     name: 'namespace package imports require member-by-member migration',
-    pattern: /import\s+\*\s+as\s+\w+\s+from\s+['"]strelit-ui-kit['"]/,
+    pattern:
+      /import\s+(?:[A-Za-z_$][\w$]*\s*,\s*)?\*\s+as\s+[A-Za-z_$][\w$]*\s+from\s+['"]strelit-ui-kit['"]/,
   },
 ];
 
@@ -823,12 +833,22 @@ function transformSourceContent(content, filePath) {
       ts.isImportDeclaration(node) &&
       ts.isStringLiteral(node.moduleSpecifier) &&
       node.moduleSpecifier.text === 'golden-layout' &&
-      node.importClause?.name !== undefined
+      node.importClause !== undefined
     ) {
-      const migratedClause = createDefaultImportClause(node.importClause);
-      if (migratedClause !== undefined) {
-        addEdit(node.importClause, migratedClause, 'default package import');
-        return;
+      if (
+        node.importClause.namedBindings !== undefined &&
+        ts.isNamespaceImport(node.importClause.namedBindings)
+      ) {
+        sourceManualReviews.add(
+          'namespace package imports require member-by-member migration',
+        );
+      }
+      if (node.importClause.name !== undefined) {
+        const migratedClause = createDefaultImportClause(node.importClause);
+        if (migratedClause !== undefined) {
+          addEdit(node.importClause, migratedClause, 'default package import');
+          return;
+        }
       }
     }
 
@@ -1000,6 +1020,15 @@ function migratePackagePath(specifier) {
   const relativePath = specifier.slice('golden-layout/'.length);
   const styleMatch = /^(?:dist|src)\/(css|less|scss)\/(.+)$/.exec(relativePath);
   if (styleMatch === null) {
+    if (
+      /^(?:dist\/(?:esm|cjs|browser|index)|index|src)\/?.*\.m?js(?:[?#].*)?$/.test(
+        relativePath,
+      ) ||
+      relativePath === 'dist/index.js' ||
+      relativePath === 'index.js'
+    ) {
+      return 'strelit-ui-kit';
+    }
     return `strelit-ui-kit/${relativePath}`;
   }
 
@@ -1011,9 +1040,16 @@ function migratePackagePath(specifier) {
     return specifier;
   }
 
-  const file = originalFile
+  let file = originalFile
     .replace(/^goldenlayout-base\./, 'strelit-base.')
     .replace(/(^|\/)goldenlayout-/, '$1strelit-');
+  if (
+    (styleType === 'css' || styleType === 'less') &&
+    /(?:^|\/)strelit-[^/?#]+-theme\.(?:css|less)(?:[?#].*)?$/.test(file) &&
+    !file.startsWith('themes/')
+  ) {
+    file = `themes/${file}`;
+  }
   return `strelit-ui-kit/dist/${styleType}/${file}`;
 }
 

@@ -48,6 +48,18 @@ import {
   type ResolvedStackItemConfig,
 } from './resolved-config';
 
+function assertContentArray(
+  content: ItemConfig[] | undefined,
+  ownerName: string,
+): asserts content is ItemConfig[] | undefined {
+  if (content !== undefined && !Array.isArray(content)) {
+    throw new ConfigurationError(
+      `${ownerName}.content must be an array`,
+      JSON.stringify(content),
+    );
+  }
+}
+
 /** User-facing configuration shared by every layout item. @public */
 export interface ItemConfig {
   /**
@@ -181,6 +193,7 @@ function resolveItemConfigContentWithBudget(
   budget: LayoutResolutionBudget,
   depth: number,
 ): ResolvedItemConfig[] {
+  assertContentArray(content, 'ItemConfig');
   if (content === undefined) {
     return [];
   } else {
@@ -450,6 +463,7 @@ function resolveStackItemConfigContentWithBudget(
   budget: LayoutResolutionBudget,
   depth: number,
 ): ResolvedComponentItemConfig[] {
+  assertContentArray(content, 'StackItemConfig');
   if (content === undefined) {
     return [];
   } else {
@@ -746,6 +760,7 @@ function resolveRowOrColumnItemConfigContentWithBudget(
   budget: LayoutResolutionBudget,
   depth: number,
 ): ResolvedRowOrColumnItemConfigChildItemConfig[] {
+  assertContentArray(content, 'RowOrColumnItemConfig');
   if (content === undefined) {
     return [];
   } else {
@@ -1312,9 +1327,23 @@ export function createLayoutConfigFromResolved(
     openPopouts: createPopoutLayoutConfigArrayFromResolved(config.openPopouts),
     settings: createResolvedLayoutConfigSettingsCopy(config.settings),
     dimensions: createLayoutConfigDimensionsFromResolved(config.dimensions),
-    header: createResolvedLayoutConfigHeaderCopy(config.header),
+    header: createLayoutConfigHeaderFromResolved(config.header),
   };
   return result;
+}
+
+function createLayoutConfigHeaderFromResolved(
+  header: ResolvedLayoutConfigHeader,
+): LayoutConfigHeader {
+  return {
+    show: header.show,
+    popout: header.popout,
+    maximise: header.maximise,
+    minimise: header.minimise,
+    close: header.close,
+    popin: header.dock,
+    tabDropdown: header.tabDropdown,
+  };
 }
 
 /**

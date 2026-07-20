@@ -87,6 +87,7 @@ declare global {
 export type LayoutManagerBeforeVirtualRectingEvent = (
   this: void,
   count: number,
+  containers?: readonly ComponentContainer[],
 ) => void;
 /**
  * Represents layout manager after virtual recting event.
@@ -837,7 +838,7 @@ export abstract class LayoutManager extends EventEmitter {
         locationSelectors = layoutManagerDefaultLocationSelectors;
       }
 
-      const location = this.findFirstLocation(locationSelectors);
+      const location = this.findFirstLocation(locationSelectors, itemConfig);
       if (location === undefined) {
         return undefined;
       } else {
@@ -1206,7 +1207,7 @@ export abstract class LayoutManager extends EventEmitter {
 
   /** @internal */
   beginVirtualSizedContainerAdding(): void {
-    if (++this._virtualSizedContainerAddingBeginCount === 0) {
+    if (++this._virtualSizedContainerAddingBeginCount === 1) {
       this._virtualSizedContainers.length = 0;
     }
   }
@@ -1219,23 +1220,32 @@ export abstract class LayoutManager extends EventEmitter {
   /** @internal */
   endVirtualSizedContainerAdding(): void {
     if (--this._virtualSizedContainerAddingBeginCount === 0) {
-      const count = this._virtualSizedContainers.length;
-      if (count > 0) {
-        this.fireBeforeVirtualRectingEvent(count);
-        for (let i = 0; i < count; i++) {
-          const container = this._virtualSizedContainers[i];
-          container.notifyVirtualRectingRequired();
+      try {
+        const count = this._virtualSizedContainers.length;
+        if (count > 0) {
+          this.fireBeforeVirtualRectingEvent(
+            count,
+            this._virtualSizedContainers,
+          );
+          for (let i = 0; i < count; i++) {
+            const container = this._virtualSizedContainers[i];
+            container.notifyVirtualRectingRequired();
+          }
+          this.fireAfterVirtualRectingEvent();
         }
-        this.fireAfterVirtualRectingEvent();
+      } finally {
         this._virtualSizedContainers.length = 0;
       }
     }
   }
 
   /** @internal */
-  fireBeforeVirtualRectingEvent(count: number): void {
+  fireBeforeVirtualRectingEvent(
+    count: number,
+    containers?: readonly ComponentContainer[],
+  ): void {
     if (this.beforeVirtualRectingEvent !== undefined) {
-      this.beforeVirtualRectingEvent(count);
+      this.beforeVirtualRectingEvent(count, containers);
     }
   }
 
@@ -1555,7 +1565,7 @@ export abstract class LayoutManager extends EventEmitter {
     event: EventEmitterBubblingEvent,
   ) {
     if (
-      this._maximisedStack !== null &&
+      this._maximisedStack !== undefined &&
       this._maximisedStack === event.target
     ) {
       this._maximisedStack.off(
@@ -2099,12 +2109,20 @@ export abstract class LayoutManager extends EventEmitter {
   /** @internal */
   private findFirstLocation(
     selectors: readonly LayoutManagerLocationSelector[],
+    itemConfig?: RowOrColumnItemConfig | StackItemConfig | ComponentItemConfig,
   ): LayoutManagerLocation | undefined {
     const count = selectors.length;
     for (let i = 0; i < count; i++) {
       const selector = selectors[i];
       const location = this.findLocation(selector);
       if (location !== undefined) {
+        if (
+          itemConfig !== undefined &&
+          !isComponentItemConfig(itemConfig) &&
+          location.parentItem.type === ItemType.stack
+        ) {
+          continue;
+        }
         return location;
       }
     }

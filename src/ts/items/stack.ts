@@ -535,6 +535,9 @@ export class Stack extends ComponentParentableItem {
 
   /** @internal */
   override destroy(): void {
+    if (this._isDestroyed) {
+      return;
+    }
     if (this._activeComponentItem?.focused) {
       this._activeComponentItem.blur();
     }
@@ -608,7 +611,14 @@ export class Stack extends ComponentParentableItem {
       if (this._dropIndex === undefined) {
         throw new UnexpectedUndefinedError('SODDI68990');
       } else {
-        this.addChild(contentItem, this._dropIndex);
+        if (contentItem instanceof ComponentItem) {
+          this.addChild(contentItem, this._dropIndex);
+        } else {
+          const components = this.extractComponentItems(contentItem);
+          for (let i = 0; i < components.length; i++) {
+            this.addChild(components[i], this._dropIndex + i);
+          }
+        }
         return;
       }
     }
@@ -617,7 +627,14 @@ export class Stack extends ComponentParentableItem {
      * The stack is empty. Let's just add the element.
      */
     if (this._dropSegment === StackSegment.Body) {
-      this.addChild(contentItem, 0, true);
+      if (contentItem instanceof ComponentItem) {
+        this.addChild(contentItem, 0, true);
+      } else {
+        const components = this.extractComponentItems(contentItem);
+        for (let i = 0; i < components.length; i++) {
+          this.addChild(components[i], i, true);
+        }
+      }
       return;
     }
 
@@ -648,22 +665,6 @@ export class Stack extends ComponentParentableItem {
         itemConfig,
         this,
       );
-      stack.addChild(contentItem);
-      contentItem = stack;
-    }
-
-    /*
-     * If the contentItem that's being dropped is not dropped on a Stack (cases which just passed above and
-     * which would wrap the contentItem in a Stack) we need to check whether contentItem is a RowOrColumn.
-     * If it is, we need to re-wrap it in a Stack like it was when it was dragged by its Tab (it was dragged!).
-     */
-    if (
-      contentItem.type === ItemType.row ||
-      contentItem.type === ItemType.column
-    ) {
-      const itemConfig = createResolvedStackItemConfigDefault();
-      itemConfig.header = this.createHeaderConfig();
-      const stack = this.layoutManager.createContentItem(itemConfig, this);
       stack.addChild(contentItem);
       contentItem = stack;
     }
@@ -706,6 +707,18 @@ export class Stack extends ComponentParentableItem {
       contentItem.sizeUnit = SizeUnit.Percent;
       rowOrColumn.updateSize(false);
     }
+  }
+
+  /** @internal */
+  private extractComponentItems(item: ContentItem): ComponentItem[] {
+    if (item instanceof ComponentItem) {
+      return [item];
+    }
+    const components: ComponentItem[] = [];
+    for (const child of item.contentItems.slice()) {
+      components.push(...this.extractComponentItems(child));
+    }
+    return components;
   }
 
   /**

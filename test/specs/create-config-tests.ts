@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ConfigurationError,
   type LayoutConfig,
   type PopoutLayoutConfig,
+  createLayoutConfigFromResolved,
+  createResolvedLayoutConfigCopy,
   createResolvedLayoutConfigDefault,
   resolveLayoutConfig,
 } from '../../src';
@@ -92,5 +95,64 @@ describe('Layout configuration resolution and defaults', function () {
       indexInParent: null,
       window: { width: null, height: null, left: null, top: null },
     });
+  });
+
+  it('maps resolved dock header labels back to public popin labels', () => {
+    const resolved = resolveLayoutConfig({
+      header: {
+        popin: 'Dock me',
+      },
+    });
+
+    const config = createLayoutConfigFromResolved(resolved);
+    const reloaded = resolveLayoutConfig(config);
+
+    expect(config.header?.popin).toBe('Dock me');
+    expect(reloaded.header.dock).toBe('Dock me');
+  });
+
+  it('deep-copies object component types when copying resolved configs', () => {
+    const componentType = { kind: 'panel', metadata: ['left'] };
+    const resolved = resolveLayoutConfig({
+      root: {
+        type: 'component',
+        componentType,
+      },
+    });
+
+    const copy = createResolvedLayoutConfigCopy(resolved);
+    const copiedRoot = copy.root;
+    if (copiedRoot?.type !== 'component') {
+      throw new Error('Expected component root');
+    }
+
+    expect(copiedRoot.componentType).toEqual(componentType);
+    expect(copiedRoot.componentType).not.toBe(componentType);
+  });
+
+  it('rejects malformed non-array content in layout configs', () => {
+    expect(() =>
+      resolveLayoutConfig({
+        root: {
+          type: 'row',
+          content: {
+            type: 'component',
+            componentType: 'panel',
+          },
+        },
+      } as unknown as LayoutConfig),
+    ).toThrow(ConfigurationError);
+
+    expect(() =>
+      resolveLayoutConfig({
+        root: {
+          type: 'stack',
+          content: {
+            type: 'component',
+            componentType: 'panel',
+          },
+        },
+      } as unknown as LayoutConfig),
+    ).toThrow(ConfigurationError);
   });
 });

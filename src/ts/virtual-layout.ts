@@ -4,8 +4,8 @@ import {
   type LayoutConfig,
 } from './config/config';
 import {
+  type MinifiedLayoutConfig,
   type ResolvedComponentItemConfig,
-  type ResolvedPopoutLayoutConfig,
   unminifyResolvedLayoutConfig,
 } from './config/resolved-config';
 import {
@@ -58,9 +58,16 @@ export function createVirtualLayoutManagerConstructorParameters(
       throw new Error('Missing Strelit popout configuration');
     }
     localStorage.removeItem(windowConfigKey);
-    const minifiedWindowConfig = JSON.parse(
-      windowConfigStr,
-    ) as ResolvedPopoutLayoutConfig;
+    let minifiedWindowConfig: MinifiedLayoutConfig;
+    try {
+      minifiedWindowConfig = JSON.parse(
+        windowConfigStr,
+      ) as MinifiedLayoutConfig;
+    } catch (err) {
+      throw new Error(
+        'Corrupt Strelit popout configuration in localStorage: ' + String(err),
+      );
+    }
     const resolvedConfig = unminifyResolvedLayoutConfig(minifiedWindowConfig);
     config = createLayoutConfigFromResolved(resolvedConfig);
   }
@@ -86,6 +93,10 @@ export class VirtualLayout extends LayoutManager {
   private _bindComponentEventHandlerPassedInConstructor = false;
   /** @internal */
   private _creationTimeoutPassed = false; // remove when constructor is determinate
+  /** @internal */
+  private _popInButtonElement: HTMLElement | undefined;
+  /** @internal */
+  private _popInButtonClickListener: (() => void) | undefined;
 
   /**
    * @param container - A Dom HTML element. Defaults to body
@@ -137,6 +148,17 @@ export class VirtualLayout extends LayoutManager {
 
   /** Performs the destroy operation. */
   override destroy(): void {
+    if (this._popInButtonElement !== undefined) {
+      if (this._popInButtonClickListener !== undefined) {
+        this._popInButtonElement.removeEventListener(
+          'click',
+          this._popInButtonClickListener,
+        );
+        this._popInButtonClickListener = undefined;
+      }
+      this._popInButtonElement.remove();
+      this._popInButtonElement = undefined;
+    }
     super.destroy();
 
     this.bindComponentEvent = undefined;
@@ -168,8 +190,14 @@ export class VirtualLayout extends LayoutManager {
       this.isSubWindow &&
       !this._creationTimeoutPassed
     ) {
-      setTimeout(() => this.init(), 7);
       this._creationTimeoutPassed = true;
+      if (document.readyState !== 'complete') {
+        window.addEventListener('load', () => this.init(), {
+          passive: true,
+        });
+      } else {
+        setTimeout(() => this.init(), 0);
+      }
       return;
     }
 
@@ -241,8 +269,11 @@ export class VirtualLayout extends LayoutManager {
       bgElement.classList.add(DomConstants.ClassName.Bg);
       popInButtonElement.appendChild(iconElement);
       popInButtonElement.appendChild(bgElement);
-      popInButtonElement.addEventListener('click', () => this.emit('popIn'));
+      const clickListener = () => this.emit('popIn');
+      popInButtonElement.addEventListener('click', clickListener);
       document.body.appendChild(popInButtonElement);
+      this._popInButtonElement = popInButtonElement;
+      this._popInButtonClickListener = clickListener;
       return true;
     }
   }

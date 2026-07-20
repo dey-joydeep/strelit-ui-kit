@@ -77,7 +77,9 @@
     "migrate:golden-layout": "node ./scripts/migrate-golden-layout-to-strelit.js",
     "audit:compatibility": "node ./scripts/audit-compatibility.js --validate",
     "audit:compatibility:check": "node ./scripts/audit-compatibility.js --check",
-    "audit:compatibility:refresh": "node ./scripts/audit-compatibility.js --write"
+    "audit:compatibility:refresh": "node ./scripts/audit-compatibility.js --write",
+    "sonar": "npx sonarqube-scanner",
+    "sonar:coverage": "npm run coverage && npm run sonar"
   },
   "devDependencies": {
     "@microsoft/api-extractor": "^7.58.1",
@@ -90,6 +92,7 @@
     "postcss": "^8.5.6",
     "prettier": "^3.6.2",
     "rimraf": "^6.1.0",
+    "sonarqube-scanner": "^4.4.0",
     "tsup": "^8.5.1",
     "typedoc": "^0.28.14",
     "typescript": "^5.9.3",

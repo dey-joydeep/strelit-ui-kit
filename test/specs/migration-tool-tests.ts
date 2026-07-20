@@ -227,6 +227,66 @@ const resolved = LayoutConfig.resolve(config);
     },
   );
 
+  it('preserves query/hash suffixes when migrating SCSS base imports', () => {
+    const legacyImport =
+      '@import "golden-layout/dist/scss/goldenlayout-base.scss?inline";';
+    const filePath = createFixture(`${legacyImport}\n`, 'consumer.scss');
+
+    migrate(filePath);
+
+    expect(readFileSync(filePath, 'utf8')).toContain(
+      '@import "strelit-ui-kit/dist/scss/strelit-base.scss?inline";',
+    );
+  });
+
+  it('collapses JS subpath imports to root package entry', () => {
+    const filePath = createFixture(`
+import GoldenLayout from 'golden-layout/dist/esm/index.js';
+import { LayoutConfig } from 'golden-layout/dist/cjs/index.js';
+import 'golden-layout/index.js';
+`);
+
+    migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+    expect(migrated).toContain("import StrelitLayout from 'strelit-ui-kit';");
+    expect(migrated).toContain(
+      "import { LayoutConfig } from 'strelit-ui-kit';",
+    );
+    expect(migrated).toContain("import 'strelit-ui-kit';");
+  });
+
+  it('flags mixed default/namespace imports for manual review', () => {
+    const filePath = createFixture(
+      `import GoldenLayout, * as GL from 'golden-layout';\n`,
+    );
+
+    const output = migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain(
+      "import StrelitLayout, * as GL from 'strelit-ui-kit';",
+    );
+    expect(output).toContain(
+      'namespace package imports require member-by-member migration',
+    );
+  });
+
+  it('places migrated source theme imports under themes directory', () => {
+    const filePath = createFixture(`
+import 'golden-layout/dist/css/goldenlayout-dark-theme.css';
+import 'golden-layout/src/css/goldenlayout-light-theme.css';
+`);
+
+    migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+    expect(migrated).toContain(
+      "import 'strelit-ui-kit/dist/css/themes/strelit-dark-theme.css';",
+    );
+    expect(migrated).toContain(
+      "import 'strelit-ui-kit/dist/css/themes/strelit-light-theme.css';",
+    );
+  });
+
   it('rejects directory links and junctions before traversing outside the target', () => {
     const fixture = mkdtempSync(join(tmpdir(), 'strelit-migration-link-'));
     temporaryDirectories.push(fixture);

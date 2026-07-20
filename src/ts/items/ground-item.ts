@@ -320,21 +320,6 @@ export class GroundItem extends ComponentParentableItem {
     if (this.contentItems.length === 0) {
       this.addChild(contentItem);
     } else {
-      /*
-       * If the contentItem that's being dropped is not dropped on a Stack (cases which just passed above and
-       * which would wrap the contentItem in a Stack) we need to check whether contentItem is a RowOrColumn.
-       * If it is, we need to re-wrap it in a Stack like it was when it was dragged by its Tab (it was dragged!).
-       */
-      if (
-        contentItem.type === ItemType.row ||
-        contentItem.type === ItemType.column
-      ) {
-        const itemConfig = createResolvedStackItemConfigDefault();
-        const stack = this.layoutManager.createContentItem(itemConfig, this);
-        stack.addChild(contentItem);
-        contentItem = stack;
-      }
-
       const type = area.side[0] == 'x' ? ItemType.row : ItemType.column;
       const insertBefore = area.side[1] == '2';
       const column = this.contentItems[0];
