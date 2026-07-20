@@ -24,7 +24,7 @@ Saved-layout migration walks recognized layout items, converts deterministic v1/
 - Do not guess receiver ownership, dynamic property access, serializability, multiple-root intent, or framework binding behavior.
 - Preserve URL query and hash suffixes on migrated style imports.
 - Preserve unrelated source text and formatting; this is a targeted codemod, not a formatter.
-- Once a module expression is classified as manual-only, preserve its containing statement, local bindings, callbacks, destructuring property names, and binding-owned API expressions as a unit.
+- Once a module expression is classified as manual-only, preserve its owned expression or atomic declaration plus its local bindings, callbacks, destructuring property names, and binding-owned API expressions; continue migrating unrelated siblings and function bodies.
 - Never run identifier or API replacements over unparsed markup or non-layout JSON; only bounded package and selector rewrites are safe there.
 - Preserve malformed source unchanged and report it instead of applying edits to a recovery parse tree.
 - A warning-free run means only that all recognized transformations were deterministic. The migrated application still requires its own typecheck and behavioral tests.

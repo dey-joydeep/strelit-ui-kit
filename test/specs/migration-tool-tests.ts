@@ -344,6 +344,30 @@ const resolved = InternalLayoutConfig.resolve(config);
     );
   });
 
+  it('preserves bindings from nested unsupported CommonJS imports', () => {
+    const source = `const GoldenLayout = require('golden-layout/src/internal.js').GoldenLayout;\nnew GoldenLayout();\n`;
+    const filePath = createFixture(source, 'consumer.cjs');
+
+    const output = migrate(filePath);
+
+    expect(readFileSync(filePath, 'utf8')).toBe(source);
+    expect(output).toContain(
+      'unsupported Golden Layout JavaScript deep import requires manual migration',
+    );
+  });
+
+  it('preserves assignment bindings from nested unsupported requires', () => {
+    const source = `GoldenLayout = require('golden-layout/src/internal.js').GoldenLayout;\nnew GoldenLayout();\n`;
+    const filePath = createFixture(source, 'consumer.cjs');
+
+    const output = migrate(filePath);
+
+    expect(readFileSync(filePath, 'utf8')).toBe(source);
+    expect(output).toContain(
+      'unsupported Golden Layout JavaScript deep import requires manual migration',
+    );
+  });
+
   it('preserves unsupported deep re-exports', () => {
     const source = `export { ItemContainer, GoldenLayout } from 'golden-layout/src/internal.js';\n`;
     const filePath = createFixture(source);
@@ -391,6 +415,45 @@ const dynamicLayout = new GoldenLayout.GoldenLayout();
 
     expect(readFileSync(filePath, 'utf8')).toBe(source);
     expect(output).toContain('dynamic imports require manual migration');
+  });
+
+  it('preserves import-type aliases and their references', () => {
+    const source = `type GoldenLayout = import('golden-layout').GoldenLayout;\nlet layout: GoldenLayout;\n`;
+    const filePath = createFixture(source);
+
+    const output = migrate(filePath);
+
+    expect(readFileSync(filePath, 'utf8')).toBe(source);
+    expect(output).toContain('import types require manual migration');
+  });
+
+  it('migrates unrelated APIs outside a preserved import type', () => {
+    const filePath = createFixture(
+      `import { LayoutConfig } from 'golden-layout';\nfunction f(x: import('golden-layout').GoldenLayout) { return LayoutConfig.resolve(config); }\n`,
+    );
+
+    const output = migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain(
+      "import { LayoutConfig, resolveLayoutConfig } from 'strelit-ui-kit';",
+    );
+    expect(migrated).toContain("x: import('golden-layout').GoldenLayout");
+    expect(migrated).toContain('return resolveLayoutConfig(config)');
+    expect(output).toContain('import types require manual migration');
+  });
+
+  it('handles import types in non-binding property declarations', () => {
+    const filePath = createFixture(
+      `class Consumer { 'legacy': import('golden-layout').GoldenLayout; }\n`,
+    );
+
+    const output = migrate(filePath);
+
+    expect(readFileSync(filePath, 'utf8')).toContain(
+      "'legacy': import('golden-layout').GoldenLayout",
+    );
+    expect(output).toContain('import types require manual migration');
   });
 
   it.each([

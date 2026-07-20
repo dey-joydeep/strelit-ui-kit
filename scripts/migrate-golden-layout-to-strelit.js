@@ -407,10 +407,96 @@ function addImportClauseBindings(importClause, bindings) {
   }
 }
 
-function findContainingStatement(node) {
-  let current = node;
+function findContainingVariableDeclaration(node) {
+  let current = node.parent;
   while (current !== undefined && !ts.isStatement(current)) {
+    if (ts.isVariableDeclaration(current)) {
+      return current;
+    }
     current = current.parent;
+  }
+  return undefined;
+}
+
+function findContainingAssignment(node) {
+  let current = node;
+  while (current.parent !== undefined && !ts.isStatement(current.parent)) {
+    const parent = current.parent;
+    if (
+      ts.isBinaryExpression(parent) &&
+      parent.right === current &&
+      parent.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      parent.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+    ) {
+      return parent;
+    }
+    current = parent;
+  }
+  return undefined;
+}
+
+function addAssignmentTargetBindings(target, bindings) {
+  if (ts.isIdentifier(target)) {
+    bindings.add(target.text);
+  } else if (ts.isArrayLiteralExpression(target)) {
+    for (const element of target.elements) {
+      if (ts.isSpreadElement(element)) {
+        addAssignmentTargetBindings(element.expression, bindings);
+      } else if (!ts.isOmittedExpression(element)) {
+        addAssignmentTargetBindings(element, bindings);
+      }
+    }
+  } else if (ts.isObjectLiteralExpression(target)) {
+    for (const property of target.properties) {
+      if (ts.isShorthandPropertyAssignment(property)) {
+        bindings.add(property.name.text);
+      } else if (ts.isPropertyAssignment(property)) {
+        addAssignmentTargetBindings(property.initializer, bindings);
+      } else if (ts.isSpreadAssignment(property)) {
+        addAssignmentTargetBindings(property.expression, bindings);
+      }
+    }
+  }
+}
+
+function addImportTypeBinding(node, bindings) {
+  let current = node.parent;
+  while (current !== undefined) {
+    if (
+      ts.isVariableDeclaration(current) ||
+      ts.isParameter(current) ||
+      ts.isTypeAliasDeclaration(current) ||
+      ts.isTypeParameterDeclaration(current)
+    ) {
+      addBindingName(current.name, bindings);
+      return;
+    }
+    if (ts.isStatement(current)) {
+      return;
+    }
+    current = current.parent;
+  }
+}
+
+function findOwnedModuleExpression(node) {
+  let current = node;
+  while (current.parent !== undefined) {
+    const parent = current.parent;
+    const ownsCurrent =
+      ((ts.isPropertyAccessExpression(parent) ||
+        ts.isElementAccessExpression(parent) ||
+        ts.isCallExpression(parent) ||
+        ts.isTaggedTemplateExpression(parent)) &&
+        parent.expression === current) ||
+      ((ts.isAwaitExpression(parent) ||
+        ts.isParenthesizedExpression(parent) ||
+        ts.isAsExpression(parent) ||
+        ts.isNonNullExpression(parent)) &&
+        parent.expression === current);
+    if (!ownsCurrent) {
+      break;
+    }
+    current = parent;
   }
   return current;
 }
@@ -420,11 +506,8 @@ function collectManualOnlySourceContext(sourceFile) {
   const nodes = new Set();
   const reviews = new Set();
 
-  function preserveStatement(node, review) {
-    const statement = findContainingStatement(node);
-    if (statement !== undefined) {
-      nodes.add(statement);
-    }
+  function preserveNode(node, review) {
+    nodes.add(node);
     reviews.add(review);
   }
 
@@ -439,7 +522,7 @@ function collectManualOnlySourceContext(sourceFile) {
       const classification = classifyGoldenLayoutPackageSpecifier(
         node.moduleSpecifier.text,
       );
-      preserveStatement(
+      preserveNode(
         node,
         classification.manualReview ??
           'namespace package imports require member-by-member migration',
@@ -455,7 +538,7 @@ function collectManualOnlySourceContext(sourceFile) {
         node.moduleSpecifier.text,
       );
       if (classification.manualReview !== undefined) {
-        preserveStatement(node, classification.manualReview);
+        preserveNode(node, classification.manualReview);
         return;
       }
     }
@@ -465,7 +548,8 @@ function collectManualOnlySourceContext(sourceFile) {
       ts.isStringLiteral(node.argument.literal) &&
       isGoldenLayoutPackageSpecifier(node.argument.literal.text)
     ) {
-      preserveStatement(node, 'import types require manual migration');
+      addImportTypeBinding(node, bindings);
+      preserveNode(node, 'import types require manual migration');
       return;
     }
     if (
@@ -476,7 +560,7 @@ function collectManualOnlySourceContext(sourceFile) {
       isGoldenLayoutPackageSpecifier(node.moduleReference.expression.text)
     ) {
       bindings.add(node.name.text);
-      preserveStatement(
+      preserveNode(
         node,
         'TypeScript import-equals declarations require manual migration',
       );
@@ -498,7 +582,7 @@ function collectManualOnlySourceContext(sourceFile) {
         addBindingName(node.name, bindings);
         const classification =
           classifyGoldenLayoutPackageSpecifier(requireSpecifier);
-        preserveStatement(node, classification.manualReview);
+        preserveNode(node, classification.manualReview);
         return;
       }
       if (
@@ -506,7 +590,7 @@ function collectManualOnlySourceContext(sourceFile) {
         isGoldenLayoutPackageSpecifier(dynamicImportSpecifier)
       ) {
         addBindingName(node.name, bindings);
-        preserveStatement(node, 'dynamic imports require manual migration');
+        preserveNode(node, 'dynamic imports require manual migration');
         return;
       }
     }
@@ -517,7 +601,25 @@ function collectManualOnlySourceContext(sourceFile) {
     ) {
       const classification =
         classifyGoldenLayoutPackageSpecifier(requireSpecifier);
-      preserveStatement(node, classification.manualReview);
+      const declaration = findContainingVariableDeclaration(node);
+      if (declaration !== undefined) {
+        addBindingName(declaration.name, bindings);
+      }
+      const assignment = findContainingAssignment(node);
+      if (assignment !== undefined) {
+        addAssignmentTargetBindings(assignment.left, bindings);
+      }
+      const ownedExpression = findOwnedModuleExpression(node);
+      preserveNode(
+        declaration !== undefined && !ts.isIdentifier(declaration.name)
+          ? declaration
+          : assignment !== undefined &&
+              (ts.isArrayLiteralExpression(assignment.left) ||
+                ts.isObjectLiteralExpression(assignment.left))
+            ? assignment
+            : ownedExpression,
+        classification.manualReview,
+      );
       return;
     }
     const dynamicImportSpecifier = getStaticDynamicImportSpecifier(node);
@@ -525,7 +627,22 @@ function collectManualOnlySourceContext(sourceFile) {
       dynamicImportSpecifier !== undefined &&
       isGoldenLayoutPackageSpecifier(dynamicImportSpecifier)
     ) {
-      preserveStatement(node, 'dynamic imports require manual migration');
+      const declaration = findContainingVariableDeclaration(node);
+      if (declaration !== undefined) {
+        addBindingName(declaration.name, bindings);
+      }
+      const assignment = findContainingAssignment(node);
+      if (assignment !== undefined) {
+        addAssignmentTargetBindings(assignment.left, bindings);
+      }
+      preserveNode(
+        assignment !== undefined &&
+          (ts.isArrayLiteralExpression(assignment.left) ||
+            ts.isObjectLiteralExpression(assignment.left))
+          ? assignment
+          : findOwnedModuleExpression(node),
+        'dynamic imports require manual migration',
+      );
       return;
     }
     ts.forEachChild(node, visit);
