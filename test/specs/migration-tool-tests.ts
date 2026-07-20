@@ -332,6 +332,18 @@ const resolved = InternalLayoutConfig.resolve(config);
     );
   });
 
+  it('preserves aliased destructuring from unsupported CommonJS imports', () => {
+    const source = `const { GoldenLayout: LegacyLayout } = require('golden-layout/src/internal.js');\nnew LegacyLayout();\n`;
+    const filePath = createFixture(source, 'consumer.cjs');
+
+    const output = migrate(filePath);
+
+    expect(readFileSync(filePath, 'utf8')).toBe(source);
+    expect(output).toContain(
+      'unsupported Golden Layout JavaScript deep import requires manual migration',
+    );
+  });
+
   it('preserves unsupported deep re-exports', () => {
     const source = `export { ItemContainer, GoldenLayout } from 'golden-layout/src/internal.js';\n`;
     const filePath = createFixture(source);
@@ -369,6 +381,16 @@ const dynamicLayout = new GoldenLayout.GoldenLayout();
     );
     expect(output).toContain('dynamic imports require manual migration');
     expect(output).toContain('import types require manual migration');
+  });
+
+  it('preserves chained dynamic-import callbacks as one manual-only unit', () => {
+    const source = `import('golden-layout').then(({ GoldenLayout }) => new GoldenLayout());\n`;
+    const filePath = createFixture(source);
+
+    const output = migrate(filePath);
+
+    expect(readFileSync(filePath, 'utf8')).toBe(source);
+    expect(output).toContain('dynamic imports require manual migration');
   });
 
   it.each([

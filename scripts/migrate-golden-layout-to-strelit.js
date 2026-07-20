@@ -407,8 +407,26 @@ function addImportClauseBindings(importClause, bindings) {
   }
 }
 
-function collectManualOnlyBindings(sourceFile) {
+function findContainingStatement(node) {
+  let current = node;
+  while (current !== undefined && !ts.isStatement(current)) {
+    current = current.parent;
+  }
+  return current;
+}
+
+function collectManualOnlySourceContext(sourceFile) {
   const bindings = new Set();
+  const nodes = new Set();
+  const reviews = new Set();
+
+  function preserveStatement(node, review) {
+    const statement = findContainingStatement(node);
+    if (statement !== undefined) {
+      nodes.add(statement);
+    }
+    reviews.add(review);
+  }
 
   function visit(node) {
     if (
@@ -418,6 +436,36 @@ function collectManualOnlyBindings(sourceFile) {
         isNamespacePackageImport(node))
     ) {
       addImportClauseBindings(node.importClause, bindings);
+      const classification = classifyGoldenLayoutPackageSpecifier(
+        node.moduleSpecifier.text,
+      );
+      preserveStatement(
+        node,
+        classification.manualReview ??
+          'namespace package imports require member-by-member migration',
+      );
+      return;
+    }
+    if (
+      ts.isExportDeclaration(node) &&
+      node.moduleSpecifier !== undefined &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
+      const classification = classifyGoldenLayoutPackageSpecifier(
+        node.moduleSpecifier.text,
+      );
+      if (classification.manualReview !== undefined) {
+        preserveStatement(node, classification.manualReview);
+        return;
+      }
+    }
+    if (
+      ts.isImportTypeNode(node) &&
+      ts.isLiteralTypeNode(node.argument) &&
+      ts.isStringLiteral(node.argument.literal) &&
+      isGoldenLayoutPackageSpecifier(node.argument.literal.text)
+    ) {
+      preserveStatement(node, 'import types require manual migration');
       return;
     }
     if (
@@ -428,6 +476,10 @@ function collectManualOnlyBindings(sourceFile) {
       isGoldenLayoutPackageSpecifier(node.moduleReference.expression.text)
     ) {
       bindings.add(node.name.text);
+      preserveStatement(
+        node,
+        'TypeScript import-equals declarations require manual migration',
+      );
       return;
     }
     if (ts.isVariableDeclaration(node)) {
@@ -440,20 +492,47 @@ function collectManualOnlyBindings(sourceFile) {
           ? undefined
           : getStaticDynamicImportSpecifier(node.initializer);
       if (
-        (requireSpecifier !== undefined &&
-          isManualOnlyGoldenLayoutSpecifier(requireSpecifier)) ||
-        (dynamicImportSpecifier !== undefined &&
-          isGoldenLayoutPackageSpecifier(dynamicImportSpecifier))
+        requireSpecifier !== undefined &&
+        isManualOnlyGoldenLayoutSpecifier(requireSpecifier)
       ) {
         addBindingName(node.name, bindings);
+        const classification =
+          classifyGoldenLayoutPackageSpecifier(requireSpecifier);
+        preserveStatement(node, classification.manualReview);
         return;
       }
+      if (
+        dynamicImportSpecifier !== undefined &&
+        isGoldenLayoutPackageSpecifier(dynamicImportSpecifier)
+      ) {
+        addBindingName(node.name, bindings);
+        preserveStatement(node, 'dynamic imports require manual migration');
+        return;
+      }
+    }
+    const requireSpecifier = getStaticRequireSpecifier(node);
+    if (
+      requireSpecifier !== undefined &&
+      isManualOnlyGoldenLayoutSpecifier(requireSpecifier)
+    ) {
+      const classification =
+        classifyGoldenLayoutPackageSpecifier(requireSpecifier);
+      preserveStatement(node, classification.manualReview);
+      return;
+    }
+    const dynamicImportSpecifier = getStaticDynamicImportSpecifier(node);
+    if (
+      dynamicImportSpecifier !== undefined &&
+      isGoldenLayoutPackageSpecifier(dynamicImportSpecifier)
+    ) {
+      preserveStatement(node, 'dynamic imports require manual migration');
+      return;
     }
     ts.forEachChild(node, visit);
   }
 
   visit(sourceFile);
-  return bindings;
+  return { bindings, nodes, reviews };
 }
 
 function getRootIdentifierName(node) {
@@ -812,9 +891,10 @@ function transformSourceContent(content, filePath) {
   const edits = [];
   const requiredImports = new Map();
   const { bindings, importedNames } = collectSourceBindings(sourceFile);
-  const manualOnlyBindings = collectManualOnlyBindings(sourceFile);
+  const manualOnly = collectManualOnlySourceContext(sourceFile);
+  const manualOnlyBindings = manualOnly.bindings;
   const receiverKinds = collectReceiverKinds(sourceFile, manualOnlyBindings);
-  const sourceManualReviews = new Set();
+  const sourceManualReviews = new Set(manualOnly.reviews);
 
   function resolveImportName(exportName) {
     const importedName = importedNames.get(exportName);
@@ -846,6 +926,9 @@ function transformSourceContent(content, filePath) {
   }
 
   function visit(node) {
+    if (manualOnly.nodes.has(node)) {
+      return;
+    }
     const numericPropertyMigration = getNumericPropertyMigration(node);
     if (numericPropertyMigration !== undefined) {
       addEdit(node, numericPropertyMigration, 'numeric layout item sizing');
