@@ -767,12 +767,12 @@ function isGoldenLayoutPackageOrJsEntrySpecifier(specifier) {
   }
 
   const relativePath = specifier.slice('golden-layout/'.length);
-  return (
-    /^(?:dist\/(?:esm|cjs|browser|index)|index|src)\/?.*\.m?js(?:[?#].*)?$/.test(
-      relativePath,
-    ) ||
-    relativePath === 'dist/index.js' ||
-    relativePath === 'index.js'
+  return isGoldenLayoutJsEntryRelativePath(relativePath);
+}
+
+function isGoldenLayoutJsEntryRelativePath(relativePath) {
+  return /^(?:(?:dist\/(?:esm|cjs|browser)|src)\/)?index\.m?js(?:[?#].*)?$/.test(
+    relativePath,
   );
 }
 
@@ -1038,13 +1038,7 @@ function migratePackagePath(specifier) {
   const relativePath = specifier.slice('golden-layout/'.length);
   const styleMatch = /^(?:dist|src)\/(css|less|scss)\/(.+)$/.exec(relativePath);
   if (styleMatch === null) {
-    if (
-      /^(?:dist\/(?:esm|cjs|browser|index)|index|src)\/?.*\.m?js(?:[?#].*)?$/.test(
-        relativePath,
-      ) ||
-      relativePath === 'dist/index.js' ||
-      relativePath === 'index.js'
-    ) {
+    if (isGoldenLayoutJsEntryRelativePath(relativePath)) {
       return 'strelit-ui-kit';
     }
     return `strelit-ui-kit/${relativePath}`;

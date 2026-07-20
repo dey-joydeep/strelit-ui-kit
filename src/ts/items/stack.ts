@@ -619,6 +619,7 @@ export class Stack extends ComponentParentableItem {
             this.detachExtractedComponentItem(components[i]);
             this.addChild(components[i], this._dropIndex + i);
           }
+          this.removeEmptiedExtractedContainer(contentItem);
         }
         return;
       }
@@ -636,6 +637,7 @@ export class Stack extends ComponentParentableItem {
           this.detachExtractedComponentItem(components[i]);
           this.addChild(components[i], i, true);
         }
+        this.removeEmptiedExtractedContainer(contentItem);
       }
       return;
     }
@@ -728,6 +730,14 @@ export class Stack extends ComponentParentableItem {
     const parent = component.parent;
     if (parent !== null && parent !== this) {
       parent.removeChild(component, true);
+    }
+  }
+
+  /** @internal */
+  private removeEmptiedExtractedContainer(item: ContentItem): void {
+    const parent = item.parent;
+    if (parent !== null && item.contentItems.length === 0) {
+      parent.removeChild(item, false);
     }
   }
 

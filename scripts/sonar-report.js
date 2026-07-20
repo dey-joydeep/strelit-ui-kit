@@ -6,6 +6,7 @@
  */
 
 const http = require('http');
+const https = require('https');
 const { execSync } = require('child_process');
 
 const SONAR_URL = process.env.SONAR_HOST_URL || 'http://localhost:9000';
@@ -31,16 +32,23 @@ if (!SONAR_TOKEN) {
 }
 
 const authHeader = 'Basic ' + Buffer.from(`${SONAR_TOKEN}:`).toString('base64');
+const baseUrl = new URL(SONAR_URL);
+if (!baseUrl.pathname.endsWith('/')) {
+  baseUrl.pathname += '/';
+}
 const url = new URL(
-  `/api/issues/search?componentKeys=${PROJECT_KEY}&statuses=OPEN,CONFIRMED&ps=100`,
-  SONAR_URL,
+  `api/issues/search?componentKeys=${encodeURIComponent(
+    PROJECT_KEY,
+  )}&statuses=OPEN,CONFIRMED,REOPENED&ps=100`,
+  baseUrl,
 );
+const transport = url.protocol === 'https:' ? https : http;
 
 console.log(
   `Fetching SonarQube issues for project [${PROJECT_KEY}] from ${SONAR_URL}...\n`,
 );
 
-const req = http.request(
+const req = transport.request(
   url,
   {
     headers: {
@@ -71,7 +79,10 @@ const req = http.request(
         }
 
         parsed.issues.forEach((issue) => {
-          const filePath = issue.component.replace(`^${PROJECT_KEY}:`, '');
+          const projectPrefix = `${PROJECT_KEY}:`;
+          const filePath = issue.component.startsWith(projectPrefix)
+            ? issue.component.slice(projectPrefix.length)
+            : issue.component;
           const line = issue.line || 1;
           const severity = issue.severity.padEnd(8, ' ');
           const type = issue.type;
@@ -88,6 +99,7 @@ const req = http.request(
         }
       } catch (err) {
         console.error('Failed to parse API response:', err.message);
+        process.exit(1);
       }
     });
   },
@@ -95,6 +107,7 @@ const req = http.request(
 
 req.on('error', (err) => {
   console.error(`Request failed: ${err.message}`);
+  process.exit(1);
 });
 
 req.end();

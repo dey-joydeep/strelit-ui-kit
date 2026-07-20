@@ -244,6 +244,7 @@ const resolved = LayoutConfig.resolve(config);
 import GoldenLayout from 'golden-layout/dist/esm/index.js';
 import { LayoutConfig } from 'golden-layout/dist/cjs/index.js';
 import 'golden-layout/index.js';
+import helper from 'golden-layout/src/utils/helper.js';
 `);
 
     migrate(filePath);
@@ -255,6 +256,9 @@ import 'golden-layout/index.js';
       "import { LayoutConfig } from 'strelit-ui-kit';",
     );
     expect(migrated).toContain("import 'strelit-ui-kit';");
+    expect(migrated).toContain(
+      "import helper from 'strelit-ui-kit/src/utils/helper.js';",
+    );
   });
 
   it('flags mixed default/namespace imports for manual review', () => {
