@@ -169,6 +169,12 @@ describe('Runtime layout tree manipulation', function () {
     const targetStack = layout.findFirstComponentItemById('comp1')
       ?.parent as Stack;
     const droppedColumn = (layout.rootItem as RowOrColumn).contentItems[1];
+    const stackInternals = targetStack as unknown as {
+      _dropSegment: string;
+      _dropIndex: number;
+    };
+    stackInternals._dropSegment = 'header';
+    stackInternals._dropIndex = 1;
 
     expect(() => {
       targetStack.onDrop(droppedColumn, {
@@ -180,5 +186,16 @@ describe('Runtime layout tree manipulation', function () {
         y2: 100,
       } as any);
     }).not.toThrow();
+
+    expect(targetStack.contentItems.map((item) => item.id)).toEqual([
+      'comp1',
+      'comp2',
+    ]);
+    const savedRoot = layout.saveLayout().root;
+    expect(savedRoot?.type).toBe('stack');
+    expect(savedRoot?.content?.map((item) => item.id)).toEqual([
+      'comp1',
+      'comp2',
+    ]);
   });
 });

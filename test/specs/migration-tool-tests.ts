@@ -248,7 +248,9 @@ import 'golden-layout/index.js';
 
     migrate(filePath);
     const migrated = readFileSync(filePath, 'utf8');
-    expect(migrated).toContain("import StrelitLayout from 'strelit-ui-kit';");
+    expect(migrated).toContain(
+      "import { StrelitLayout } from 'strelit-ui-kit';",
+    );
     expect(migrated).toContain(
       "import { LayoutConfig } from 'strelit-ui-kit';",
     );

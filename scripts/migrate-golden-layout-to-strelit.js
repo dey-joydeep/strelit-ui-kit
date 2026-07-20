@@ -758,6 +758,24 @@ function createDefaultImportClause(importClause) {
   return `{ ${[defaultBinding, ...named].join(', ')} }`;
 }
 
+function isGoldenLayoutPackageOrJsEntrySpecifier(specifier) {
+  if (specifier === 'golden-layout') {
+    return true;
+  }
+  if (!specifier.startsWith('golden-layout/')) {
+    return false;
+  }
+
+  const relativePath = specifier.slice('golden-layout/'.length);
+  return (
+    /^(?:dist\/(?:esm|cjs|browser|index)|index|src)\/?.*\.m?js(?:[?#].*)?$/.test(
+      relativePath,
+    ) ||
+    relativePath === 'dist/index.js' ||
+    relativePath === 'index.js'
+  );
+}
+
 /** Migrates one JavaScript or TypeScript source file through syntax-aware edits. */
 function transformSourceContent(content, filePath) {
   const normalized = content;
@@ -832,7 +850,7 @@ function transformSourceContent(content, filePath) {
     if (
       ts.isImportDeclaration(node) &&
       ts.isStringLiteral(node.moduleSpecifier) &&
-      node.moduleSpecifier.text === 'golden-layout' &&
+      isGoldenLayoutPackageOrJsEntrySpecifier(node.moduleSpecifier.text) &&
       node.importClause !== undefined
     ) {
       if (

@@ -78,8 +78,9 @@
     "audit:compatibility": "node ./scripts/audit-compatibility.js --validate",
     "audit:compatibility:check": "node ./scripts/audit-compatibility.js --check",
     "audit:compatibility:refresh": "node ./scripts/audit-compatibility.js --write",
-    "sonar": "npx sonarqube-scanner",
-    "sonar:coverage": "npm run coverage && npm run sonar"
+    "sonar": "node ./scripts/sonar-scan.js",
+    "sonar:coverage": "npm run coverage && npm run sonar",
+    "sonar:issues": "node ./scripts/sonar-report.js"
   },
   "devDependencies": {
     "@microsoft/api-extractor": "^7.58.1",

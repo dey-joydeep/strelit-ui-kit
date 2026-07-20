@@ -616,6 +616,7 @@ export class Stack extends ComponentParentableItem {
         } else {
           const components = this.extractComponentItems(contentItem);
           for (let i = 0; i < components.length; i++) {
+            this.detachExtractedComponentItem(components[i]);
             this.addChild(components[i], this._dropIndex + i);
           }
         }
@@ -632,6 +633,7 @@ export class Stack extends ComponentParentableItem {
       } else {
         const components = this.extractComponentItems(contentItem);
         for (let i = 0; i < components.length; i++) {
+          this.detachExtractedComponentItem(components[i]);
           this.addChild(components[i], i, true);
         }
       }
@@ -719,6 +721,14 @@ export class Stack extends ComponentParentableItem {
       components.push(...this.extractComponentItems(child));
     }
     return components;
+  }
+
+  /** @internal */
+  private detachExtractedComponentItem(component: ComponentItem): void {
+    const parent = component.parent;
+    if (parent !== null && parent !== this) {
+      parent.removeChild(component, true);
+    }
   }
 
   /**
