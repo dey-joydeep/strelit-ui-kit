@@ -110,11 +110,22 @@ export interface ItemConfig {
  * @public
  */
 export function resolveItemConfig(itemConfig: ItemConfig): ResolvedItemConfig {
+  return resolveItemConfigWithComponentReorderEnabledDefault(
+    itemConfig,
+    resolvedComponentItemConfigDefaultReorderEnabled,
+  );
+}
+
+/** @internal */
+export function resolveItemConfigWithComponentReorderEnabledDefault(
+  itemConfig: ItemConfig,
+  componentReorderEnabledDefault: boolean,
+): ResolvedItemConfig {
   return resolveItemConfigWithBudget(
     itemConfig,
     createResolutionBudget(),
     0,
-    resolvedComponentItemConfigDefaultReorderEnabled,
+    componentReorderEnabledDefault,
   );
 }
 

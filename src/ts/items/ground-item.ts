@@ -2,7 +2,7 @@ import {
   type ComponentItemConfig,
   type RowOrColumnItemConfig,
   type StackItemConfig,
-  resolveItemConfig,
+  resolveItemConfigWithComponentReorderEnabledDefault,
 } from '../config/config';
 import {
   type ResolvedComponentItemConfig,
@@ -162,7 +162,11 @@ export class GroundItem extends ComponentParentableItem {
   ): number {
     this.layoutManager.checkMinimiseMaximisedStack();
 
-    const resolvedItemConfig = resolveItemConfig(itemConfig);
+    const resolvedItemConfig =
+      resolveItemConfigWithComponentReorderEnabledDefault(
+        itemConfig,
+        this.layoutManager.layoutConfig.settings.reorderEnabled,
+      );
     let parent: ContentItem;
     if (this.contentItems.length > 0) {
       parent = this.contentItems[0];
@@ -186,9 +190,11 @@ export class GroundItem extends ComponentParentableItem {
     // Remove existing root if it exists
     this.clearRoot();
 
-    const resolvedItemConfig = resolveItemConfig(
-      itemConfig,
-    ) as ResolvedComponentItemConfig;
+    const resolvedItemConfig =
+      resolveItemConfigWithComponentReorderEnabledDefault(
+        itemConfig,
+        this.layoutManager.layoutConfig.settings.reorderEnabled,
+      ) as ResolvedComponentItemConfig;
 
     if (resolvedItemConfig.maximised) {
       throw new Error('Root Component cannot be maximised');

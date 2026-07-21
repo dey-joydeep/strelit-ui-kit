@@ -1,4 +1,7 @@
-import { type ComponentItemConfig, resolveItemConfig } from '../config/config';
+import {
+  type ComponentItemConfig,
+  resolveItemConfigWithComponentReorderEnabledDefault,
+} from '../config/config';
 import {
   type ResolvedComponentItemConfig,
   type ResolvedHeaderedItemConfig,
@@ -418,7 +421,11 @@ export class Stack extends ComponentParentableItem {
   addItem(itemConfig: ComponentItemConfig, index?: number): number {
     this.layoutManager.checkMinimiseMaximisedStack();
 
-    const resolvedItemConfig = resolveItemConfig(itemConfig);
+    const resolvedItemConfig =
+      resolveItemConfigWithComponentReorderEnabledDefault(
+        itemConfig,
+        this.layoutManager.layoutConfig.settings.reorderEnabled,
+      );
     const contentItem = this.layoutManager.createAndInitContentItem(
       resolvedItemConfig,
       this,

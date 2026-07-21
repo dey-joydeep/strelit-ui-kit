@@ -380,6 +380,18 @@ const resolved = InternalLayoutConfig.resolve(config);
     );
   });
 
+  it('migrates named re-exports from supported package entries', () => {
+    const filePath = createFixture(
+      `export { GoldenLayout, ItemContainer as LegacyContainer } from 'golden-layout';\n`,
+    );
+
+    migrate(filePath);
+
+    expect(readFileSync(filePath, 'utf8')).toContain(
+      `export { StrelitLayout, ComponentContainer as LegacyContainer } from 'strelit-ui-kit';`,
+    );
+  });
+
   it('preserves dynamic and TypeScript import-equals forms for manual review', () => {
     const filePath = createFixture(`
 import GoldenLayoutModule = require('golden-layout');
@@ -807,6 +819,20 @@ const config: DragSource.ComponentItemConfig = {
       'editor',
       'preview',
     ]);
+  });
+
+  it('leaves component-shaped non-layout JSON unchanged', () => {
+    const source = JSON.stringify({
+      type: 'component',
+      componentName: 'Button',
+      width: 320,
+      height: 200,
+    });
+    const filePath = createFixture(source, 'metadata.json');
+
+    migrate(filePath, ['--from', 'v1']);
+
+    expect(readFileSync(filePath, 'utf8')).toBe(source);
   });
 
   it('migrates numeric sizing from the original v2 demo layout pattern', () => {

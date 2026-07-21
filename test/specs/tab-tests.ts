@@ -78,6 +78,23 @@ describe('Tabs configuration and behavior', function () {
     expect(layout.saveLayout().root?.content[0].reorderEnabled).toBe(false);
   });
 
+  it('uses the layout reorder setting for components added at runtime', function () {
+    layout.loadLayout({
+      settings: { reorderEnabled: false },
+      root: {
+        type: 'stack',
+        content: [{ type: 'component', componentType: 'testComponent' }],
+      },
+    });
+
+    layout.addComponent('testComponent');
+
+    const stack = layout.rootItem as Stack;
+    expect(stack.header.tabs).toHaveLength(2);
+    expect(stack.header.tabs[1].reorderEnabled).toBe(false);
+    expect(layout.saveLayout().root?.content[1].reorderEnabled).toBe(false);
+  });
+
   it('applies the bottom header class when header.show is bottom', function () {
     const config: LayoutConfig = {
       root: {

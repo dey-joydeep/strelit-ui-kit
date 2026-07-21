@@ -1013,7 +1013,7 @@ function getNumericPropertyMigration(node) {
   return `${migration.target}: '${node.initializer.text}${migration.unit}'`;
 }
 
-function migrateImportSpecifier(specifier) {
+function migrateNamedSpecifier(specifier) {
   const importedName = specifier.propertyName?.text ?? specifier.name.text;
   const migratedName =
     sourceIdentifierReplacements.get(importedName) ?? importedName;
@@ -1038,7 +1038,7 @@ function createDefaultImportClause(importClause) {
   if (ts.isNamespaceImport(namedBindings)) {
     return undefined;
   }
-  const named = namedBindings.elements.map(migrateImportSpecifier);
+  const named = namedBindings.elements.map(migrateNamedSpecifier);
   return `{ ${[defaultBinding, ...named].join(', ')} }`;
 }
 
@@ -1262,9 +1262,26 @@ function transformSourceContent(content, filePath) {
         node.parent.parent.parent.moduleSpecifier.text,
       )
     ) {
-      const migrated = migrateImportSpecifier(node);
+      const migrated = migrateNamedSpecifier(node);
       if (migrated !== node.getText(sourceFile)) {
         addEdit(node, migrated, 'named package import');
+      }
+      return;
+    }
+
+    if (
+      ts.isExportSpecifier(node) &&
+      ts.isNamedExports(node.parent) &&
+      ts.isExportDeclaration(node.parent.parent) &&
+      node.parent.parent.moduleSpecifier !== undefined &&
+      ts.isStringLiteral(node.parent.parent.moduleSpecifier) &&
+      isGoldenLayoutPackageOrJsEntrySpecifier(
+        node.parent.parent.moduleSpecifier.text,
+      )
+    ) {
+      const migrated = migrateNamedSpecifier(node);
+      if (migrated !== node.getText(sourceFile)) {
+        addEdit(node, migrated, 'named package re-export');
       }
       return;
     }
@@ -1555,6 +1572,23 @@ function isLayoutItem(value) {
   );
 }
 
+function isStandaloneLayoutItem(value) {
+  if (!isLayoutItem(value)) {
+    return false;
+  }
+  if (['row', 'column', 'stack'].includes(value.type)) {
+    return Array.isArray(value.content);
+  }
+  return (
+    value.componentType !== undefined ||
+    value.componentState !== undefined ||
+    value.isClosable !== undefined ||
+    value.reorderEnabled !== undefined ||
+    value.header !== undefined ||
+    value.maximised !== undefined
+  );
+}
+
 function isLayoutConfig(value) {
   return (
     isRecord(value) &&
@@ -1777,7 +1811,7 @@ function transformJsonContent(content, sourceVersion = 'auto') {
   } catch {
     return undefined;
   }
-  if (!isLayoutConfig(parsed) && !isLayoutItem(parsed)) {
+  if (!isLayoutConfig(parsed) && !isStandaloneLayoutItem(parsed)) {
     return undefined;
   }
 

@@ -3,7 +3,7 @@ import {
   type RowOrColumnItemConfig,
   type StackItemConfig,
   isComponentItemConfig,
-  resolveItemConfig,
+  resolveItemConfigWithComponentReorderEnabledDefault,
 } from '../config/config';
 import {
   type ResolvedRowOrColumnItemConfig,
@@ -198,7 +198,11 @@ export class RowOrColumn extends ContentItem {
     index?: number,
   ): number {
     this.layoutManager.checkMinimiseMaximisedStack();
-    const resolvedItemConfig = resolveItemConfig(itemConfig);
+    const resolvedItemConfig =
+      resolveItemConfigWithComponentReorderEnabledDefault(
+        itemConfig,
+        this.layoutManager.layoutConfig.settings.reorderEnabled,
+      );
     const contentItem = this.layoutManager.createAndInitContentItem(
       resolvedItemConfig,
       this,

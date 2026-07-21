@@ -29,7 +29,7 @@ Saved-layout migration walks recognized layout items, converts deterministic v1/
 - Never run identifier or API replacements over unparsed markup or non-layout JSON; only bounded package and selector rewrites are safe there.
 - Preserve malformed source unchanged and report it instead of applying edits to a recovery parse tree.
 - A warning-free run means only that all recognized transformations were deterministic. The migrated application still requires its own typecheck and behavioral tests.
-- Treat standalone row, column, stack, and component JSON as item configs; never promote their children into a layout root.
+- Treat standalone row, column, and stack JSON as item configs only when they contain a `content` array. Treat standalone component JSON as an item config only when layout-specific fields such as `componentType`, `componentState`, `isClosable`, or `reorderEnabled` prove layout intent. Never promote item children into a layout root or rewrite merely component-shaped application metadata.
 
 ## Adding A Transformation
 
