@@ -1259,22 +1259,13 @@ function replaceSelectorTokens(value) {
   );
 }
 
-function countSelectorTokens(value) {
-  return [
-    ...value.matchAll(/(?<![A-Za-z0-9_])lm_goldenlayout(?![A-Za-z0-9_])/g),
-  ].length;
-}
-
 function replaceRawSelectorTokens(rawLiteral, cookedValue) {
-  const rawPattern =
-    /(^|[^A-Za-z0-9_]|\\(?:[btnvfr0'"\\]|x[\dA-Fa-f]{2}|u[\dA-Fa-f]{4}))lm_goldenlayout(?![A-Za-z0-9_])/g;
-  const rawTokenCount = [...rawLiteral.matchAll(rawPattern)].length;
-  const cookedTokenCount = countSelectorTokens(cookedValue);
-  if (rawTokenCount === cookedTokenCount) {
-    return rawLiteral.replace(rawPattern, '$1lm_strelit');
+  if (rawLiteral.includes('\\')) {
+    return JSON.stringify(replaceSelectorTokens(cookedValue));
   }
 
-  return JSON.stringify(replaceSelectorTokens(cookedValue));
+  const rawPattern = /(^|[^A-Za-z0-9_])lm_goldenlayout(?![A-Za-z0-9_])/g;
+  return rawLiteral.replace(rawPattern, '$1lm_strelit');
 }
 
 function transformSourceContent(content, filePath) {

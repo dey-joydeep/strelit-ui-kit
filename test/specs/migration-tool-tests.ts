@@ -786,6 +786,8 @@ const selector = "line\nlm_goldenlayout";
 const mixed = 'xlm_goldenlayout lm_goldenlayout';
 const escapedFirst = '\x6cm_goldenlayout';
 const escapedSecond = 'l\u006d_goldenlayout';
+const escapedBoundary = '\x20lm_goldenlayout';
+const misaligned = '\x41lm_goldenlayout \u006cm_goldenlayout';
 `);
 
     migrate(filePath);
@@ -799,6 +801,8 @@ const escapedSecond = 'l\u006d_goldenlayout';
     expect(migrated).toContain(String.raw`"line\nlm_strelit"`);
     expect(migrated).toContain("'xlm_goldenlayout lm_strelit'");
     expect(migrated.match(/"lm_strelit"/g)).toHaveLength(2);
+    expect(migrated).toContain('" lm_strelit"');
+    expect(migrated).toContain('"Alm_goldenlayout lm_strelit"');
   });
 
   it('migrates react-component source items atomically', () => {
