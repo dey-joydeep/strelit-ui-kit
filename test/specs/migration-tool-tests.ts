@@ -284,6 +284,30 @@ const Layout = require('golden-layout')[key];
     );
   });
 
+  it('preserves CommonJS binding defaults across migrated export shapes', () => {
+    const filePath = createFixture(
+      `const {
+  GoldenLayout = fallback,
+  GoldenLayout: GL = fallback,
+  default: DefaultLayout = fallback,
+} = require('golden-layout');
+new GoldenLayout();
+new GL();
+new DefaultLayout();
+`,
+      'consumer.cjs',
+    );
+
+    migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain('StrelitLayout = fallback');
+    expect(migrated).toContain('StrelitLayout: GL = fallback');
+    expect(migrated).toContain('StrelitLayout: DefaultLayout = fallback');
+    expect(migrated).toContain('new StrelitLayout()');
+    expect(migrated).toContain("require('strelit-ui-kit')");
+  });
+
   it.each([
     'golden-layout/dist/index.js',
     'golden-layout/dist/cjs/index.js',
@@ -528,6 +552,22 @@ new GoldenLayout();
     expect(migrated).not.toContain('GoldenLayout');
   });
 
+  it('preserves a GoldenLayout local alias for a non-constructor export', () => {
+    const filePath = createFixture(
+      `import { LayoutConfig as GoldenLayout } from 'golden-layout';
+const config: GoldenLayout = getConfig();
+`,
+    );
+
+    migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain(
+      `import { LayoutConfig as GoldenLayout } from 'strelit-ui-kit';`,
+    );
+    expect(migrated).toContain('const config: GoldenLayout = getConfig()');
+  });
+
   it('migrates default re-exports from supported package entries', () => {
     const filePath = createFixture(
       `export { default as GoldenLayout } from 'golden-layout';
@@ -744,6 +784,8 @@ const config = { type: 'component', componentName: 'editor' };
 const shorthandConfig = { type: 'component', componentName };
 const selector = "line\nlm_goldenlayout";
 const mixed = 'xlm_goldenlayout lm_goldenlayout';
+const escapedFirst = '\x6cm_goldenlayout';
+const escapedSecond = 'l\u006d_goldenlayout';
 `);
 
     migrate(filePath);
@@ -756,6 +798,26 @@ const mixed = 'xlm_goldenlayout lm_goldenlayout';
     );
     expect(migrated).toContain(String.raw`"line\nlm_strelit"`);
     expect(migrated).toContain("'xlm_goldenlayout lm_strelit'");
+    expect(migrated.match(/"lm_strelit"/g)).toHaveLength(2);
+  });
+
+  it('migrates react-component source items atomically', () => {
+    const filePath = createFixture(`
+const item = { type: 'react-component', componentName: 'editor' };
+const layout = {
+  root: { type: "react-component", componentName: 'preview' },
+};
+`);
+
+    const output = migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated.match(/type: ['"]component['"]/g)).toHaveLength(2);
+    expect(migrated.match(/componentType:/g)).toHaveLength(2);
+    expect(migrated).not.toContain('react-component');
+    expect(output).toContain(
+      'react-component items require a modern framework adapter',
+    );
   });
 
   it('migrates aliased APIs using their proven import symbols', () => {

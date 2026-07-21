@@ -1108,10 +1108,12 @@ function migrateImportSpecifier(specifier) {
       ? 'StrelitLayout'
       : (sourceIdentifierReplacements.get(importedName) ?? importedName);
   const originalLocalName = specifier.name.text;
+  const importsLayoutConstructor =
+    importedName === 'default' || importedName === 'GoldenLayout';
   const localName =
     specifier.propertyName === undefined ||
     originalLocalName === importedName ||
-    originalLocalName === 'GoldenLayout'
+    (importsLayoutConstructor && originalLocalName === 'GoldenLayout')
       ? migratedName
       : originalLocalName;
   const typePrefix = specifier.isTypeOnly ? 'type ' : '';
@@ -1250,11 +1252,29 @@ function isManualOnlyGoldenLayoutSpecifier(specifier) {
 }
 
 /** Migrates one JavaScript or TypeScript source file through syntax-aware edits. */
-function replaceRawSelectorTokens(rawLiteral) {
-  return rawLiteral.replace(
-    /(^|[^A-Za-z0-9_]|\\(?:[btnvfr0'"\\]|x[\dA-Fa-f]{2}|u[\dA-Fa-f]{4}))lm_goldenlayout(?![A-Za-z0-9_])/g,
-    '$1lm_strelit',
+function replaceSelectorTokens(value) {
+  return value.replace(
+    /(?<![A-Za-z0-9_])lm_goldenlayout(?![A-Za-z0-9_])/g,
+    'lm_strelit',
   );
+}
+
+function countSelectorTokens(value) {
+  return [
+    ...value.matchAll(/(?<![A-Za-z0-9_])lm_goldenlayout(?![A-Za-z0-9_])/g),
+  ].length;
+}
+
+function replaceRawSelectorTokens(rawLiteral, cookedValue) {
+  const rawPattern =
+    /(^|[^A-Za-z0-9_]|\\(?:[btnvfr0'"\\]|x[\dA-Fa-f]{2}|u[\dA-Fa-f]{4}))lm_goldenlayout(?![A-Za-z0-9_])/g;
+  const rawTokenCount = [...rawLiteral.matchAll(rawPattern)].length;
+  const cookedTokenCount = countSelectorTokens(cookedValue);
+  if (rawTokenCount === cookedTokenCount) {
+    return rawLiteral.replace(rawPattern, '$1lm_strelit');
+  }
+
+  return JSON.stringify(replaceSelectorTokens(cookedValue));
 }
 
 function transformSourceContent(content, filePath) {
@@ -1598,8 +1618,17 @@ function transformSourceContent(content, filePath) {
           migratedName === localName
             ? migratedName
             : `${migratedName}: ${localName}`;
-        if (migratedBinding !== node.getText(sourceFile)) {
-          addEdit(node, migratedBinding, 'CommonJS named binding');
+        const initializer =
+          node.initializer === undefined
+            ? ''
+            : ` = ${node.initializer.getText(sourceFile)}`;
+        const migratedBindingWithInitializer = `${migratedBinding}${initializer}`;
+        if (migratedBindingWithInitializer !== node.getText(sourceFile)) {
+          addEdit(
+            node,
+            migratedBindingWithInitializer,
+            'CommonJS named binding',
+          );
         }
         return;
       }
@@ -1730,7 +1759,7 @@ function transformSourceContent(content, filePath) {
     ) {
       addEdit(
         node,
-        replaceRawSelectorTokens(node.getText(sourceFile)),
+        replaceRawSelectorTokens(node.getText(sourceFile), node.text),
         'branded root selector',
       );
       return;
@@ -1763,6 +1792,26 @@ function transformSourceContent(content, filePath) {
           );
         }
       }
+    }
+
+    if (
+      ts.isPropertyAssignment(node) &&
+      ((ts.isIdentifier(node.name) && node.name.text === 'type') ||
+        (ts.isStringLiteral(node.name) && node.name.text === 'type')) &&
+      ts.isStringLiteral(node.initializer) &&
+      node.initializer.text === 'react-component' &&
+      ts.isObjectLiteralExpression(node.parent) &&
+      isLayoutItemObjectLiteral(node.parent)
+    ) {
+      const quote = node.initializer.getText(sourceFile)[0];
+      addEdit(
+        node.initializer,
+        `${quote}component${quote}`,
+        'v1 react-component item type',
+      );
+      sourceManualReviews.add(
+        'react-component items require a modern framework adapter',
+      );
     }
 
     if (
