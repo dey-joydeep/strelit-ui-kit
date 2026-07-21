@@ -805,6 +805,29 @@ const misaligned = '\x41lm_goldenlayout \u006cm_goldenlayout';
     expect(migrated).toContain('"Alm_goldenlayout lm_strelit"');
   });
 
+  it('preserves JSX attribute text while migrating selector tokens', () => {
+    const filePath = createFixture(
+      String.raw`const view = (
+  <Pane
+    escaped='.foo\:bar .lm_goldenlayout'
+    quoted="&quot; lm_goldenlayout"
+    encoded='\u006cm_goldenlayout'
+    expression={'.foo\:bar .lm_goldenlayout'}
+  />
+);
+`,
+      'selectors.tsx',
+    );
+
+    migrate(filePath);
+
+    const migrated = readFileSync(filePath, 'utf8');
+    expect(migrated).toContain(String.raw`escaped='.foo\:bar .lm_strelit'`);
+    expect(migrated).toContain('quoted="&quot; lm_strelit"');
+    expect(migrated).toContain(String.raw`encoded='\u006cm_goldenlayout'`);
+    expect(migrated).toContain(String.raw`expression={".foo:bar .lm_strelit"}`);
+  });
+
   it('migrates react-component source items atomically', () => {
     const filePath = createFixture(`
 const item = { type: 'react-component', componentName: 'editor' };

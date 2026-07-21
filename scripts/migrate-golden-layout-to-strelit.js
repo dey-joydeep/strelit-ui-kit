@@ -1268,6 +1268,18 @@ function replaceRawSelectorTokens(rawLiteral, cookedValue) {
   return rawLiteral.replace(rawPattern, '$1lm_strelit');
 }
 
+function replaceSelectorLiteral(node, sourceFile) {
+  const rawLiteral = node.getText(sourceFile);
+  if (ts.isJsxAttribute(node.parent) && node.parent.initializer === node) {
+    return rawLiteral.replace(
+      /(^|[^A-Za-z0-9_])lm_goldenlayout(?![A-Za-z0-9_])/g,
+      '$1lm_strelit',
+    );
+  }
+
+  return replaceRawSelectorTokens(rawLiteral, node.text);
+}
+
 function transformSourceContent(content, filePath) {
   const normalized = content;
   const applied = [];
@@ -1750,7 +1762,7 @@ function transformSourceContent(content, filePath) {
     ) {
       addEdit(
         node,
-        replaceRawSelectorTokens(node.getText(sourceFile), node.text),
+        replaceSelectorLiteral(node, sourceFile),
         'branded root selector',
       );
       return;
