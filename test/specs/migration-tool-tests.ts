@@ -168,6 +168,122 @@ const resolved = LayoutConfig.resolve(config);
     expect(migrated).toContain('new StrelitLayout()');
   });
 
+  it('migrates supported CommonJS member and assignment forms', () => {
+    const filePath = createFixture(
+      `let GoldenLayout;\nGoldenLayout = require('golden-layout');\nconst OtherLayout = require('golden-layout').GoldenLayout;\nnew GoldenLayout();\nnew OtherLayout();\n`,
+      'consumer.cjs',
+    );
+
+    migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain(
+      `StrelitLayout = require('strelit-ui-kit').StrelitLayout`,
+    );
+    expect(migrated).toContain(
+      `const OtherLayout = require('strelit-ui-kit').StrelitLayout`,
+    );
+    expect(migrated).toContain('new StrelitLayout()');
+    expect(migrated).toContain('new OtherLayout()');
+  });
+
+  it('renames bindings assigned from CommonJS package members', () => {
+    const filePath = createFixture(
+      `let GoldenLayout;
+GoldenLayout = require('golden-layout').GoldenLayout;
+new GoldenLayout();
+`,
+      'consumer.cjs',
+    );
+
+    migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain(
+      `StrelitLayout = require('strelit-ui-kit').StrelitLayout`,
+    );
+    expect(migrated).toContain('new StrelitLayout()');
+  });
+
+  it('migrates computed and bare CommonJS default expressions atomically', () => {
+    const filePath = createFixture(
+      `const StaticLayout = require('golden-layout')['GoldenLayout'];
+module.exports = require('golden-layout');
+function load() { return require('golden-layout'); }
+`,
+      'consumer.cjs',
+    );
+
+    migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain(
+      `const StaticLayout = require('strelit-ui-kit')['StrelitLayout']`,
+    );
+    expect(migrated).toContain(
+      `module.exports = require('strelit-ui-kit').StrelitLayout`,
+    );
+    expect(migrated).toContain(
+      `return require('strelit-ui-kit').StrelitLayout`,
+    );
+  });
+
+  it('preserves dynamic CommonJS package members for manual migration', () => {
+    const filePath = createFixture(
+      `const key = getExportName();
+const Layout = require('golden-layout')[key];
+`,
+      'consumer.cjs',
+    );
+
+    const output = migrate(filePath);
+
+    expect(readFileSync(filePath, 'utf8')).toContain(
+      `require('golden-layout')[key]`,
+    );
+    expect(output).toContain(
+      'dynamic CommonJS package member requires manual migration',
+    );
+  });
+
+  it('preserves CommonJS destructuring assignments for manual migration', () => {
+    const source = `({ GoldenLayout } = require('golden-layout'));\n`;
+    const filePath = createFixture(source, 'consumer.cjs');
+
+    const output = migrate(filePath);
+
+    expect(readFileSync(filePath, 'utf8')).toBe(source);
+    expect(output).toContain(
+      'CommonJS destructuring assignments require manual migration',
+    );
+  });
+
+  it('migrates type-only defaults and CommonJS default destructuring', () => {
+    const typeFilePath = createFixture(
+      `import type GoldenLayout from 'golden-layout';\nlet layout: GoldenLayout;\n`,
+    );
+    const commonJsFilePath = createFixture(
+      `const { default: GoldenLayout } = require('golden-layout');\nnew GoldenLayout();\n`,
+      'consumer.cjs',
+    );
+
+    migrate(typeFilePath);
+    migrate(commonJsFilePath);
+
+    expect(readFileSync(typeFilePath, 'utf8')).toContain(
+      `import type { StrelitLayout } from 'strelit-ui-kit';`,
+    );
+    expect(readFileSync(typeFilePath, 'utf8')).toContain(
+      'let layout: StrelitLayout',
+    );
+    expect(readFileSync(commonJsFilePath, 'utf8')).toContain(
+      `const { StrelitLayout } = require('strelit-ui-kit');`,
+    );
+    expect(readFileSync(commonJsFilePath, 'utf8')).toContain(
+      'new StrelitLayout()',
+    );
+  });
+
   it.each([
     'golden-layout/dist/index.js',
     'golden-layout/dist/cjs/index.js',
@@ -392,9 +508,34 @@ const resolved = InternalLayoutConfig.resolve(config);
     );
   });
 
+  it('migrates named-default imports and branded export aliases', () => {
+    const filePath = createFixture(`
+import { default as GoldenLayout } from 'golden-layout';
+export { GoldenLayout as GoldenLayout } from 'golden-layout';
+new GoldenLayout();
+`);
+
+    migrate(filePath);
+
+    const migrated = readFileSync(filePath, 'utf8');
+    expect(migrated).toContain(
+      `import { StrelitLayout } from 'strelit-ui-kit';`,
+    );
+    expect(migrated).toContain(
+      `export { StrelitLayout } from 'strelit-ui-kit';`,
+    );
+    expect(migrated).toContain('new StrelitLayout()');
+    expect(migrated).not.toContain('GoldenLayout');
+  });
+
   it('migrates default re-exports from supported package entries', () => {
     const filePath = createFixture(
-      `export { default as GoldenLayout } from 'golden-layout';\nexport { default as GL } from 'golden-layout';\n`,
+      `export { default as GoldenLayout } from 'golden-layout';
+export { default as GL } from 'golden-layout';
+export { default } from 'golden-layout';
+export { default as default } from 'golden-layout';
+export { type default as LegacyLayout } from 'golden-layout';
+`,
     );
 
     migrate(filePath);
@@ -405,6 +546,10 @@ const resolved = InternalLayoutConfig.resolve(config);
     );
     expect(migrated).toContain(
       `export { StrelitLayout as GL } from 'strelit-ui-kit';`,
+    );
+    expect(migrated.match(/StrelitLayout as default/g)).toHaveLength(2);
+    expect(migrated).toContain(
+      `export { type StrelitLayout as LegacyLayout } from 'strelit-ui-kit';`,
     );
   });
 
@@ -592,6 +737,27 @@ const dynamicLayout = new GoldenLayout.GoldenLayout();
     );
   });
 
+  it('scopes config-property rewrites and preserves string escapes', () => {
+    const filePath = createFixture(String.raw`
+const metadata = { type: 'button', componentName: 'Button' };
+const config = { type: 'component', componentName: 'editor' };
+const shorthandConfig = { type: 'component', componentName };
+const selector = "line\nlm_goldenlayout";
+const mixed = 'xlm_goldenlayout lm_goldenlayout';
+`);
+
+    migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain("type: 'button', componentName: 'Button'");
+    expect(migrated).toContain("type: 'component', componentType: 'editor'");
+    expect(migrated).toContain(
+      "type: 'component', componentType: componentName",
+    );
+    expect(migrated).toContain(String.raw`"line\nlm_strelit"`);
+    expect(migrated).toContain("'xlm_goldenlayout lm_strelit'");
+  });
+
   it('migrates aliased APIs using their proven import symbols', () => {
     const filePath = createFixture(
       `import { GoldenLayout as GL, LayoutConfig as LC } from 'golden-layout';\nconst resolved = LC.resolve(config);\nnew GL();\n`,
@@ -716,6 +882,21 @@ import 'golden-layout/src/css/goldenlayout-light-theme.css';
 
     migrate(selected);
     expect(readFileSync(legacyFile, 'utf8')).toContain('StrelitLayout');
+  });
+
+  it('rejects conflicting write and dry-run modes', () => {
+    const filePath = createFixture(
+      `import { GoldenLayout } from 'golden-layout';\n`,
+    );
+
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [migrationScript, '--target', filePath, '--write', '--dry-run'],
+        { encoding: 'utf8', stdio: 'pipe' },
+      ),
+    ).toThrow();
+    expect(readFileSync(filePath, 'utf8')).toContain("from 'golden-layout'");
   });
 
   it('rewrites proven container and stack receivers and flags unknown ones', () => {
@@ -849,6 +1030,22 @@ const config: DragSource.ComponentItemConfig = {
     migrate(filePath);
 
     expect(readFileSync(filePath, 'utf8')).toBe(source);
+
+    migrate(filePath, ['--from', 'v1']);
+
+    expect(readFileSync(filePath, 'utf8')).toBe(source);
+  });
+
+  it('leaves unrelated empty-popout metadata unchanged', () => {
+    const source = JSON.stringify({
+      openPopouts: [],
+      componentName: 'application-dialog',
+    });
+    const filePath = createFixture(source, 'metadata.json');
+
+    migrate(filePath);
+
+    expect(readFileSync(filePath, 'utf8')).toBe(source);
   });
 
   it('migrates a componentName-only item in explicit v1 mode', () => {
@@ -863,6 +1060,45 @@ const config: DragSource.ComponentItemConfig = {
       type: 'component',
       componentType: 'editor',
     });
+  });
+
+  it('migrates BOM-prefixed saved layouts into valid JSON', () => {
+    const filePath = createFixture(
+      `\ufeff${JSON.stringify({
+        root: { type: 'component', componentName: 'editor' },
+      })}`,
+      'layout.json',
+    );
+
+    migrate(filePath, ['--from', 'v1']);
+
+    expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({
+      root: { type: 'component', componentType: 'editor' },
+    });
+  });
+
+  it('reports malformed saved-layout structures instead of silently normalizing them', () => {
+    const filePath = createFixture(
+      JSON.stringify({
+        settings: false,
+        root: {
+          type: 'component',
+          componentName: 'editor',
+          width: 'wide',
+          hasHeaders: true,
+          header: false,
+        },
+        openPopouts: 'invalid',
+      }),
+      'layout.json',
+    );
+
+    const output = migrate(filePath, ['--from', 'v1']);
+
+    expect(output).toContain('has a non-numeric legacy size');
+    expect(output).toContain('header is not an object');
+    expect(output).toContain('settings is not an object');
+    expect(output).toContain('openPopouts is not an array');
   });
 
   it('migrates numeric sizing from the original v2 demo layout pattern', () => {

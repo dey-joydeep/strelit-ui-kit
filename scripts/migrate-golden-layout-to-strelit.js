@@ -425,13 +425,17 @@ function collectGoldenLayoutBindingSymbols(sourceFile, checker) {
       return;
     }
     for (const element of namedBindings.elements) {
-      const exportName = element.propertyName?.text ?? element.name.text;
+      const importedName = element.propertyName?.text ?? element.name.text;
+      const exportName =
+        importedName === 'default' ? 'GoldenLayout' : importedName;
       const migratedName =
         sourceIdentifierReplacements.get(exportName) ?? exportName;
       record(
         element.name,
         exportName,
-        element.propertyName === undefined ? migratedName : element.name.text,
+        element.propertyName === undefined || element.name.text === exportName
+          ? migratedName
+          : element.name.text,
       );
     }
   }
@@ -452,13 +456,17 @@ function collectGoldenLayoutBindingSymbols(sourceFile, checker) {
       if (!ts.isIdentifier(element.name)) {
         continue;
       }
-      const exportName = element.propertyName?.text ?? element.name.text;
+      const importedName = element.propertyName?.text ?? element.name.text;
+      const exportName =
+        importedName === 'default' ? 'GoldenLayout' : importedName;
       const migratedName =
         sourceIdentifierReplacements.get(exportName) ?? exportName;
       record(
         element.name,
         exportName,
-        element.propertyName === undefined ? migratedName : element.name.text,
+        element.propertyName === undefined || element.name.text === exportName
+          ? migratedName
+          : element.name.text,
       );
     }
   }
@@ -473,6 +481,28 @@ function collectGoldenLayoutBindingSymbols(sourceFile, checker) {
       return;
     }
     if (ts.isVariableDeclaration(node)) {
+      const requireMember =
+        node.initializer === undefined
+          ? undefined
+          : getStaticRequireMember(node.initializer);
+      if (
+        requireMember !== undefined &&
+        isGoldenLayoutPackageOrJsEntrySpecifier(requireMember.specifier) &&
+        ts.isIdentifier(node.name)
+      ) {
+        const exportName =
+          requireMember.memberName === 'default'
+            ? 'GoldenLayout'
+            : requireMember.memberName;
+        const replacementName =
+          sourceIdentifierReplacements.get(exportName) ?? exportName;
+        record(
+          node.name,
+          exportName,
+          node.name.text === exportName ? replacementName : node.name.text,
+        );
+        return;
+      }
       const specifier =
         node.initializer === undefined
           ? undefined
@@ -482,6 +512,33 @@ function collectGoldenLayoutBindingSymbols(sourceFile, checker) {
         isGoldenLayoutPackageOrJsEntrySpecifier(specifier)
       ) {
         recordRequireBinding(node.name);
+        return;
+      }
+    }
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
+      ts.isIdentifier(node.left)
+    ) {
+      const requireMember = getStaticRequireMember(node.right);
+      const specifier =
+        getStaticRequireSpecifier(node.right) ?? requireMember?.specifier;
+      if (
+        specifier !== undefined &&
+        isGoldenLayoutPackageOrJsEntrySpecifier(specifier)
+      ) {
+        const exportName =
+          requireMember === undefined || requireMember.memberName === 'default'
+            ? 'GoldenLayout'
+            : requireMember.memberName;
+        const replacementName =
+          sourceIdentifierReplacements.get(exportName) ?? exportName;
+        record(
+          node.left,
+          exportName,
+          node.left.text === exportName ? replacementName : node.left.text,
+        );
         return;
       }
     }
@@ -503,6 +560,37 @@ function getStaticRequireSpecifier(node) {
     return node.arguments[0].text;
   }
   return undefined;
+}
+
+function getStaticRequireMember(node) {
+  if (
+    !ts.isPropertyAccessExpression(node) &&
+    !ts.isElementAccessExpression(node)
+  ) {
+    return undefined;
+  }
+  const specifier = getStaticRequireSpecifier(node.expression);
+  if (specifier === undefined) {
+    return undefined;
+  }
+  if (ts.isPropertyAccessExpression(node)) {
+    return { memberName: node.name.text, memberNode: node.name, specifier };
+  }
+  return ts.isStringLiteral(node.argumentExpression)
+    ? {
+        memberName: node.argumentExpression.text,
+        memberNode: node.argumentExpression,
+        specifier,
+      }
+    : undefined;
+}
+
+function isDynamicRequireMember(node) {
+  return (
+    ts.isElementAccessExpression(node) &&
+    getStaticRequireSpecifier(node.expression) !== undefined &&
+    !ts.isStringLiteral(node.argumentExpression)
+  );
 }
 
 function getStaticDynamicImportSpecifier(node) {
@@ -890,7 +978,7 @@ function isLayoutItemObjectLiteral(objectLiteral) {
   }
 
   const typeText = typeProperty.initializer.getText();
-  return /(?:^|\.)(?:row|column|stack|component)$/.test(
+  return /(?:^|\.)(?:row|column|stack|component|react-component)$/.test(
     typeText.replaceAll(/["']/g, ''),
   );
 }
@@ -1013,12 +1101,19 @@ function getNumericPropertyMigration(node) {
   return `${migration.target}: '${node.initializer.text}${migration.unit}'`;
 }
 
-function migrateNamedSpecifier(specifier) {
+function migrateImportSpecifier(specifier) {
   const importedName = specifier.propertyName?.text ?? specifier.name.text;
   const migratedName =
-    sourceIdentifierReplacements.get(importedName) ?? importedName;
+    importedName === 'default'
+      ? 'StrelitLayout'
+      : (sourceIdentifierReplacements.get(importedName) ?? importedName);
+  const originalLocalName = specifier.name.text;
   const localName =
-    specifier.propertyName === undefined ? migratedName : specifier.name.text;
+    specifier.propertyName === undefined ||
+    originalLocalName === importedName ||
+    originalLocalName === 'GoldenLayout'
+      ? migratedName
+      : originalLocalName;
   const typePrefix = specifier.isTypeOnly ? 'type ' : '';
   return migratedName === localName
     ? `${typePrefix}${migratedName}`
@@ -1027,16 +1122,22 @@ function migrateNamedSpecifier(specifier) {
 
 function migrateExportSpecifier(specifier) {
   const importedName = specifier.propertyName?.text ?? specifier.name.text;
-  if (importedName !== 'default') {
-    return migrateNamedSpecifier(specifier);
-  }
-
+  const migratedName =
+    importedName === 'default'
+      ? 'StrelitLayout'
+      : (sourceIdentifierReplacements.get(importedName) ?? importedName);
+  const originalExportedName = specifier.name.text;
   const exportedName =
-    sourceIdentifierReplacements.get(specifier.name.text) ??
-    specifier.name.text;
-  return exportedName === 'default' || exportedName === 'StrelitLayout'
-    ? 'StrelitLayout'
-    : `StrelitLayout as ${exportedName}`;
+    originalExportedName === 'default'
+      ? 'default'
+      : originalExportedName === importedName ||
+          originalExportedName === 'GoldenLayout'
+        ? migratedName
+        : originalExportedName;
+  const typePrefix = specifier.isTypeOnly ? 'type ' : '';
+  return migratedName === exportedName
+    ? `${typePrefix}${migratedName}`
+    : `${typePrefix}${migratedName} as ${exportedName}`;
 }
 
 function createDefaultImportClause(importClause) {
@@ -1045,15 +1146,16 @@ function createDefaultImportClause(importClause) {
     defaultLocalName === 'GoldenLayout'
       ? 'StrelitLayout'
       : `StrelitLayout as ${defaultLocalName}`;
+  const typePrefix = importClause.isTypeOnly ? 'type ' : '';
   const namedBindings = importClause.namedBindings;
   if (namedBindings === undefined) {
-    return `{ ${defaultBinding} }`;
+    return `${typePrefix}{ ${defaultBinding} }`;
   }
   if (ts.isNamespaceImport(namedBindings)) {
     return undefined;
   }
-  const named = namedBindings.elements.map(migrateNamedSpecifier);
-  return `{ ${[defaultBinding, ...named].join(', ')} }`;
+  const named = namedBindings.elements.map(migrateImportSpecifier);
+  return `${typePrefix}{ ${[defaultBinding, ...named].join(', ')} }`;
 }
 
 function isGoldenLayoutPackageOrJsEntrySpecifier(specifier) {
@@ -1148,6 +1250,13 @@ function isManualOnlyGoldenLayoutSpecifier(specifier) {
 }
 
 /** Migrates one JavaScript or TypeScript source file through syntax-aware edits. */
+function replaceRawSelectorTokens(rawLiteral) {
+  return rawLiteral.replace(
+    /(^|[^A-Za-z0-9_]|\\(?:[btnvfr0'"\\]|x[\dA-Fa-f]{2}|u[\dA-Fa-f]{4}))lm_goldenlayout(?![A-Za-z0-9_])/g,
+    '$1lm_strelit',
+  );
+}
+
 function transformSourceContent(content, filePath) {
   const normalized = content;
   const applied = [];
@@ -1276,7 +1385,7 @@ function transformSourceContent(content, filePath) {
         node.parent.parent.parent.moduleSpecifier.text,
       )
     ) {
-      const migrated = migrateNamedSpecifier(node);
+      const migrated = migrateImportSpecifier(node);
       if (migrated !== node.getText(sourceFile)) {
         addEdit(node, migrated, 'named package import');
       }
@@ -1301,6 +1410,62 @@ function transformSourceContent(content, filePath) {
     }
 
     if (
+      ts.isPropertyAccessExpression(node) ||
+      ts.isElementAccessExpression(node)
+    ) {
+      const requireMember = getStaticRequireMember(node);
+      if (requireMember !== undefined) {
+        const classification = classifyGoldenLayoutPackageSpecifier(
+          requireMember.specifier,
+        );
+        if (classification.manualReview !== undefined) {
+          sourceManualReviews.add(classification.manualReview);
+          return;
+        }
+        if (isGoldenLayoutPackageOrJsEntrySpecifier(requireMember.specifier)) {
+          const moduleSpecifier = node.expression.arguments[0];
+          const quote = normalized[moduleSpecifier.getStart(sourceFile)];
+          addEdit(
+            moduleSpecifier,
+            `${quote}strelit-ui-kit${quote}`,
+            'CommonJS package member import',
+          );
+          const exportName =
+            requireMember.memberName === 'default'
+              ? 'GoldenLayout'
+              : requireMember.memberName;
+          const migratedName =
+            sourceIdentifierReplacements.get(exportName) ?? exportName;
+          if (migratedName !== requireMember.memberName) {
+            const replacement = ts.isStringLiteral(requireMember.memberNode)
+              ? `${requireMember.memberNode.getText(sourceFile)[0]}${migratedName}${requireMember.memberNode.getText(sourceFile)[0]}`
+              : migratedName;
+            addEdit(
+              requireMember.memberNode,
+              replacement,
+              'CommonJS package member',
+            );
+          }
+        }
+        return;
+      }
+      if (isDynamicRequireMember(node)) {
+        const specifier = getStaticRequireSpecifier(node.expression);
+        const classification = classifyGoldenLayoutPackageSpecifier(specifier);
+        if (
+          classification.manualReview !== undefined ||
+          isGoldenLayoutPackageOrJsEntrySpecifier(specifier)
+        ) {
+          sourceManualReviews.add(
+            classification.manualReview ??
+              'dynamic CommonJS package member requires manual migration',
+          );
+          return;
+        }
+      }
+    }
+
+    if (
       ts.isCallExpression(node) &&
       node.arguments.length === 1 &&
       ts.isIdentifier(node.expression) &&
@@ -1313,6 +1478,58 @@ function transformSourceContent(content, filePath) {
       );
       if (classification.manualReview !== undefined) {
         sourceManualReviews.add(classification.manualReview);
+        return;
+      }
+      const parent = node.parent;
+      const isObjectBindingInitializer =
+        ts.isVariableDeclaration(parent) &&
+        ts.isObjectBindingPattern(parent.name) &&
+        parent.initializer === node;
+      const isDestructuringAssignment =
+        ts.isBinaryExpression(parent) &&
+        parent.right === node &&
+        (ts.isObjectLiteralExpression(parent.left) ||
+          ts.isArrayLiteralExpression(parent.left));
+      const isStaticMemberExpression =
+        (ts.isPropertyAccessExpression(parent) ||
+          ts.isElementAccessExpression(parent)) &&
+        parent.expression === node;
+      if (
+        ts.isBinaryExpression(parent) &&
+        parent.right === node &&
+        parent.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+        parent.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
+        ts.isIdentifier(parent.left) &&
+        isGoldenLayoutPackageOrJsEntrySpecifier(moduleSpecifier.text)
+      ) {
+        const quote = normalized[moduleSpecifier.getStart(sourceFile)];
+        addEdit(
+          node,
+          `require(${quote}strelit-ui-kit${quote}).StrelitLayout`,
+          'CommonJS package assignment',
+        );
+        return;
+      }
+      if (
+        isGoldenLayoutPackageOrJsEntrySpecifier(moduleSpecifier.text) &&
+        isDestructuringAssignment
+      ) {
+        sourceManualReviews.add(
+          'CommonJS destructuring assignments require manual migration',
+        );
+        return;
+      }
+      if (
+        isGoldenLayoutPackageOrJsEntrySpecifier(moduleSpecifier.text) &&
+        !isObjectBindingInitializer &&
+        !isStaticMemberExpression
+      ) {
+        const quote = normalized[moduleSpecifier.getStart(sourceFile)];
+        addEdit(
+          node,
+          `require(${quote}strelit-ui-kit${quote}).StrelitLayout`,
+          'CommonJS default package expression',
+        );
         return;
       }
       const migrated = classification.migrated;
@@ -1357,8 +1574,7 @@ function transformSourceContent(content, filePath) {
 
     if (
       ts.isBindingElement(node) &&
-      node.propertyName !== undefined &&
-      ts.isIdentifier(node.propertyName) &&
+      ts.isIdentifier(node.name) &&
       ts.isObjectBindingPattern(node.parent) &&
       ts.isVariableDeclaration(node.parent.parent) &&
       node.parent.parent.initializer !== undefined
@@ -1370,12 +1586,22 @@ function transformSourceContent(content, filePath) {
         specifier !== undefined &&
         isGoldenLayoutPackageOrJsEntrySpecifier(specifier)
       ) {
-        const replacement = sourceIdentifierReplacements.get(
-          node.propertyName.text,
-        );
-        if (replacement !== undefined) {
-          addEdit(node.propertyName, replacement, 'CommonJS named binding');
+        const importedName =
+          node.propertyName?.getText(sourceFile) ?? node.name.text;
+        const exportName =
+          importedName === 'default' ? 'GoldenLayout' : importedName;
+        const migratedName =
+          sourceIdentifierReplacements.get(exportName) ?? exportName;
+        const localName =
+          node.name.text === exportName ? migratedName : node.name.text;
+        const migratedBinding =
+          migratedName === localName
+            ? migratedName
+            : `${migratedName}: ${localName}`;
+        if (migratedBinding !== node.getText(sourceFile)) {
+          addEdit(node, migratedBinding, 'CommonJS named binding');
         }
+        return;
       }
     }
 
@@ -1495,17 +1721,16 @@ function transformSourceContent(content, filePath) {
 
     if (
       ts.isStringLiteral(node) &&
-      node.text.includes('lm_goldenlayout') &&
+      /(?<![A-Za-z0-9_])lm_goldenlayout(?![A-Za-z0-9_])/.test(node.text) &&
       !(
         (ts.isImportDeclaration(node.parent) ||
           ts.isExportDeclaration(node.parent)) &&
         node.parent.moduleSpecifier === node
       )
     ) {
-      const quote = normalized[node.getStart(sourceFile)];
       addEdit(
         node,
-        `${quote}${node.text.replace(/\blm_goldenlayout\b/g, 'lm_strelit')}${quote}`,
+        replaceRawSelectorTokens(node.getText(sourceFile)),
         'branded root selector',
       );
       return;
@@ -1542,10 +1767,25 @@ function transformSourceContent(content, filePath) {
 
     if (
       ts.isPropertyAssignment(node) &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === 'componentName'
+      ((ts.isIdentifier(node.name) && node.name.text === 'componentName') ||
+        (ts.isStringLiteral(node.name) &&
+          node.name.text === 'componentName')) &&
+      ts.isObjectLiteralExpression(node.parent) &&
+      isLayoutItemObjectLiteral(node.parent)
     ) {
-      addEdit(node.name, 'componentType', 'config property');
+      const migratedName = ts.isStringLiteral(node.name)
+        ? `${node.name.getText(sourceFile)[0]}componentType${node.name.getText(sourceFile)[0]}`
+        : 'componentType';
+      addEdit(node.name, migratedName, 'config property');
+    }
+
+    if (
+      ts.isShorthandPropertyAssignment(node) &&
+      node.name.text === 'componentName' &&
+      ts.isObjectLiteralExpression(node.parent) &&
+      isLayoutItemObjectLiteral(node.parent)
+    ) {
+      addEdit(node, 'componentType: componentName', 'config property');
     }
 
     ts.forEachChild(node, visit);
@@ -1593,14 +1833,20 @@ function isStandaloneLayoutItem(value, sourceVersion) {
   if (['row', 'column', 'stack'].includes(value.type)) {
     return Array.isArray(value.content);
   }
-  return (
+  const hasUnambiguousLayoutShape =
     value.componentType !== undefined ||
-    (sourceVersion === 'v1' && value.componentName !== undefined) ||
     value.componentState !== undefined ||
     value.isClosable !== undefined ||
     value.reorderEnabled !== undefined ||
     value.header !== undefined ||
-    value.maximised !== undefined
+    value.maximised !== undefined;
+  if (hasUnambiguousLayoutShape) {
+    return true;
+  }
+  return (
+    sourceVersion === 'v1' &&
+    value.componentName !== undefined &&
+    Object.keys(value).every((key) => ['type', 'componentName'].includes(key))
   );
 }
 
@@ -1610,7 +1856,14 @@ function isLayoutConfig(value) {
     !isLayoutItem(value) &&
     (isLayoutItem(value.root) ||
       (Array.isArray(value.content) && value.content.some(isLayoutItem)) ||
-      Array.isArray(value.openPopouts))
+      (Array.isArray(value.openPopouts) &&
+        value.openPopouts.some(
+          (popout) =>
+            isRecord(popout) &&
+            (isLayoutItem(popout.root) ||
+              (Array.isArray(popout.content) &&
+                popout.content.some(isLayoutItem))),
+        )))
   );
 }
 
@@ -1636,23 +1889,59 @@ function transformLayoutItem(item, itemPath, manualReviews, sourceVersion) {
   }
   delete item.componentName;
 
-  if (item.size === undefined) {
+  if (
+    item.width !== undefined &&
+    item.height !== undefined &&
+    item.size === undefined
+  ) {
+    manualReviews.add(
+      `${itemPath} defines both width and height; size requires manual selection`,
+    );
+  }
+  let legacySizeMigrated = item.size !== undefined;
+  if (
+    item.size === undefined &&
+    !(item.width !== undefined && item.height !== undefined)
+  ) {
     const legacySize = item.width ?? item.height;
     if (typeof legacySize === 'number') {
       item.size = `${legacySize}%`;
+      legacySizeMigrated = true;
+    } else if (legacySize !== undefined) {
+      manualReviews.add(`${itemPath} has a non-numeric legacy size`);
     }
   }
-  delete item.width;
-  delete item.height;
+  if (legacySizeMigrated) {
+    delete item.width;
+    delete item.height;
+  }
 
-  if (item.minSize === undefined) {
+  if (
+    item.minWidth !== undefined &&
+    item.minHeight !== undefined &&
+    item.minSize === undefined
+  ) {
+    manualReviews.add(
+      `${itemPath} defines both minWidth and minHeight; minSize requires manual selection`,
+    );
+  }
+  let legacyMinSizeMigrated = item.minSize !== undefined;
+  if (
+    item.minSize === undefined &&
+    !(item.minWidth !== undefined && item.minHeight !== undefined)
+  ) {
     const legacyMinSize = item.minWidth ?? item.minHeight;
     if (typeof legacyMinSize === 'number') {
       item.minSize = `${legacyMinSize}px`;
+      legacyMinSizeMigrated = true;
+    } else if (legacyMinSize !== undefined) {
+      manualReviews.add(`${itemPath} has a non-numeric legacy minimum size`);
     }
   }
-  delete item.minWidth;
-  delete item.minHeight;
+  if (legacyMinSizeMigrated) {
+    delete item.minWidth;
+    delete item.minHeight;
+  }
 
   if (Array.isArray(item.id)) {
     const ids = item.id.filter((id) => id !== '__glMaximised');
@@ -1666,11 +1955,15 @@ function transformLayoutItem(item, itemPath, manualReviews, sourceVersion) {
   }
 
   if (item.hasHeaders !== undefined) {
-    item.header ??= {};
-    if (item.header.show === undefined) {
-      item.header.show = item.hasHeaders ? 'top' : false;
+    if (item.header !== undefined && !isRecord(item.header)) {
+      manualReviews.add(`${itemPath}.header is not an object`);
+    } else {
+      item.header ??= {};
+      if (item.header.show === undefined) {
+        item.header.show = item.hasHeaders ? 'top' : false;
+      }
+      delete item.hasHeaders;
     }
-    delete item.hasHeaders;
   }
 
   if (Array.isArray(item.content)) {
@@ -1698,7 +1991,14 @@ function transformLayoutItem(item, itemPath, manualReviews, sourceVersion) {
 }
 
 /** Consolidates legacy header settings into the current header schema. */
-function migrateHeader(layoutConfig) {
+function migrateHeader(layoutConfig, configPath, manualReviews) {
+  for (const propertyName of ['settings', 'labels', 'header']) {
+    const value = layoutConfig[propertyName];
+    if (value !== undefined && !isRecord(value)) {
+      manualReviews.add(`${configPath}.${propertyName} is not an object`);
+      return;
+    }
+  }
   const settings = isRecord(layoutConfig.settings) ? layoutConfig.settings : {};
   const labels = isRecord(layoutConfig.labels) ? layoutConfig.labels : {};
   const header = isRecord(layoutConfig.header) ? layoutConfig.header : {};
@@ -1793,8 +2093,13 @@ function transformLayoutConfig(
     delete layoutConfig.dimensions.minItemWidth;
   }
 
-  migrateHeader(layoutConfig);
-  if (Array.isArray(layoutConfig.openPopouts)) {
+  migrateHeader(layoutConfig, configPath, manualReviews);
+  if (
+    layoutConfig.openPopouts !== undefined &&
+    !Array.isArray(layoutConfig.openPopouts)
+  ) {
+    manualReviews.add(`${configPath}.openPopouts is not an array`);
+  } else if (Array.isArray(layoutConfig.openPopouts)) {
     layoutConfig.openPopouts.forEach((popout, index) => {
       if (isRecord(popout)) {
         transformLayoutConfig(
@@ -1813,6 +2118,10 @@ function transformLayoutConfig(
             delete popout.dimensions.top;
           }
         }
+      } else {
+        manualReviews.add(
+          `${configPath}.openPopouts[${index}] is not an object`,
+        );
       }
     });
   }
@@ -1821,8 +2130,10 @@ function transformLayoutConfig(
 /** Parses and migrates JSON only when it has a recognized layout shape. */
 function transformJsonContent(content, sourceVersion = 'auto') {
   let parsed;
+  const jsonContent =
+    content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
   try {
-    parsed = JSON.parse(content);
+    parsed = JSON.parse(jsonContent);
   } catch {
     return undefined;
   }
@@ -1850,7 +2161,8 @@ function transformJsonContent(content, sourceVersion = 'auto') {
 /** Parses CLI arguments and preserves dry-run as the safe default. */
 function parseArguments(argv) {
   let target;
-  let write = false;
+  let writeRequested = false;
+  let dryRunRequested = false;
   let sourceVersion = 'auto';
 
   for (let index = 0; index < argv.length; index++) {
@@ -1861,7 +2173,7 @@ function parseArguments(argv) {
         break;
       }
       case '--write': {
-        write = true;
+        writeRequested = true;
         break;
       }
       case '--from': {
@@ -1872,7 +2184,7 @@ function parseArguments(argv) {
         break;
       }
       case '--dry-run': {
-        write = false;
+        dryRunRequested = true;
         break;
       }
       case '--help':
@@ -1889,10 +2201,13 @@ function parseArguments(argv) {
   if (target === undefined) {
     throw new Error('Missing required --target argument');
   }
+  if (writeRequested && dryRunRequested) {
+    throw new Error('Cannot combine --write and --dry-run');
+  }
 
   return {
     target: path.resolve(process.cwd(), target),
-    write,
+    write: writeRequested,
     sourceVersion,
   };
 }
@@ -1936,7 +2251,7 @@ function walk(entryPath, result, canonicalRoot) {
 
   const stat = assertSafeMigrationPath(entryPath, canonicalRoot);
   if (stat.isDirectory()) {
-    for (const entry of fs.readdirSync(entryPath)) {
+    for (const entry of fs.readdirSync(entryPath).sort()) {
       walk(path.join(entryPath, entry), result, canonicalRoot);
     }
   } else if (shouldProcessFile(entryPath)) {
