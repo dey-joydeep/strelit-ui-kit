@@ -1025,6 +1025,20 @@ function migrateNamedSpecifier(specifier) {
     : `${typePrefix}${migratedName} as ${localName}`;
 }
 
+function migrateExportSpecifier(specifier) {
+  const importedName = specifier.propertyName?.text ?? specifier.name.text;
+  if (importedName !== 'default') {
+    return migrateNamedSpecifier(specifier);
+  }
+
+  const exportedName =
+    sourceIdentifierReplacements.get(specifier.name.text) ??
+    specifier.name.text;
+  return exportedName === 'default' || exportedName === 'StrelitLayout'
+    ? 'StrelitLayout'
+    : `StrelitLayout as ${exportedName}`;
+}
+
 function createDefaultImportClause(importClause) {
   const defaultLocalName = importClause.name.text;
   const defaultBinding =
@@ -1279,7 +1293,7 @@ function transformSourceContent(content, filePath) {
         node.parent.parent.moduleSpecifier.text,
       )
     ) {
-      const migrated = migrateNamedSpecifier(node);
+      const migrated = migrateExportSpecifier(node);
       if (migrated !== node.getText(sourceFile)) {
         addEdit(node, migrated, 'named package re-export');
       }
@@ -1572,7 +1586,7 @@ function isLayoutItem(value) {
   );
 }
 
-function isStandaloneLayoutItem(value) {
+function isStandaloneLayoutItem(value, sourceVersion) {
   if (!isLayoutItem(value)) {
     return false;
   }
@@ -1581,6 +1595,7 @@ function isStandaloneLayoutItem(value) {
   }
   return (
     value.componentType !== undefined ||
+    (sourceVersion === 'v1' && value.componentName !== undefined) ||
     value.componentState !== undefined ||
     value.isClosable !== undefined ||
     value.reorderEnabled !== undefined ||
@@ -1811,7 +1826,10 @@ function transformJsonContent(content, sourceVersion = 'auto') {
   } catch {
     return undefined;
   }
-  if (!isLayoutConfig(parsed) && !isStandaloneLayoutItem(parsed)) {
+  if (
+    !isLayoutConfig(parsed) &&
+    !isStandaloneLayoutItem(parsed, sourceVersion)
+  ) {
     return undefined;
   }
 

@@ -9,6 +9,7 @@ describe('drag source', function () {
 
   beforeEach(function () {
     const rootLayout: LayoutConfig = {
+      settings: { reorderEnabled: false },
       root: {
         type: 'stack',
         content: [
@@ -70,6 +71,7 @@ describe('drag source', function () {
       componentItem.element.querySelectorAll(`.${createdFromDragSourceClass}`)
         .length,
     ).toBe(1, 'number of .dragged elements inside dropped element');
+    expect(componentItem.tab.reorderEnabled).toBe(false);
   }
 
   function startDrag(): void {

@@ -16,7 +16,7 @@ To apply the changes:
 npm run migrate:golden-layout -- --target ../my-app --write
 ```
 
-Use `--from v1` or `--from v2` when migrating saved layouts from a known Golden Layout generation. The default `--from auto` applies shared deterministic transformations, while explicit modes add generation-specific diagnostics.
+Use `--from v1` or `--from v2` when migrating saved layouts from a known Golden Layout generation. The default `--from auto` applies shared deterministic transformations, while explicit modes add generation-specific diagnostics. A standalone component JSON object containing only v1's `componentName` marker is intentionally migrated only with `--from v1`, because the same shape can be unrelated application metadata during an automatic repository scan.
 
 The tool currently rewrites:
 

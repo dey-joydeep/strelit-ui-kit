@@ -1,8 +1,11 @@
 import {
   type ComponentItemConfig,
-  resolveComponentItemConfig,
+  resolveItemConfigWithComponentReorderEnabledDefault,
 } from '../config/config';
-import { createResolvedRowOrColumnItemConfigDefault } from '../config/resolved-config';
+import {
+  createResolvedRowOrColumnItemConfigDefault,
+  type ResolvedComponentItemConfig,
+} from '../config/resolved-config';
 import { UnexpectedNullError } from '../errors/internal-error';
 import { ComponentItem } from '../items/component-item';
 import { GroundItem } from '../items/ground-item';
@@ -86,7 +89,11 @@ export class DragSource {
     // Instead of allowing null parents (as Javascript version did), use a temporary dummy GroundItem parent and add ContentItem to that
     // If this does not work, need to create alternative GroundItem class
 
-    const resolvedItemConfig = resolveComponentItemConfig(dragSourceItemConfig);
+    const resolvedItemConfig =
+      resolveItemConfigWithComponentReorderEnabledDefault(
+        dragSourceItemConfig,
+        this._layoutManager.layoutConfig.settings.reorderEnabled,
+      ) as ResolvedComponentItemConfig;
 
     const componentItem = new ComponentItem(
       this._layoutManager,

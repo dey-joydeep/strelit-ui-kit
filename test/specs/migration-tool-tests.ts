@@ -392,6 +392,22 @@ const resolved = InternalLayoutConfig.resolve(config);
     );
   });
 
+  it('migrates default re-exports from supported package entries', () => {
+    const filePath = createFixture(
+      `export { default as GoldenLayout } from 'golden-layout';\nexport { default as GL } from 'golden-layout';\n`,
+    );
+
+    migrate(filePath);
+
+    const migrated = readFileSync(filePath, 'utf8');
+    expect(migrated).toContain(
+      `export { StrelitLayout } from 'strelit-ui-kit';`,
+    );
+    expect(migrated).toContain(
+      `export { StrelitLayout as GL } from 'strelit-ui-kit';`,
+    );
+  });
+
   it('preserves dynamic and TypeScript import-equals forms for manual review', () => {
     const filePath = createFixture(`
 import GoldenLayoutModule = require('golden-layout');
@@ -830,9 +846,23 @@ const config: DragSource.ComponentItemConfig = {
     });
     const filePath = createFixture(source, 'metadata.json');
 
-    migrate(filePath, ['--from', 'v1']);
+    migrate(filePath);
 
     expect(readFileSync(filePath, 'utf8')).toBe(source);
+  });
+
+  it('migrates a componentName-only item in explicit v1 mode', () => {
+    const filePath = createFixture(
+      JSON.stringify({ type: 'component', componentName: 'editor' }),
+      'item.json',
+    );
+
+    migrate(filePath, ['--from', 'v1']);
+
+    expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({
+      type: 'component',
+      componentType: 'editor',
+    });
   });
 
   it('migrates numeric sizing from the original v2 demo layout pattern', () => {
