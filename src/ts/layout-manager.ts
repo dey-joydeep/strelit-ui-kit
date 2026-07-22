@@ -481,7 +481,6 @@ export abstract class LayoutManager extends EventEmitter {
         this.closeAllOpenPopouts();
       }
 
-      this._resizeObserver.disconnect();
       this.checkClearResizeTimeout();
 
       if (this._groundItem !== undefined) {
@@ -494,8 +493,6 @@ export abstract class LayoutManager extends EventEmitter {
       if (this._transitionIndicator !== null) {
         this._transitionIndicator.destroy();
       }
-      this._eventHub.destroy();
-
       for (const dragSource of this._dragSources) {
         dragSource.destroy();
       }
@@ -504,6 +501,9 @@ export abstract class LayoutManager extends EventEmitter {
       this._maximisePlaceholder.remove();
       this._isInitialised = false;
     }
+
+    this._resizeObserver.disconnect();
+    this._eventHub.destroy();
   }
 
   /** @internal */

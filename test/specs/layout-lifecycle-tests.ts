@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { StrelitLayout, VirtualLayout } from '../../src';
+import { eventHubChildEventName } from '../../src/ts/utils/event-hub';
 
 describe('layout lifecycle', () => {
   const layouts: StrelitLayout[] = [];
@@ -23,6 +24,7 @@ describe('layout lifecycle', () => {
   });
 
   it('does not initialize after being destroyed before initialization', () => {
+    const removeEventListener = vi.spyOn(globalThis, 'removeEventListener');
     const layout = new VirtualLayout(undefined, undefined, undefined, true);
     layouts.push(layout);
 
@@ -32,5 +34,9 @@ describe('layout lifecycle', () => {
     expect(layout.isDestroyed).toBe(true);
     expect(layout.isInitialised).toBe(false);
     expect(layout.groundItem).toBeUndefined();
+    expect(removeEventListener).toHaveBeenCalledWith(
+      eventHubChildEventName,
+      expect.any(Function),
+    );
   });
 });

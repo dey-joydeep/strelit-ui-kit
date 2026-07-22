@@ -73,6 +73,36 @@ describe('BrowserPopout functionality (item.popout())', function () {
     openSpy.mockRestore();
   });
 
+  it('saves a pending popout before its child layout initializes', function () {
+    const mockWindow = {
+      closed: false,
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      document: {
+        createElement: () => document.createElement('div'),
+        body: document.createElement('body'),
+        head: document.createElement('head'),
+        write: vi.fn(),
+        close: vi.fn(),
+      },
+      location: { href: '' },
+    } as unknown as Window;
+    vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        id: 'pending',
+        componentType: 'testComponent',
+      },
+    });
+    const item = layout.findFirstComponentItemById('pending') as ComponentItem;
+    item.popout();
+
+    expect(() => layout.saveLayout()).not.toThrow();
+    expect(layout.saveLayout().openPopouts[0].root?.id).toBe('pending');
+  });
+
   it('keeps the item in the layout when popup creation is blocked', function () {
     vi.spyOn(window, 'open').mockReturnValue(null);
     const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem');

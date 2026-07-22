@@ -548,7 +548,7 @@ export class RowOrColumn extends ContentItem {
     /**
      * Everything adds up to hundred, all good :-)
      */
-    if (Math.round(total) === 100) {
+    if (Math.round(total) === 100 && itemsWithFractionalSize.length === 0) {
       this.respectMinItemSize();
       return;
     } else {
@@ -575,7 +575,7 @@ export class RowOrColumn extends ContentItem {
          *
          * This will be reset in the next step
          */
-        if (Math.round(total) > 100 && itemsWithFractionalSize.length > 0) {
+        if (Math.round(total) >= 100 && itemsWithFractionalSize.length > 0) {
           for (let i = 0; i < itemsWithFractionalSize.length; i++) {
             const contentItem = itemsWithFractionalSize[i];
             const fractionalShare =

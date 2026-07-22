@@ -764,6 +764,46 @@ const dynamicLayout = new GoldenLayout.GoldenLayout();
     expect(migrated).not.toContain('import {');
   });
 
+  it('preserves shebangs and CommonJS style for generated imports in .js files', () => {
+    const filePath = createFixture(
+      `#!/usr/bin/env node
+const LayoutConfig = require('golden-layout').LayoutConfig;
+const resolved = LayoutConfig.resolve(config);
+`,
+      'consumer.js',
+    );
+
+    migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated.startsWith('#!/usr/bin/env node\n')).toBe(true);
+    expect(migrated).toContain(
+      "const { resolveLayoutConfig } = require('strelit-ui-kit')",
+    );
+    expect(migrated).toContain('resolveLayoutConfig(config)');
+    expect(migrated).not.toContain('import {');
+  });
+
+  it('discovers modern TypeScript module extensions', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'strelit-migration-modules-'));
+    temporaryDirectories.push(directory);
+    const mtsPath = join(directory, 'consumer.mts');
+    const ctsPath = join(directory, 'consumer.cts');
+    writeFileSync(
+      mtsPath,
+      "import { GoldenLayout } from 'golden-layout';\nnew GoldenLayout();\n",
+    );
+    writeFileSync(
+      ctsPath,
+      "import { GoldenLayout } from 'golden-layout';\nnew GoldenLayout();\n",
+    );
+
+    migrate(directory);
+
+    expect(readFileSync(mtsPath, 'utf8')).toContain('StrelitLayout');
+    expect(readFileSync(ctsPath, 'utf8')).toContain('StrelitLayout');
+  });
+
   it('preserves unbound legacy-looking identifiers for manual review', () => {
     const source = `class GoldenLayout {}\nconst Json = { local: true };\nnew GoldenLayout();\n`;
     const filePath = createFixture(source);

@@ -81,4 +81,36 @@ describe('splitter limits', () => {
 
     expect(row.contentItems.map((item) => item.size)).toEqual([50, 50]);
   });
+
+  it('normalizes fractional children when percent children already total 100', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('component', () => undefined);
+
+    expect(() =>
+      layout.loadLayout({
+        root: {
+          type: 'row',
+          content: [
+            {
+              type: 'component',
+              componentType: 'component',
+              size: '100%',
+            },
+            {
+              type: 'component',
+              componentType: 'component',
+              size: '1fr',
+            },
+          ],
+        },
+      }),
+    ).not.toThrow();
+
+    const row = layout.rootItem as RowOrColumn;
+    expect(row.contentItems.every((item) => item.sizeUnit === '%')).toBe(true);
+    expect(
+      row.contentItems.reduce((total, item) => total + item.size, 0),
+    ).toBeCloseTo(100);
+  });
 });

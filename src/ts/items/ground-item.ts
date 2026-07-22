@@ -343,6 +343,13 @@ export class GroundItem extends ComponentParentableItem {
         contentItem.sizeUnit = SizeUnit.Percent;
         rowOrColumn.updateSize(false);
       } else {
+        if (column.contentItems.length === 0) {
+          column.addChild(contentItem, undefined, true);
+          contentItem.size = 100;
+          contentItem.sizeUnit = SizeUnit.Percent;
+          column.updateSize(false);
+          return;
+        }
         const sibling =
           column.contentItems[
             insertBefore ? 0 : column.contentItems.length - 1

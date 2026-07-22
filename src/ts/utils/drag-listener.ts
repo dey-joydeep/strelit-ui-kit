@@ -21,6 +21,11 @@ export class DragListener extends EventEmitter {
   private _nOriginalY: number;
   private _dragging: boolean;
   private _pointerTracking = false;
+  private _iframePointerEvents: {
+    element: HTMLIFrameElement;
+    value: string;
+    priority: string;
+  }[] = [];
 
   private _pointerDownEventListener = (ev: PointerEvent) =>
     this.onPointerDown(ev);
@@ -164,9 +169,10 @@ export class DragListener extends EventEmitter {
     if (this._dragging) {
       this._eBody.classList.remove(DomConstants.ClassName.Dragging);
       this._eElement.classList.remove(DomConstants.ClassName.Dragging);
-      this._oDocument
-        .querySelector('iframe')
-        ?.style.setProperty('pointer-events', '');
+      for (const { element, value, priority } of this._iframePointerEvents) {
+        element.style.setProperty('pointer-events', value, priority);
+      }
+      this._iframePointerEvents = [];
       this._dragging = false;
       this.emit('dragStop', dragEvent);
     }
@@ -194,9 +200,17 @@ export class DragListener extends EventEmitter {
     this._dragging = true;
     this._eBody.classList.add(DomConstants.ClassName.Dragging);
     this._eElement.classList.add(DomConstants.ClassName.Dragging);
-    this._oDocument
-      .querySelector('iframe')
-      ?.style.setProperty('pointer-events', 'none');
+    this._iframePointerEvents = Array.from(
+      this._oDocument.querySelectorAll('iframe'),
+      (element) => ({
+        element,
+        value: element.style.getPropertyValue('pointer-events'),
+        priority: element.style.getPropertyPriority('pointer-events'),
+      }),
+    );
+    for (const { element } of this._iframePointerEvents) {
+      element.style.setProperty('pointer-events', 'none');
+    }
     this.emit('dragStart', this._nOriginalX, this._nOriginalY);
   }
 

@@ -824,9 +824,15 @@ export function createResolvedLayoutConfigDefault(): ResolvedLayoutConfig {
   const result: ResolvedLayoutConfig = {
     root: undefined,
     openPopouts: [],
-    dimensions: resolvedLayoutConfigDimensionsDefaults,
-    settings: resolvedLayoutConfigSettingsDefaults,
-    header: resolvedLayoutConfigHeaderDefaults,
+    dimensions: createResolvedLayoutConfigDimensionsCopy(
+      resolvedLayoutConfigDimensionsDefaults,
+    ),
+    settings: createResolvedLayoutConfigSettingsCopy(
+      resolvedLayoutConfigSettingsDefaults,
+    ),
+    header: createResolvedLayoutConfigHeaderCopy(
+      resolvedLayoutConfigHeaderDefaults,
+    ),
     resolved: true,
   };
   return result;

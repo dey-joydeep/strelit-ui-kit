@@ -26,6 +26,19 @@ describe('Layout configuration resolution and defaults', function () {
     expect(resolved.dimensions.borderWidth).toBe(10);
   });
 
+  it('returns independent objects for every default layout config', function () {
+    const first = createResolvedLayoutConfigDefault();
+    const second = createResolvedLayoutConfigDefault();
+
+    expect(first.settings).not.toBe(second.settings);
+    expect(first.dimensions).not.toBe(second.dimensions);
+    expect(first.header).not.toBe(second.header);
+    (
+      first.settings as { constrainDragToContainer: boolean }
+    ).constrainDragToContainer = false;
+    expect(second.settings.constrainDragToContainer).toBe(true);
+  });
+
   it('resolves explicit Strelit component and dimension fields', function () {
     const config: LayoutConfig = {
       root: {

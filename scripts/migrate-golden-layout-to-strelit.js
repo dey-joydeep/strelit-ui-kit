@@ -22,6 +22,8 @@ Options:
 const textFileExtensions = new Set([
   '.ts',
   '.tsx',
+  '.mts',
+  '.cts',
   '.js',
   '.jsx',
   '.mjs',
@@ -47,6 +49,8 @@ const ignoredDirectories = new Set([
 const sourceFileExtensions = new Set([
   '.ts',
   '.tsx',
+  '.mts',
+  '.cts',
   '.js',
   '.jsx',
   '.mjs',
@@ -1337,6 +1341,10 @@ function transformSourceContent(content, filePath) {
     filePath,
     extension,
   );
+  const preferRequire =
+    extension === '.cjs' ||
+    extension === '.cts' ||
+    (extension === '.js' && containsCommonJsRequire(sourceFile));
   if (sourceFile.parseDiagnostics.length > 0) {
     return {
       transformed: content,
@@ -1934,7 +1942,7 @@ function transformSourceContent(content, filePath) {
     transformed = addRequiredImports(
       transformed,
       requiredImports,
-      extension === '.cjs',
+      preferRequire,
     );
   }
 
@@ -1943,6 +1951,23 @@ function transformSourceContent(content, filePath) {
     applied: [...new Set(applied)],
     manualReviews: [...sourceManualReviews],
   };
+}
+
+function containsCommonJsRequire(sourceFile) {
+  let found = false;
+  function visit(node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'require'
+    ) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return found;
 }
 
 /** Migrates a package or published style subpath while preserving URL suffixes. */
@@ -2536,9 +2561,23 @@ function addRequiredImports(content, requiredImports, preferRequire = false) {
     const bindings = entries.map(([exportName, localName]) =>
       exportName === localName ? exportName : `${exportName}: ${localName}`,
     );
-    return `const { ${bindings.join(', ')} } = require('strelit-ui-kit');\n${content}`;
+    return prependAfterShebang(
+      content,
+      `const { ${bindings.join(', ')} } = require('strelit-ui-kit');`,
+    );
   }
-  return `import { ${names.join(', ')} } from 'strelit-ui-kit';\n${content}`;
+  return prependAfterShebang(
+    content,
+    `import { ${names.join(', ')} } from 'strelit-ui-kit';`,
+  );
+}
+
+function prependAfterShebang(content, statement) {
+  const shebang = content.match(/^#![^\r\n]*(?:\r?\n|$)/)?.[0];
+  if (shebang === undefined) {
+    return `${statement}\n${content}`;
+  }
+  return `${shebang}${statement}\n${content.slice(shebang.length)}`;
 }
 
 /** Executes discovery, dry-run reporting, and guarded write-mode updates. */

@@ -1,5 +1,11 @@
 import { afterAll, describe, expect, it } from 'vitest';
-import { StrelitLayout, LayoutConfig } from '../../src';
+import {
+  StrelitLayout,
+  LayoutConfig,
+  resolveItemConfig,
+  type ContentItem,
+  type GroundItem,
+} from '../../src';
 import TestTools from './test-tools';
 
 describe('ground item', function () {
@@ -36,5 +42,38 @@ describe('ground item', function () {
     const bodyLayout = new StrelitLayout();
     expect(bodyLayout.resizeWithContainerAutomatically).toBe(true);
     bodyLayout.destroy();
+  });
+
+  it('accepts a side drop into an empty root row', function () {
+    const emptyLayout = TestTools.createLayout({
+      root: { type: 'row', content: [] },
+    });
+    const ground = emptyLayout.groundItem as GroundItem;
+    const stack = emptyLayout.createAndInitContentItem(
+      resolveItemConfig({
+        type: 'stack',
+        content: [
+          {
+            type: 'component',
+            componentType: TestTools.TEST_COMPONENT_NAME,
+          },
+        ],
+      }),
+      ground,
+    );
+
+    expect(() =>
+      ground.onDrop(stack, {
+        side: 'x2',
+        contentItem: ground as unknown as ContentItem,
+        x1: 0,
+        x2: 100,
+        y1: 0,
+        y2: 100,
+      }),
+    ).not.toThrow();
+    expect(emptyLayout.rootItem?.contentItems).toEqual([stack]);
+    expect(stack.size).toBe(100);
+    emptyLayout.destroy();
   });
 });

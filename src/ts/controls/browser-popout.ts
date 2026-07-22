@@ -1,5 +1,6 @@
 import {
   createResolvedLayoutConfigCopy,
+  createResolvedPopoutLayoutConfigCopy,
   createResolvedRowOrColumnItemConfigDefault,
   minifyResolvedLayoutConfig,
   type ResolvedPopoutLayoutConfig,
@@ -61,7 +62,7 @@ export class BrowserPopout extends EventEmitter {
   /** Performs the to config operation. */
   toConfig(): ResolvedPopoutLayoutConfig {
     if (!this._isInitialised) {
-      throw new Error("Can't create config, layout not yet initialised");
+      return createResolvedPopoutLayoutConfigCopy(this._config);
     }
 
     const strelitInstance = this.getStrelitInstance();
