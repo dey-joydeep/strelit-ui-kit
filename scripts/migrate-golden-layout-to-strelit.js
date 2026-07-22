@@ -301,6 +301,7 @@ function addBindingName(name, bindings) {
 /** Collects local bindings and existing Strelit imports for collision avoidance. */
 function collectSourceBindings(sourceFile) {
   const bindings = new Set();
+  const nonImportBindings = new Set();
   const importedNames = new Map();
 
   for (const statement of sourceFile.statements) {
@@ -330,28 +331,38 @@ function collectSourceBindings(sourceFile) {
       }
       continue;
     }
-
-    if (ts.isVariableStatement(statement)) {
-      for (const declaration of statement.declarationList.declarations) {
-        addBindingName(declaration.name, bindings);
-      }
-      continue;
-    }
-
-    if (
-      (ts.isFunctionDeclaration(statement) ||
-        ts.isClassDeclaration(statement) ||
-        ts.isInterfaceDeclaration(statement) ||
-        ts.isTypeAliasDeclaration(statement) ||
-        ts.isEnumDeclaration(statement) ||
-        ts.isModuleDeclaration(statement)) &&
-      statement.name !== undefined
-    ) {
-      bindings.add(statement.name.text);
-    }
   }
 
-  return { bindings, importedNames };
+  function addNonImportBindingName(name) {
+    addBindingName(name, bindings);
+    addBindingName(name, nonImportBindings);
+  }
+
+  function visit(node) {
+    if (ts.isVariableDeclaration(node) || ts.isParameter(node)) {
+      addNonImportBindingName(node.name);
+    } else if (
+      (ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isClassDeclaration(node) ||
+        ts.isClassExpression(node) ||
+        ts.isInterfaceDeclaration(node) ||
+        ts.isTypeAliasDeclaration(node) ||
+        ts.isEnumDeclaration(node) ||
+        ts.isModuleDeclaration(node) ||
+        ts.isTypeParameterDeclaration(node)) &&
+      node.name !== undefined
+    ) {
+      nonImportBindings.add(node.name.text);
+      bindings.add(node.name.text);
+    } else if (ts.isImportEqualsDeclaration(node)) {
+      bindings.add(node.name.text);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+
+  return { bindings, importedNames, nonImportBindings };
 }
 
 function createSourceAnalysis(content, filePath, extension) {
@@ -1280,6 +1291,31 @@ function replaceSelectorLiteral(node, sourceFile) {
   return replaceRawSelectorTokens(rawLiteral, node.text);
 }
 
+function replaceTemplateSelectorLiteral(node, sourceFile) {
+  const rawLiteral = node.getText(sourceFile);
+  if (!rawLiteral.includes('\\')) {
+    return rawLiteral.replace(
+      /(^|[^A-Za-z0-9_])lm_goldenlayout(?![A-Za-z0-9_])/g,
+      '$1lm_strelit',
+    );
+  }
+
+  const migratedText = replaceSelectorTokens(node.text);
+  const escapedText = JSON.stringify(migratedText)
+    .slice(1, -1)
+    .replaceAll('`', '\\`')
+    .replaceAll('${', '\\${');
+  if (ts.isNoSubstitutionTemplateLiteral(node)) {
+    return `\`${escapedText}\``;
+  } else if (ts.isTemplateHead(node)) {
+    return `\`${escapedText}\${`;
+  } else if (ts.isTemplateMiddle(node)) {
+    return `}${escapedText}\${`;
+  } else {
+    return `}${escapedText}\``;
+  }
+}
+
 function transformSourceContent(content, filePath) {
   const normalized = content;
   const applied = [];
@@ -1301,7 +1337,8 @@ function transformSourceContent(content, filePath) {
   }
   const edits = [];
   const requiredImports = new Map();
-  const { bindings, importedNames } = collectSourceBindings(sourceFile);
+  const { bindings, importedNames, nonImportBindings } =
+    collectSourceBindings(sourceFile);
   const goldenLayoutBindings = collectGoldenLayoutBindingSymbols(
     sourceFile,
     checker,
@@ -1317,7 +1354,7 @@ function transformSourceContent(content, filePath) {
 
   function resolveImportName(exportName) {
     const importedName = importedNames.get(exportName);
-    if (importedName !== undefined) {
+    if (importedName !== undefined && !nonImportBindings.has(importedName)) {
       return importedName;
     }
 
@@ -1763,6 +1800,21 @@ function transformSourceContent(content, filePath) {
       addEdit(
         node,
         replaceSelectorLiteral(node, sourceFile),
+        'branded root selector',
+      );
+      return;
+    }
+
+    if (
+      (ts.isNoSubstitutionTemplateLiteral(node) ||
+        ts.isTemplateHead(node) ||
+        ts.isTemplateMiddle(node) ||
+        ts.isTemplateTail(node)) &&
+      /(?<![A-Za-z0-9_])lm_goldenlayout(?![A-Za-z0-9_])/.test(node.text)
+    ) {
+      addEdit(
+        node,
+        replaceTemplateSelectorLiteral(node, sourceFile),
         'branded root selector',
       );
       return;
@@ -2382,6 +2434,20 @@ function transformContent(content, filePath, options = {}) {
   };
 }
 
+function hasRequiredBinding(bindings, exportName, localName, aliasToken) {
+  const directPattern = new RegExp(
+    `(?:^|,)\\s*(?:type\\s+)?${exportName}\\s*(?=,|$)`,
+  );
+  if (exportName === localName) {
+    return directPattern.test(bindings);
+  }
+
+  const aliasPattern = new RegExp(
+    `(?:^|,)\\s*(?:type\\s+)?${exportName}\\s*${aliasToken}\\s*${localName}\\s*(?=,|$)`,
+  );
+  return aliasPattern.test(bindings);
+}
+
 /** Adds collision-safe named imports requested by source transformations. */
 function addRequiredImports(content, requiredImports, preferRequire = false) {
   const entries =
@@ -2397,7 +2463,8 @@ function addRequiredImports(content, requiredImports, preferRequire = false) {
     return content.replace(importPattern, (match, bindings, quote) => {
       const missing = entries
         .filter(
-          ([exportName]) => !new RegExp(`\\b${exportName}\\b`).test(bindings),
+          ([exportName, localName]) =>
+            !hasRequiredBinding(bindings, exportName, localName, 'as'),
         )
         .map(([exportName, localName]) =>
           exportName === localName
@@ -2418,7 +2485,8 @@ function addRequiredImports(content, requiredImports, preferRequire = false) {
     return content.replace(requirePattern, (match, bindings, quote) => {
       const missing = entries
         .filter(
-          ([exportName]) => !new RegExp(`\\b${exportName}\\b`).test(bindings),
+          ([exportName, localName]) =>
+            !hasRequiredBinding(bindings, exportName, localName, ':'),
         )
         .map(([exportName, localName]) =>
           exportName === localName ? exportName : `${exportName}: ${localName}`,

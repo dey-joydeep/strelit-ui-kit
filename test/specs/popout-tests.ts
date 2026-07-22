@@ -74,6 +74,7 @@ describe('BrowserPopout functionality (item.popout())', function () {
 
   it('keeps the item in the layout when popup creation is blocked', function () {
     vi.spyOn(window, 'open').mockReturnValue(null);
+    const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem');
 
     layout.loadLayout({
       root: {
@@ -103,6 +104,9 @@ describe('BrowserPopout functionality (item.popout())', function () {
       layout.findFirstComponentItemById('blockedPopoutComponent')?.id,
     ).toBe(item.id);
     expect(layout.openPopouts.length).toBe(0);
+    expect(removeItemSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^strelit-window-config-/),
+    );
   });
 
   it('does not throw when calling close() on a blocked popout', function () {

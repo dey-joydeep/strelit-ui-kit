@@ -73,4 +73,36 @@ describe('Component State Saving & Initial State', function () {
       source: 'new-initial',
     });
   });
+
+  it('applies replacement closability and reordering metadata', function () {
+    layout.registerComponentFactoryFunction('oldComponent', () => undefined);
+    layout.registerComponentFactoryFunction('newComponent', () => undefined);
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        componentType: 'oldComponent',
+        isClosable: true,
+        reorderEnabled: true,
+      },
+    });
+
+    const item = layout.getComponentItemsByType('oldComponent')[0];
+    item.container.replaceComponent({
+      type: 'component',
+      componentType: 'newComponent',
+      isClosable: false,
+      reorderEnabled: false,
+    });
+
+    expect(item.isClosable).toBe(false);
+    expect(item.reorderEnabled).toBe(false);
+    expect(item.tab.reorderEnabled).toBe(false);
+    expect(item.tab.closeElement?.style.display).toBe('none');
+    item.container.close();
+    expect(layout.getComponentItemsByType('newComponent')).toEqual([item]);
+    expect(layout.saveLayout().root?.content[0]).toMatchObject({
+      isClosable: false,
+      reorderEnabled: false,
+    });
+  });
 });

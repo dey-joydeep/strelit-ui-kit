@@ -777,6 +777,46 @@ const dynamicLayout = new GoldenLayout.GoldenLayout();
     );
   });
 
+  it('aliases generated helper imports away from nested bindings', () => {
+    const filePath = createFixture(
+      `import { LayoutConfig } from 'golden-layout';
+function resolve(resolveLayoutConfig: (value: unknown) => unknown) {
+  return LayoutConfig.resolve(config);
+}
+`,
+    );
+
+    migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain(
+      'resolveLayoutConfig as resolveLayoutConfigFromStrelit',
+    );
+    expect(migrated).toContain('return resolveLayoutConfigFromStrelit(config)');
+    expect(migrated).toContain(
+      'function resolve(resolveLayoutConfig: (value: unknown) => unknown)',
+    );
+  });
+
+  it('adds a safe helper alias when an existing import is shadowed', () => {
+    const filePath = createFixture(
+      `import { resolveLayoutConfig } from 'strelit-ui-kit';
+import { LayoutConfig } from 'golden-layout';
+function resolve(resolveLayoutConfig: (value: unknown) => unknown) {
+  return LayoutConfig.resolve(config);
+}
+`,
+    );
+
+    migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain(
+      'resolveLayoutConfig, resolveLayoutConfig as resolveLayoutConfigFromStrelit',
+    );
+    expect(migrated).toContain('return resolveLayoutConfigFromStrelit(config)');
+  });
+
   it('scopes config-property rewrites and preserves string escapes', () => {
     const filePath = createFixture(String.raw`
 const metadata = { type: 'button', componentName: 'Button' };
@@ -826,6 +866,27 @@ const misaligned = '\x41lm_goldenlayout \u006cm_goldenlayout';
     expect(migrated).toContain('quoted="&quot; lm_strelit"');
     expect(migrated).toContain(String.raw`encoded='\u006cm_goldenlayout'`);
     expect(migrated).toContain(String.raw`expression={".foo:bar .lm_strelit"}`);
+  });
+
+  it('migrates selector tokens throughout template literals', () => {
+    const filePath = createFixture(
+      [
+        "const part = 'value';",
+        'const basic = `.lm_goldenlayout`;',
+        'const dynamic = `before .lm_goldenlayout ${part} after .lm_goldenlayout`;',
+        'const escaped = `\\x41lm_goldenlayout \\u006cm_goldenlayout`;',
+      ].join('\n'),
+    );
+
+    migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain('const basic = `.lm_strelit`');
+    expect(migrated).toContain(
+      'const dynamic = `before .lm_strelit ${part} after .lm_strelit`',
+    );
+    expect(migrated).toContain('const escaped = `Alm_goldenlayout lm_strelit`');
+    expect(migrated.match(/lm_goldenlayout/g)).toHaveLength(1);
   });
 
   it('migrates react-component source items atomically', () => {

@@ -389,6 +389,7 @@ export class ComponentContainer extends EventEmitter {
         throw error;
       }
 
+      this._isClosable = config.isClosable;
       this._updateItemConfigEvent(config);
 
       this._boundComponent = nextBoundComponent;

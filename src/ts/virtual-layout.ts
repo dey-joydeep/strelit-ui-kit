@@ -167,6 +167,10 @@ export class VirtualLayout extends LayoutManager {
 
   /** Initializes the layout after binding handlers have been assigned. */
   override init(): void {
+    if (this.isInitialised) {
+      return;
+    }
+
     /**
      * If the document isn't ready yet, wait for it.
      */

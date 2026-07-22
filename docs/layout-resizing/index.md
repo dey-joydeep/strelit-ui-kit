@@ -15,6 +15,6 @@ It is recommended that the container's `overflow` property be set to `clip` when
 
 If automatic resizing is disabled (`LayoutManager.resizeWithContainerAutomatically` is `false`), then the application can use `LayoutManager.setSize()` to manually resize Strelit Layout. It is hard to think of a use case for disabling automatic resizing. Managing Strelit Layout's container's size is probably a better application design approach than managing Strelit Layout's size directly.
 
-`LayoutManager.resizeWithContainerAutomatically` defaults to `true` for every container. Set it to `false` only when the application will call `setSize()` itself.
+`LayoutManager.resizeWithContainerAutomatically` defaults to `true` when the container is `document.body` and to `false` for a custom container. Set it explicitly to opt into automatic resizing for a custom container or to disable it when the application will call `setSize()` itself.
 
 Note that Strelit Layout uses [ResizeObserver](https://developer.mozilla.org/en-US/docs/Web/API/ResizeObserver) to detected changes in its container HTML element. This API is not available in Internet Explorer. If your application supports Internet Explorer you will need to use a polyfill. However please note, as per browserslist in `package.json`, Strelit Layout only supports modern browsers and does not support Internet Explorer.

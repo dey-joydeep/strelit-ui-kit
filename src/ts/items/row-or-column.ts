@@ -751,22 +751,6 @@ export class RowOrColumn extends ContentItem {
   }
 
   /**
-   * Gets the minimum dimensions for the given item configuration array
-   * @internal
-   */
-  private calculateContentItemsTotalMinSize(
-    contentItems: readonly ContentItem[],
-  ) {
-    let totalMinSize = 0;
-
-    for (const contentItem of contentItems) {
-      totalMinSize += this.calculateContentItemMinSize(contentItem);
-    }
-
-    return totalMinSize;
-  }
-
-  /**
    * Invoked when a splitter's dragListener fires dragStart. Calculates the splitters
    * movement area once (so that it doesn't need calculating on every mousemove event)
    * @internal
@@ -780,12 +764,8 @@ export class RowOrColumn extends ContentItem {
     const afterSize = pixelsToNumber(
       items.after.element.style[this._dimension],
     );
-    const beforeMinSize = this.calculateContentItemsTotalMinSize(
-      items.before.contentItems,
-    );
-    const afterMinSize = this.calculateContentItemsTotalMinSize(
-      items.after.contentItems,
-    );
+    const beforeMinSize = this.calculateContentItemMinSize(items.before);
+    const afterMinSize = this.calculateContentItemMinSize(items.after);
 
     this._splitterPosition = 0;
     this._splitterMinPosition = -1 * (beforeWidth - beforeMinSize);

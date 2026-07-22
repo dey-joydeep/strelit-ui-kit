@@ -43,7 +43,7 @@ Virtual Components has the following advantages:
 
 With Virtual Components the following events need to be handled:
 
-- `VirtualLayout.bindComponentEvent: (container, itemConfig) => ComponentContainer.BindableComponent`\
+- `VirtualLayout.bindComponentEvent: (container, itemConfig) => ComponentContainerBindableComponent`\
   Fired whenever a StrelitLayout wants to bind to a new component. The handler is passed the container and the item's resolved config. Typically, the handler would:
   - create or fetch the component using `itemConfig`,
   - get the the component's top level HTML component,

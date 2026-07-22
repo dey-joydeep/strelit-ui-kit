@@ -124,6 +124,17 @@ export class EventHub extends EventEmitter {
    */
   private onEventFromChild(event: CustomEvent<EventHubChildEventDetail>) {
     const detail = event.detail;
+    const isOwnedChild = this._layoutManager.openPopouts.some((popout) => {
+      try {
+        return popout.getStrelitInstance() === detail.layoutManager;
+      } catch {
+        return false;
+      }
+    });
+    if (!isOwnedChild) {
+      return;
+    }
+
     this.handleUserBroadcastEvent(detail.eventName, detail.args);
   }
 

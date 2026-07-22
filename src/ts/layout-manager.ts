@@ -511,6 +511,10 @@ export abstract class LayoutManager extends EventEmitter {
    * @internal
    */
   init(): void {
+    if (this._isInitialised) {
+      return;
+    }
+
     this.setContainer();
     this._dropTargetIndicator = new DropTargetIndicator(/*this.container*/);
     this._transitionIndicator = new TransitionIndicator();

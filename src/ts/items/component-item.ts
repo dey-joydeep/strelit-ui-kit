@@ -129,6 +129,17 @@ export class ComponentItem extends ContentItem {
   applyUpdatableConfig(config: ResolvedComponentItemConfig): void {
     this.setTitle(config.title);
     this._headerConfig = config.header;
+    // ContentItem owns the persisted flag; replacement is the only post-construction update path.
+    (this as unknown as { _isClosable: boolean })._isClosable =
+      config.isClosable;
+    this._reorderEnabled = config.reorderEnabled;
+    if (this._tab !== undefined) {
+      const closeElement = this._tab.closeElement;
+      if (closeElement !== undefined) {
+        closeElement.style.display = config.isClosable ? '' : 'none';
+      }
+      this._tab.reorderEnabled = config.reorderEnabled;
+    }
   }
 
   /** Performs the to config operation. */

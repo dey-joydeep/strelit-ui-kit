@@ -195,7 +195,7 @@ export class BrowserPopout extends EventEmitter {
    * @internal
    */
   private createWindow(): void {
-    const url = this.createUrl();
+    const { url, storageKey } = this.createUrl();
 
     /**
      * Bogus title to prevent re-usage of existing window with the
@@ -224,6 +224,7 @@ export class BrowserPopout extends EventEmitter {
     this._popoutWindow = globalThis.open(url, target, features);
 
     if (!this._popoutWindow) {
+      localStorage.removeItem(storageKey);
       if (
         this._layoutManager.layoutConfig.settings.blockedPopoutsThrowError ===
         true
@@ -312,7 +313,7 @@ export class BrowserPopout extends EventEmitter {
    * @returns URL
    * @internal
    */
-  private createUrl(): string {
+  private createUrl(): { url: string; storageKey: string } {
     const storageKey = 'strelit-window-config-' + getUniqueId();
     const config = minifyResolvedLayoutConfig(this._config);
 
@@ -326,7 +327,7 @@ export class BrowserPopout extends EventEmitter {
 
     const url = new URL(location.href);
     url.searchParams.set('strelit-window', storageKey);
-    return url.toString();
+    return { url: url.toString(), storageKey };
   }
 
   /**

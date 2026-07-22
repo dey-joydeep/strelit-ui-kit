@@ -112,11 +112,7 @@ export class Tab {
     this._element.appendChild(this._titleElement);
     this._element.appendChild(this._closeElement);
 
-    if (_componentItem.isClosable) {
-      this._closeElement.style.display = '';
-    } else {
-      this._closeElement.style.display = 'none';
-    }
+    this._closeElement.style.display = _componentItem.isClosable ? '' : 'none';
 
     this.setTitle(_componentItem.title);
     this._componentItem.on('titleChanged', this._tabTitleChangedListener);
@@ -136,20 +132,14 @@ export class Tab {
       passive: true,
     });
 
-    if (this._componentItem.isClosable) {
-      this._closeElement.addEventListener('click', this._closeClickListener, {
-        passive: true,
-      });
-      this._closeElement.addEventListener(
-        'touchstart',
-        this._closeTouchStartListener,
-        { passive: true },
-      );
-      // this._closeElement.addEventListener('mousedown', this._closeMouseDownListener, { passive: true });
-    } else {
-      this._closeElement.remove();
-      this._closeElement = undefined;
-    }
+    this._closeElement.addEventListener('click', this._closeClickListener, {
+      passive: true,
+    });
+    this._closeElement.addEventListener(
+      'touchstart',
+      this._closeTouchStartListener,
+      { passive: true },
+    );
 
     this._componentItem.setTab(this);
     this._layoutManager.emit('tabCreated', this);
@@ -302,6 +292,9 @@ export class Tab {
 
   /** @internal */
   private notifyClose() {
+    if (!this._componentItem.isClosable) {
+      return;
+    }
     if (this._closeEvent === undefined) {
       throw new UnexpectedUndefinedError('TNC15007');
     } else {
