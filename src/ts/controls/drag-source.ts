@@ -57,6 +57,7 @@ export class DragSource {
    */
   destroy(): void {
     this.removeDragListener();
+    this._dummyGroundContentItem.destroy();
   }
 
   /**

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StrelitLayout, LayoutConfig } from '../../src';
 import TestTools from './test-tools';
 
@@ -49,6 +49,32 @@ describe('drag source', function () {
     }));
 
     doComponentDragTest();
+  });
+
+  it('disables container constraints for external drag sources', function () {
+    dragSourceElement = document.createElement('div');
+    layout.newDragSource(dragSourceElement, () => ({
+      type: 'component',
+      componentType: TestTools.TEST_COMPONENT_NAME,
+    }));
+
+    expect(layout.layoutConfig.settings.constrainDragToContainer).toBe(false);
+  });
+
+  it('destroys the temporary ground item with the drag source', function () {
+    dragSourceElement = document.createElement('div');
+    const dragSource = layout.newDragSource(dragSourceElement, () => ({
+      type: 'component',
+      componentType: TestTools.TEST_COMPONENT_NAME,
+    }));
+    const internals = dragSource as unknown as {
+      _dummyGroundContentItem: { destroy(): void };
+    };
+    const destroySpy = vi.spyOn(internals._dummyGroundContentItem, 'destroy');
+
+    layout.removeDragSource(dragSource);
+
+    expect(destroySpy).toHaveBeenCalledOnce();
   });
 
   function doComponentDragTest(): void {

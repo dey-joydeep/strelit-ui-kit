@@ -47,6 +47,23 @@ describe('Component State Saving & Initial State', function () {
     });
   });
 
+  it('returns a detached component-state snapshot', function () {
+    const state = { nested: { value: 'saved' } };
+    layout.registerComponentFactoryFunction('stateComponent', (container) => {
+      container.stateRequestEvent = () => state;
+    });
+    layout.loadLayout({
+      root: { type: 'component', componentType: 'stateComponent' },
+    });
+
+    const saved = layout.saveLayout();
+    state.nested.value = 'mutated';
+
+    expect(saved.root?.content[0].componentState).toEqual({
+      nested: { value: 'saved' },
+    });
+  });
+
   it('clears the previous state request hook when replacing a component', function () {
     layout.registerComponentFactoryFunction('oldComponent', (container) => {
       container.stateRequestEvent = () => ({ source: 'old-hook' });

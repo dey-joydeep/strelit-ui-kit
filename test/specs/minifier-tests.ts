@@ -76,6 +76,20 @@ describe('resolved layout config minifier', function () {
     );
   });
 
+  it('preserves strings that use reserved extended-value prefixes', function () {
+    const resolved = resolveLayoutConfig({
+      root: {
+        type: 'component',
+        componentType: '@10',
+        componentState: { current: '~10', escaped: '___@10' },
+      },
+    });
+
+    expect(
+      unminifyResolvedLayoutConfig(minifyResolvedLayoutConfig(resolved)),
+    ).toEqual(resolved);
+  });
+
   it('round-trips config keys beyond the single-character index range', function () {
     const resolved = resolveLayoutConfig({
       settings: { closePopoutsOnUnload: false },

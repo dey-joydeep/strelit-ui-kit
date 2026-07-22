@@ -410,18 +410,14 @@ export class Header extends EventEmitter {
 
   /** @internal */
   processMaximised(): void {
-    if (this._maximiseButton === undefined) {
-      throw new UnexpectedUndefinedError('HPMAX16997');
-    } else {
+    if (this._maximiseButton !== undefined) {
       this._maximiseButton.element.setAttribute('title', this._minimiseLabel);
     }
   }
 
   /** @internal */
   processMinimised(): void {
-    if (this._maximiseButton === undefined) {
-      throw new UnexpectedUndefinedError('HPMIN16997');
-    } else {
+    if (this._maximiseButton !== undefined) {
       this._maximiseButton.element.setAttribute('title', this._maximiseLabel);
     }
   }

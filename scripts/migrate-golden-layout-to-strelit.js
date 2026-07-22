@@ -1112,7 +1112,7 @@ function getNumericPropertyMigration(node) {
   return `${migration.target}: '${node.initializer.text}${migration.unit}'`;
 }
 
-function migrateImportSpecifier(specifier) {
+function migrateImportSpecifier(specifier, reserveRenamedLocalName) {
   const importedName = specifier.propertyName?.text ?? specifier.name.text;
   const migratedName =
     importedName === 'default'
@@ -1121,12 +1121,15 @@ function migrateImportSpecifier(specifier) {
   const originalLocalName = specifier.name.text;
   const importsLayoutConstructor =
     importedName === 'default' || importedName === 'GoldenLayout';
-  const localName =
+  let localName =
     specifier.propertyName === undefined ||
     originalLocalName === importedName ||
     (importsLayoutConstructor && originalLocalName === 'GoldenLayout')
       ? migratedName
       : originalLocalName;
+  if (localName === migratedName && originalLocalName !== migratedName) {
+    localName = reserveRenamedLocalName(migratedName);
+  }
   const typePrefix = specifier.isTypeOnly ? 'type ' : '';
   return migratedName === localName
     ? `${typePrefix}${migratedName}`
@@ -1153,12 +1156,16 @@ function migrateExportSpecifier(specifier) {
     : `${typePrefix}${migratedName} as ${exportedName}`;
 }
 
-function createDefaultImportClause(importClause) {
+function createDefaultImportClause(importClause, reserveRenamedBinding) {
   const defaultLocalName = importClause.name.text;
-  const defaultBinding =
+  const migratedDefaultLocalName =
     defaultLocalName === 'GoldenLayout'
+      ? reserveRenamedBinding(importClause.name, 'StrelitLayout')
+      : defaultLocalName;
+  const defaultBinding =
+    migratedDefaultLocalName === 'StrelitLayout'
       ? 'StrelitLayout'
-      : `StrelitLayout as ${defaultLocalName}`;
+      : `StrelitLayout as ${migratedDefaultLocalName}`;
   const typePrefix = importClause.isTypeOnly ? 'type ' : '';
   const namedBindings = importClause.namedBindings;
   if (namedBindings === undefined) {
@@ -1167,7 +1174,11 @@ function createDefaultImportClause(importClause) {
   if (ts.isNamespaceImport(namedBindings)) {
     return undefined;
   }
-  const named = namedBindings.elements.map(migrateImportSpecifier);
+  const named = namedBindings.elements.map((specifier) =>
+    migrateImportSpecifier(specifier, (migratedName) =>
+      reserveRenamedBinding(specifier.name, migratedName),
+    ),
+  );
   return `${typePrefix}{ ${[defaultBinding, ...named].join(', ')} }`;
 }
 
@@ -1363,6 +1374,12 @@ function transformSourceContent(content, filePath) {
       return existingRequiredName;
     }
 
+    const localName = reserveCollisionSafeName(exportName);
+    requiredImports.set(exportName, localName);
+    return localName;
+  }
+
+  function reserveCollisionSafeName(exportName) {
     let localName = exportName;
     if (bindings.has(localName)) {
       localName = `${exportName}FromStrelit`;
@@ -1372,7 +1389,18 @@ function transformSourceContent(content, filePath) {
       }
     }
     bindings.add(localName);
-    requiredImports.set(exportName, localName);
+    return localName;
+  }
+
+  function reserveRenamedBinding(identifier, migratedName) {
+    const localName = reserveCollisionSafeName(migratedName);
+    const symbol = checker.getSymbolAtLocation(identifier);
+    if (symbol !== undefined) {
+      const binding = goldenLayoutBindings.get(symbol);
+      if (binding !== undefined) {
+        binding.replacementName = localName;
+      }
+    }
     return localName;
   }
 
@@ -1427,7 +1455,10 @@ function transformSourceContent(content, filePath) {
       node.importClause !== undefined
     ) {
       if (node.importClause.name !== undefined) {
-        const migratedClause = createDefaultImportClause(node.importClause);
+        const migratedClause = createDefaultImportClause(
+          node.importClause,
+          reserveRenamedBinding,
+        );
         if (migratedClause !== undefined) {
           addEdit(node.importClause, migratedClause, 'default package import');
           return;
@@ -1445,7 +1476,9 @@ function transformSourceContent(content, filePath) {
         node.parent.parent.parent.moduleSpecifier.text,
       )
     ) {
-      const migrated = migrateImportSpecifier(node);
+      const migrated = migrateImportSpecifier(node, (migratedName) =>
+        reserveRenamedBinding(node.name, migratedName),
+      );
       if (migrated !== node.getText(sourceFile)) {
         addEdit(node, migrated, 'named package import');
       }

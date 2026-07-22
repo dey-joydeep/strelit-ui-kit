@@ -12,8 +12,13 @@ import { Tab } from '../controls/tab';
 import { UnexpectedNullError } from '../errors/internal-error';
 import { LayoutManager } from '../layout-manager';
 import { DomConstants } from '../utils/dom-constants';
-import { ComponentType, ItemType } from '../utils/types';
 import {
+  ComponentType,
+  ItemType,
+  type SerializableValue,
+} from '../utils/types';
+import {
+  deepCloneValue,
   getElementWidthAndHeight,
   setElementHeight,
   setElementWidth,
@@ -164,7 +169,7 @@ export class ComponentItem extends ContentItem {
       title: this._title,
       header: createResolvedHeaderedItemConfigHeaderCopy(this._headerConfig),
       componentType: createComponentTypeCopy(this.componentType),
-      componentState: state,
+      componentState: deepCloneValue(state) as SerializableValue | undefined,
     };
 
     return result;

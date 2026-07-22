@@ -140,8 +140,22 @@ export function deepCloneValue(value: unknown): unknown {
         'Serializable value exceeds resource limits',
       );
     }
-    if (typeof source !== 'object' || source === null) {
+    if (
+      source === undefined ||
+      source === null ||
+      typeof source === 'string' ||
+      typeof source === 'boolean'
+    ) {
       return { clone: source };
+    }
+    if (typeof source === 'number') {
+      if (Number.isFinite(source)) {
+        return { clone: source };
+      }
+      throw new ConfigurationError('Value is not serializable');
+    }
+    if (typeof source !== 'object') {
+      throw new ConfigurationError('Value is not serializable');
     }
     if (active.has(source)) {
       throw new ConfigurationError('Serializable value contains a cycle');
@@ -165,6 +179,18 @@ export function deepCloneValue(value: unknown): unknown {
         clone,
         frame: { source, target: clone, entries, depth, index: 0 },
       };
+    }
+
+    try {
+      const prototype = Object.getPrototypeOf(source);
+      if (prototype !== null && Object.getPrototypeOf(prototype) !== null) {
+        throw new ConfigurationError('Value is not serializable');
+      }
+    } catch (error) {
+      if (error instanceof ConfigurationError) {
+        throw error;
+      }
+      throw new ConfigurationError('Value is not serializable');
     }
 
     const entries = Object.entries(source);

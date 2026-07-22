@@ -153,6 +153,23 @@ const resolved = LayoutConfig.resolve(config);
     );
   });
 
+  it('aliases renamed package imports when the target name is already bound', () => {
+    const filePath = createFixture(`
+const StrelitLayout = class ApplicationLayout {};
+import { GoldenLayout } from 'golden-layout';
+const layout = new GoldenLayout();
+`);
+
+    migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain('StrelitLayout as StrelitLayoutFromStrelit');
+    expect(migrated).toContain('new StrelitLayoutFromStrelit()');
+    expect(migrated).toContain(
+      'const StrelitLayout = class ApplicationLayout {}',
+    );
+  });
+
   it('migrates CommonJS default-package bindings structurally', () => {
     const filePath = createFixture(
       "const GoldenLayout = require('golden-layout');\nnew GoldenLayout();\n",

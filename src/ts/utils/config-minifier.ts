@@ -148,7 +148,10 @@ function unminifyKey(key: string): string {
 }
 
 function minifyValue(value: unknown): unknown {
-  if (typeof value === 'string' && value.startsWith('___')) {
+  if (
+    typeof value === 'string' &&
+    (value.startsWith('___') || value.startsWith('@') || value.startsWith('~'))
+  ) {
     return '___' + value;
   }
 
@@ -157,15 +160,35 @@ function minifyValue(value: unknown): unknown {
   }
 
   const index = indexOfValue(value);
-  return index === -1 ? value : index.toString(36);
+  if (index === -1) {
+    return value;
+  }
+  return index < 36 ? index.toString(36) : '@' + index.toString(36);
 }
 
 function unminifyValue(value: unknown): unknown {
+  if (
+    typeof value === 'string' &&
+    (value.startsWith('@') || value.startsWith('~'))
+  ) {
+    const idx = parseInt(value.slice(1), 36);
+    if (!Number.isNaN(idx) && idx >= 0 && idx < configMinifierValues.length) {
+      return configMinifierValues[idx];
+    }
+  }
+
   if (typeof value === 'string' && value.length === 1) {
     return configMinifierValues[parseInt(value, 36)];
   }
 
   if (typeof value === 'string' && value.startsWith('______')) {
+    return value.slice(3);
+  }
+
+  if (
+    typeof value === 'string' &&
+    (value.startsWith('___@') || value.startsWith('___~'))
+  ) {
     return value.slice(3);
   }
 

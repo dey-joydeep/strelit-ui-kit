@@ -559,8 +559,11 @@ export class RowOrColumn extends ContentItem {
         const fractionalAllocatedSize = 100 - total;
         for (let i = 0; i < itemsWithFractionalSize.length; i++) {
           const contentItem = itemsWithFractionalSize[i];
-          contentItem.size =
-            fractionalAllocatedSize * (contentItem.size / totalFractionalSize);
+          const fractionalShare =
+            totalFractionalSize > 0
+              ? contentItem.size / totalFractionalSize
+              : 1 / itemsWithFractionalSize.length;
+          contentItem.size = fractionalAllocatedSize * fractionalShare;
           contentItem.sizeUnit = SizeUnit.Percent;
         }
         this.respectMinItemSize();
@@ -575,7 +578,11 @@ export class RowOrColumn extends ContentItem {
         if (Math.round(total) > 100 && itemsWithFractionalSize.length > 0) {
           for (let i = 0; i < itemsWithFractionalSize.length; i++) {
             const contentItem = itemsWithFractionalSize[i];
-            contentItem.size = 50 * (contentItem.size / totalFractionalSize);
+            const fractionalShare =
+              totalFractionalSize > 0
+                ? contentItem.size / totalFractionalSize
+                : 1 / itemsWithFractionalSize.length;
+            contentItem.size = 50 * fractionalShare;
             contentItem.sizeUnit = SizeUnit.Percent;
           }
           total += 50;
@@ -672,10 +679,14 @@ export class RowOrColumn extends ContentItem {
         }
 
         /**
-         * Take anything remaining from the last item.
+         * Take anything remaining from the last item over min size, falling back to all entries if needed.
          */
-        if (remainingSize !== 0 && allEntries.length > 0) {
-          allEntries[allEntries.length - 1].size -= remainingSize;
+        if (remainingSize !== 0) {
+          if (entriesOverMin.length > 0) {
+            entriesOverMin[entriesOverMin.length - 1].size -= remainingSize;
+          } else if (allEntries.length > 0) {
+            allEntries[allEntries.length - 1].size -= remainingSize;
+          }
         }
 
         /**
@@ -819,8 +830,9 @@ export class RowOrColumn extends ContentItem {
       const sizeAfter = pixelsToNumber(
         items.after.element.style[this._dimension],
       );
+      const totalSize = sizeBefore + sizeAfter;
       const splitterPositionInRange =
-        (this._splitterPosition + sizeBefore) / (sizeBefore + sizeAfter);
+        totalSize > 0 ? (this._splitterPosition + sizeBefore) / totalSize : 0.5;
       const totalRelativeSize = items.before.size + items.after.size;
 
       items.before.size = splitterPositionInRange * totalRelativeSize;

@@ -72,6 +72,25 @@ describe('configuration resource limits', () => {
     );
   });
 
+  it('rejects values outside the serializable-value contract', () => {
+    class CustomState {
+      value = true;
+    }
+
+    for (const value of [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      () => undefined,
+      Symbol('state'),
+      1n,
+      new Date(),
+      new Map(),
+      new CustomState(),
+    ]) {
+      expect(() => deepCloneValue(value)).toThrow('Value is not serializable');
+    }
+  });
+
   it('enforces the state budget through config copying and component binding', () => {
     const componentState = createNestedState(maximumDepth + 1);
     const resolved = resolveItemConfig({

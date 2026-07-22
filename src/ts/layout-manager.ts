@@ -296,6 +296,8 @@ export abstract class LayoutManager extends EventEmitter {
   /** @internal */
   private _isInitialised = false;
   /** @internal */
+  private _isDestroyed = false;
+  /** @internal */
   private _groundItem: GroundItem | undefined = undefined;
   /** @internal */
   private _openPopouts: BrowserPopout[] = [];
@@ -370,6 +372,10 @@ export abstract class LayoutManager extends EventEmitter {
   /** Gets the is initialised. */
   get isInitialised(): boolean {
     return this._isInitialised;
+  }
+  /** Gets whether this instance is destroyed. */
+  get isDestroyed(): boolean {
+    return this._isDestroyed;
   }
   /** @internal */
   get groundItem(): GroundItem | undefined {
@@ -457,6 +463,11 @@ export abstract class LayoutManager extends EventEmitter {
    * be released.
    */
   destroy(): void {
+    if (this._isDestroyed) {
+      return;
+    }
+    this._isDestroyed = true;
+
     if (this._isInitialised) {
       if (this._windowBeforeUnloadListening) {
         globalThis.removeEventListener(
@@ -490,6 +501,7 @@ export abstract class LayoutManager extends EventEmitter {
       }
       this._dragSources = [];
 
+      this._maximisePlaceholder.remove();
       this._isInitialised = false;
     }
   }
@@ -929,11 +941,8 @@ export abstract class LayoutManager extends EventEmitter {
         this._groundItem.setSize(this._width, this._height);
 
         if (this._maximisedStack) {
-          const { width, height } = getElementWidthAndHeight(
-            this._containerElement,
-          );
-          setElementWidth(this._maximisedStack.element, width);
-          setElementHeight(this._maximisedStack.element, height);
+          setElementWidth(this._maximisedStack.element, this._width);
+          setElementHeight(this._maximisedStack.element, this._height);
           this._maximisedStack.updateSize(false);
         }
 
@@ -1163,13 +1172,12 @@ export abstract class LayoutManager extends EventEmitter {
       if (window === undefined) {
         const windowLeft = globalThis.screenX || globalThis.screenLeft;
         const windowTop = globalThis.screenY || globalThis.screenTop;
-        const offsetLeft = item.element.offsetLeft;
-        const offsetTop = item.element.offsetTop;
+        const rect = item.element.getBoundingClientRect();
         const { width, height } = getElementWidthAndHeight(item.element);
 
         window = {
-          left: windowLeft + offsetLeft,
-          top: windowTop + offsetTop,
+          left: windowLeft + rect.left,
+          top: windowTop + rect.top,
           width,
           height,
         };
@@ -1365,6 +1373,11 @@ export abstract class LayoutManager extends EventEmitter {
     element: HTMLElement,
     itemConfigCallback: () => ComponentItemConfig,
   ): DragSource {
+    (
+      this.layoutConfig.settings as {
+        constrainDragToContainer: boolean;
+      }
+    ).constrainDragToContainer = false;
     const dragSource = new DragSource(this, element, [], itemConfigCallback);
     this._dragSources.push(dragSource);
 
@@ -1752,11 +1765,15 @@ export abstract class LayoutManager extends EventEmitter {
         throw new UnexpectedNullError('LMMI13668');
       } else {
         stack.element.classList.remove(DomConstants.ClassName.Maximised);
-        this._maximisePlaceholder.insertAdjacentElement(
-          'afterend',
-          stack.element,
-        );
-        this._maximisePlaceholder.remove();
+        if (this._maximisePlaceholder.isConnected) {
+          this._maximisePlaceholder.insertAdjacentElement(
+            'afterend',
+            stack.element,
+          );
+          this._maximisePlaceholder.remove();
+        } else {
+          stack.parent.element.appendChild(stack.element);
+        }
         this.updateRootSize(true);
         this._maximisedStack = undefined;
         stack.off(

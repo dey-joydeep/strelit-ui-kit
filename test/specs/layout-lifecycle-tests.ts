@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { StrelitLayout } from '../../src';
+import { StrelitLayout, VirtualLayout } from '../../src';
 
 describe('layout lifecycle', () => {
   const layouts: StrelitLayout[] = [];
@@ -20,5 +20,17 @@ describe('layout lifecycle', () => {
 
     expect(layout.groundItem).toBe(groundItem);
     expect(layout.container.childElementCount).toBe(containerChildCount);
+  });
+
+  it('does not initialize after being destroyed before initialization', () => {
+    const layout = new VirtualLayout(undefined, undefined, undefined, true);
+    layouts.push(layout);
+
+    layout.destroy();
+    layout.init();
+
+    expect(layout.isDestroyed).toBe(true);
+    expect(layout.isInitialised).toBe(false);
+    expect(layout.groundItem).toBeUndefined();
   });
 });

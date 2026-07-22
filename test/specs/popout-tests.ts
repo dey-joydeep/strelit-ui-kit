@@ -4,6 +4,7 @@ import {
   StrelitLayout,
   LayoutConfig,
   ComponentItem,
+  resolveLayoutConfig,
 } from '../../src';
 
 describe('BrowserPopout functionality (item.popout())', function () {
@@ -187,5 +188,67 @@ describe('BrowserPopout functionality (item.popout())', function () {
     });
 
     expect(createPopoutSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('wraps a component root before restoring a popout without its parent', function () {
+    const closeWindow = vi.fn();
+    const childLayout = {
+      isInitialised: false,
+      saveLayout: () =>
+        resolveLayoutConfig({
+          root: {
+            type: 'component',
+            id: 'returned',
+            componentType: 'testComponent',
+          },
+        }),
+      closeWindow,
+    };
+    const mockWindow = {
+      closed: false,
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      __strelitInstance: childLayout,
+      document: {
+        createElement: () => document.createElement('div'),
+        body: document.createElement('body'),
+        head: document.createElement('head'),
+        write: vi.fn(),
+        close: vi.fn(),
+      },
+      location: { href: '' },
+    } as unknown as Window;
+    vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: [
+          {
+            type: 'component',
+            id: 'departing',
+            componentType: 'testComponent',
+          },
+        ],
+      },
+    });
+    const departing = layout.findFirstComponentItemById(
+      'departing',
+    ) as ComponentItem;
+    const popout = departing.popout();
+    layout.loadComponentAsRoot({
+      type: 'component',
+      id: 'host',
+      componentType: 'testComponent',
+    });
+
+    popout.popIn();
+
+    expect(layout.rootItem?.type).toBe('row');
+    expect(layout.rootItem?.contentItems.map((item) => item.id)).toEqual([
+      'host',
+      'returned',
+    ]);
+    expect(closeWindow).toHaveBeenCalledOnce();
   });
 });

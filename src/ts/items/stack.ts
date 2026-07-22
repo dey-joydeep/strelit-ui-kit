@@ -436,10 +436,15 @@ export class Stack extends ComponentParentableItem {
   /** Adds child. */
   override addChild(
     contentItem: ContentItem,
-    index?: number,
+    index?: number | null,
+    suspendResize = false,
     focus = false,
   ): number {
-    if (index !== undefined && index > this.contentItems.length) {
+    if (
+      index !== null &&
+      index !== undefined &&
+      index > this.contentItems.length
+    ) {
       index -= 1;
       throw new AssertError('SAC99728'); // undisplayChild() removed so this condition should no longer occur
     }
@@ -447,12 +452,14 @@ export class Stack extends ComponentParentableItem {
     if (!(contentItem instanceof ComponentItem)) {
       throw new AssertError('SACC88532'); // Stacks can only have Component children
     } else {
-      index = super.addChild(contentItem, index);
+      index = super.addChild(contentItem, index, suspendResize);
       this._childElementContainer.appendChild(contentItem.element);
       this._header.createTab(contentItem, index);
       this.setActiveComponentItem(contentItem, focus);
       this._header.updateTabSizes();
-      this.updateSize(false);
+      if (!suspendResize) {
+        this.updateSize(false);
+      }
       contentItem.container.setBaseLogicalZIndex();
       this._header.updateClosability();
       this.emitStateChangedEvent();
@@ -637,12 +644,12 @@ export class Stack extends ComponentParentableItem {
      */
     if (this._dropSegment === StackSegment.Body) {
       if (contentItem instanceof ComponentItem) {
-        this.addChild(contentItem, 0, true);
+        this.addChild(contentItem, 0, false, true);
       } else {
         const components = this.extractComponentItems(contentItem);
         for (let i = 0; i < components.length; i++) {
           this.detachExtractedComponentItem(components[i]);
-          this.addChild(components[i], i, true);
+          this.addChild(components[i], i, false, true);
         }
         this.removeEmptiedExtractedContainer(contentItem);
       }

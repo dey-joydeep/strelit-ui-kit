@@ -288,12 +288,12 @@ export class EventEmitter {
     eventName: K,
     ...args: EventEmitterEventParamsMap[K]
   ): void {
-    let subcriptions = this._subscriptionsMap.get(eventName);
+    let subscriptions = this._subscriptionsMap.get(eventName);
 
-    if (subcriptions !== undefined) {
-      subcriptions = subcriptions.slice();
-      for (let i = 0; i < subcriptions.length; i++) {
-        const subscription = subcriptions[i];
+    if (subscriptions !== undefined) {
+      subscriptions = subscriptions.slice();
+      for (let i = 0; i < subscriptions.length; i++) {
+        const subscription = subscriptions[i];
         subscription(...args);
       }
     }

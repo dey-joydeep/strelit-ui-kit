@@ -1,5 +1,6 @@
 import {
   createResolvedLayoutConfigCopy,
+  createResolvedRowOrColumnItemConfigDefault,
   minifyResolvedLayoutConfig,
   type ResolvedPopoutLayoutConfig,
   type ResolvedPopoutLayoutConfigWindow,
@@ -34,6 +35,8 @@ export class BrowserPopout extends EventEmitter {
   private _isInitialised: boolean;
   /** @internal */
   private _checkReadyInterval: ReturnType<typeof setTimeout> | undefined;
+  /** @internal */
+  private _isClosingOrPoppingIn = false;
 
   /**
    * @param _config - StrelitLayout item config
@@ -118,9 +121,10 @@ export class BrowserPopout extends EventEmitter {
 
   /** Performs the close operation. */
   close(): void {
-    if (this._popoutWindow === null) {
+    if (this._popoutWindow === null || this._isClosingOrPoppingIn) {
       return;
     }
+    this._isClosingOrPoppingIn = true;
     if (this.getStrelitInstance()) {
       this.getStrelitInstance().closeWindow();
     } else {
@@ -137,6 +141,25 @@ export class BrowserPopout extends EventEmitter {
    * parent isn't available anymore it falls back to the layout's topmost element
    */
   popIn(): void {
+    if (this._isClosingOrPoppingIn) {
+      return;
+    }
+    this._isClosingOrPoppingIn = true;
+    this.popInInternal();
+    if (this._popoutWindow !== null) {
+      if (this.getStrelitInstance()) {
+        this.getStrelitInstance().closeWindow();
+      } else {
+        try {
+          this.getWindow().close();
+        } catch {
+          //
+        }
+      }
+    }
+  }
+
+  private popInInternal(): void {
     let parentItem: ContentItem | undefined;
     let index =
       this._config.indexInParent === null
@@ -169,11 +192,24 @@ export class BrowserPopout extends EventEmitter {
      */
     if (parentItem === undefined) {
       if (groundItem.contentItems.length > 0) {
-        parentItem = groundItem.contentItems[0];
+        const rootItem = groundItem.contentItems[0];
+        if (rootItem.isComponent) {
+          groundItem.removeChild(rootItem, true);
+          parentItem = this._layoutManager.createAndInitContentItem(
+            createResolvedRowOrColumnItemConfigDefault('row'),
+            groundItem,
+          );
+          groundItem.addChild(parentItem);
+          parentItem.addChild(rootItem);
+          index = 1;
+        } else {
+          parentItem = rootItem;
+          index = 0;
+        }
       } else {
         parentItem = groundItem;
+        index = 0;
       }
-      index = 0;
     }
 
     const newContentItem = this._layoutManager.createAndInitContentItem(
@@ -182,11 +218,7 @@ export class BrowserPopout extends EventEmitter {
     );
 
     parentItem.addChild(newContentItem, index);
-    if (this._layoutManager.layoutConfig.settings.popInOnClose) {
-      this._onClose();
-    } else {
-      this.close();
-    }
+    this._onClose();
   }
 
   /**
@@ -242,8 +274,13 @@ export class BrowserPopout extends EventEmitter {
     this._popoutWindow.addEventListener(
       'beforeunload',
       () => {
+        if (this._isClosingOrPoppingIn) {
+          this._onClose();
+          return;
+        }
+        this._isClosingOrPoppingIn = true;
         if (this._layoutManager.layoutConfig.settings.popInOnClose) {
-          this.popIn();
+          this.popInInternal();
         } else {
           this._onClose();
         }

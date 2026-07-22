@@ -167,7 +167,7 @@ export class VirtualLayout extends LayoutManager {
 
   /** Initializes the layout after binding handlers have been assigned. */
   override init(): void {
-    if (this.isInitialised) {
+    if (this.isInitialised || this.isDestroyed) {
       return;
     }
 
@@ -178,9 +178,15 @@ export class VirtualLayout extends LayoutManager {
       !this._bindComponentEventHandlerPassedInConstructor &&
       (document.readyState === 'loading' || document.body === null)
     ) {
-      document.addEventListener('DOMContentLoaded', () => this.init(), {
-        passive: true,
-      });
+      document.addEventListener(
+        'DOMContentLoaded',
+        () => {
+          if (!this.isDestroyed) {
+            this.init();
+          }
+        },
+        { passive: true },
+      );
       return;
     }
 
@@ -196,11 +202,21 @@ export class VirtualLayout extends LayoutManager {
     ) {
       this._creationTimeoutPassed = true;
       if (document.readyState !== 'complete') {
-        window.addEventListener('load', () => this.init(), {
-          passive: true,
-        });
+        window.addEventListener(
+          'load',
+          () => {
+            if (!this.isDestroyed) {
+              this.init();
+            }
+          },
+          { passive: true },
+        );
       } else {
-        setTimeout(() => this.init(), 0);
+        setTimeout(() => {
+          if (!this.isDestroyed) {
+            this.init();
+          }
+        }, 0);
       }
       return;
     }

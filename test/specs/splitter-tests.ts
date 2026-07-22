@@ -52,4 +52,33 @@ describe('splitter limits', () => {
 
     expect(splitter.element.style.left).toBe('-100px');
   });
+
+  it('keeps relative sizes finite when both splitter sides have zero pixels', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('component', () => undefined);
+    layout.loadLayout({
+      root: {
+        type: 'row',
+        content: [
+          { type: 'component', componentType: 'component' },
+          { type: 'component', componentType: 'component' },
+        ],
+      },
+    });
+    const row = layout.rootItem as RowOrColumn;
+    for (const item of row.contentItems) {
+      item.element.style.width = '0px';
+    }
+    const internals = row as unknown as {
+      _splitter: unknown[];
+      _splitterPosition: number;
+      onSplitterDragStop(splitter: unknown): void;
+    };
+    internals._splitterPosition = 0;
+
+    internals.onSplitterDragStop(internals._splitter[0]);
+
+    expect(row.contentItems.map((item) => item.size)).toEqual([50, 50]);
+  });
 });
