@@ -15,7 +15,10 @@ class SubwindowTestLayout extends LayoutManager {
   initialisedDuringBind = false;
   saveLayoutDuringBindSucceeded = false;
 
-  constructor(config: LayoutConfig) {
+  constructor(
+    config: LayoutConfig,
+    private readonly failDuringBind = false,
+  ) {
     super({
       containerElement: document.createElement('div'),
       isSubWindow: true,
@@ -27,6 +30,9 @@ class SubwindowTestLayout extends LayoutManager {
     _container: ComponentContainer,
     _itemConfig: ResolvedComponentItemConfig,
   ): ComponentContainerBindableComponent {
+    if (this.failDuringBind) {
+      throw new Error('component factory failed');
+    }
     this.initialisedDuringBind = this.isInitialised;
     this.saveLayout();
     this.saveLayoutDuringBindSucceeded = true;
@@ -133,5 +139,85 @@ describe('layout lifecycle', () => {
       }),
     ).toThrow('Root Component cannot be maximised');
     expect(layout.rootItem).toBe(workingRoot);
+  });
+
+  it('preserves the working root when replacement creation fails', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('working', () => undefined);
+    layout.registerComponentFactoryFunction('failing', () => {
+      throw new Error('component factory failed');
+    });
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        id: 'working-root',
+        componentType: 'working',
+      },
+    });
+    const workingRoot = layout.rootItem;
+    const workingConfig = layout.layoutConfig;
+
+    expect(() =>
+      layout.loadLayout({
+        root: {
+          type: 'component',
+          id: 'failing-root',
+          componentType: 'failing',
+        },
+      }),
+    ).toThrow('component factory failed');
+    expect(layout.rootItem).toBe(workingRoot);
+    expect(layout.layoutConfig).toBe(workingConfig);
+  });
+
+  it('clears focus when a directly rooted component is destroyed', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadComponentAsRoot({
+      type: 'component',
+      id: 'focused-root',
+      componentType: 'panel',
+    });
+    layout.rootItem?.focus();
+
+    layout.loadLayout({});
+
+    expect(layout.focusedComponentItem).toBeUndefined();
+  });
+
+  it('destroys partial layout state when initialization fails', () => {
+    const layout = new SubwindowTestLayout(
+      {
+        root: { type: 'component', componentType: 'panel' },
+      },
+      true,
+    );
+    layouts.push(layout);
+
+    expect(() => layout.init()).toThrow('component factory failed');
+    expect(layout.isDestroyed).toBe(true);
+    expect(layout.isInitialised).toBe(false);
+    expect(layout.container.childElementCount).toBe(0);
+  });
+
+  it('restores body and document inline styles on destroy', () => {
+    const documentElement = document.documentElement;
+    documentElement.style.cssText =
+      'height: 42px; margin: 3px !important; padding: 4px; overflow: auto;';
+    document.body.style.cssText =
+      'height: 84px; margin: 5px; padding: 6px !important; overflow: scroll;';
+    const documentStyle = documentElement.style.cssText;
+    const bodyStyle = document.body.style.cssText;
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+
+    expect(documentElement.style.height).toBe('100%');
+    expect(document.body.style.overflow).toBe('clip');
+    layout.destroy();
+
+    expect(documentElement.style.cssText).toBe(documentStyle);
+    expect(document.body.style.cssText).toBe(bodyStyle);
   });
 });

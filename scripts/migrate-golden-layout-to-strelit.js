@@ -2725,20 +2725,24 @@ function addRequiredImports(content, requiredImports, preferRequire = false) {
   }
 
   let existingRequire;
-  function findExistingRequire(node) {
-    if (
-      existingRequire === undefined &&
-      ts.isVariableDeclaration(node) &&
-      ts.isObjectBindingPattern(node.name) &&
-      node.initializer !== undefined &&
-      getStaticRequireSpecifier(node.initializer) === 'strelit-ui-kit'
-    ) {
-      existingRequire = node.name;
-      return;
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) {
+      continue;
     }
-    ts.forEachChild(node, findExistingRequire);
+    const declaration = statement.declarationList.declarations.find(
+      (candidate) =>
+        ts.isObjectBindingPattern(candidate.name) &&
+        candidate.initializer !== undefined &&
+        getStaticRequireSpecifier(candidate.initializer) === 'strelit-ui-kit',
+    );
+    if (
+      declaration !== undefined &&
+      ts.isObjectBindingPattern(declaration.name)
+    ) {
+      existingRequire = declaration.name;
+      break;
+    }
   }
-  findExistingRequire(sourceFile);
   if (existingRequire !== undefined) {
     const bindings = content.slice(
       existingRequire.getStart(sourceFile) + 1,

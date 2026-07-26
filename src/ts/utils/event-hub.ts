@@ -179,12 +179,9 @@ export class EventHub extends EventEmitter {
   private propagateToThisAndSubtree(eventName: string, args: unknown[]) {
     this.emitUnknown(eventName, ...args);
     for (let i = 0; i < this._layoutManager.openPopouts.length; i++) {
+      let childLayout: LayoutManager | undefined;
       try {
-        const childLayout =
-          this._layoutManager.openPopouts[i].getStrelitInstance();
-        if (childLayout !== undefined) {
-          childLayout.eventHub.propagateToThisAndSubtree(eventName, args);
-        }
+        childLayout = this._layoutManager.openPopouts[i].getStrelitInstance();
       } catch (error) {
         if (
           !(error instanceof UnexpectedNullError) &&
@@ -193,6 +190,9 @@ export class EventHub extends EventEmitter {
           throw error;
         }
         // A newly opened child does not expose its layout until initialization.
+      }
+      if (childLayout !== undefined) {
+        childLayout.eventHub.propagateToThisAndSubtree(eventName, args);
       }
     }
   }

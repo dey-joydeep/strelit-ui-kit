@@ -953,6 +953,34 @@ const resolved = LayoutConfig.resolve(config);
     expect(cjs).toContain('const resolved = resolveLayoutConfig(config)');
   });
 
+  it('does not add generated bindings to a nested CommonJS require', () => {
+    const filePath = createFixture(
+      `
+function loadPanel() {
+  const { StrelitLayout } = require('strelit-ui-kit');
+  return StrelitLayout;
+}
+const { LayoutConfig } = require('golden-layout');
+const resolved = LayoutConfig.resolve(config);
+`,
+      'consumer.cjs',
+    );
+
+    migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain(
+      "const { LayoutConfig, resolveLayoutConfig } = require('strelit-ui-kit')",
+    );
+    expect(migrated).toContain(
+      "const { StrelitLayout } = require('strelit-ui-kit')",
+    );
+    expect(migrated).toContain('const resolved = resolveLayoutConfig(config)');
+    expect(migrated).not.toContain(
+      'const { StrelitLayout, resolveLayoutConfig }',
+    );
+  });
+
   it('does not rewrite item-like application objects without layout context', () => {
     const filePath = createFixture(`
 const widget = {

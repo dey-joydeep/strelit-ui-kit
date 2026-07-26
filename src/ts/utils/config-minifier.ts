@@ -71,7 +71,12 @@ export function translateObject(
     if (Object.prototype.hasOwnProperty.call(from, key)) {
       const translatedKey = minify ? minifyKey(key) : unminifyKey(key);
       const fromValue = from[key];
-      to[translatedKey] = translateValue(fromValue, minify);
+      Object.defineProperty(to, translatedKey, {
+        configurable: true,
+        enumerable: true,
+        value: translateValue(fromValue, minify),
+        writable: true,
+      });
     }
   }
 

@@ -459,4 +459,54 @@ describe('BrowserPopout functionality (item.popout())', function () {
       vi.useRealTimers();
     }
   });
+
+  it('continues close detection after a child-window reload', function () {
+    vi.useFakeTimers();
+    try {
+      let beforeUnload: (() => void) | undefined;
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn((name: string, listener: () => void) => {
+          if (name === 'beforeunload') {
+            beforeUnload = listener;
+          }
+        }),
+        removeEventListener: vi.fn(),
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        settings: { popInOnClose: false },
+        root: {
+          type: 'component',
+          id: 'reload-popout',
+          componentType: 'testComponent',
+        },
+      });
+      const departing = layout.findFirstComponentItemById(
+        'reload-popout',
+      ) as ComponentItem;
+      const popout = departing.popout();
+      const closed = vi.fn();
+      popout.on('closed', closed);
+
+      beforeUnload?.();
+      vi.advanceTimersByTime(50);
+      expect(closed).toHaveBeenCalledOnce();
+
+      (mockWindow as unknown as { closed: boolean }).closed = true;
+      vi.advanceTimersByTime(60);
+      expect(closed).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

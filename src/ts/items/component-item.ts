@@ -126,6 +126,9 @@ export class ComponentItem extends ContentItem {
     if (this._isDestroyed) {
       return;
     }
+    if (this._focused) {
+      this.layoutManager.setFocusedComponentItem(undefined);
+    }
     this._container.destroy();
     super.destroy();
   }

@@ -121,16 +121,17 @@ export class GroundItem extends ComponentParentableItem {
    * Internal only. To load a new layout with API, use {@link LayoutManager.loadLayout}
    */
   loadRoot(rootItemConfig: ResolvedRootItemConfig | undefined): void {
-    // Remove existing root if it exists
-    this.clearRoot();
-
-    if (rootItemConfig !== undefined) {
-      const rootContentItem = this.layoutManager.createAndInitContentItem(
-        rootItemConfig,
-        this,
-      );
-      this.addChild(rootContentItem, 0);
+    if (rootItemConfig === undefined) {
+      this.clearRoot();
+      return;
     }
+
+    const rootContentItem = this.layoutManager.createAndInitContentItem(
+      rootItemConfig,
+      this,
+    );
+    this.clearRoot();
+    this.addChild(rootContentItem, 0);
   }
 
   clearRoot(): void {
@@ -196,14 +197,18 @@ export class GroundItem extends ComponentParentableItem {
     if (resolvedItemConfig.maximised) {
       throw new Error('Root Component cannot be maximised');
     } else {
-      // Validate the replacement before removing the working root.
-      this.clearRoot();
       const rootContentItem = new ComponentItem(
         this.layoutManager,
         resolvedItemConfig,
         this,
       );
-      rootContentItem.init();
+      try {
+        rootContentItem.init();
+      } catch (error) {
+        rootContentItem.destroy();
+        throw error;
+      }
+      this.clearRoot();
       this.addChild(rootContentItem, 0);
     }
   }

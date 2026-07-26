@@ -422,7 +422,16 @@ export class BrowserPopout extends EventEmitter {
     }
     this._closeEventScheduled = true;
     this.clearCheckReadyInterval();
-    setTimeout(() => this.emit('closed'), 50);
+    setTimeout(() => {
+      this.emit('closed');
+      this._closeEventScheduled = false;
+      if (this._popoutWindow !== null && !this._popoutWindow.closed) {
+        // beforeunload also fires for reloads and navigation. Resume detection
+        // when reconciliation confirms that the window is still open.
+        this._isClosingOrPoppingIn = false;
+        this._checkReadyInterval = setInterval(() => this.checkReady(), 10);
+      }
+    }, 50);
   }
 
   private tryGetStrelitInstance(): LayoutManager | undefined {

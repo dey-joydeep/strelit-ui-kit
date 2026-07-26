@@ -99,4 +99,31 @@ describe('resolved layout config minifier', function () {
     expect(JSON.stringify(minified)).toContain('"~10":"1"');
     expect(unminifyResolvedLayoutConfig(minified)).toEqual(resolved);
   });
+
+  it('round-trips own __proto__ component-state properties', function () {
+    const componentState = JSON.parse(
+      '{"__proto__":{"polluted":true},"safe":"value"}',
+    ) as Record<string, unknown>;
+    const resolved = resolveLayoutConfig({
+      root: {
+        type: 'component',
+        componentType: 'panel',
+        componentState,
+      },
+    });
+
+    const roundTripped = unminifyResolvedLayoutConfig(
+      minifyResolvedLayoutConfig(resolved),
+    );
+    const root = roundTripped.root;
+    expect(root?.type).toBe('component');
+    if (root?.type !== 'component') {
+      throw new Error('Expected component root');
+    }
+    const state = root.componentState as Record<string, unknown>;
+    expect(Object.hasOwn(state, '__proto__')).toBe(true);
+    expect(state.__proto__).toEqual({ polluted: true });
+    expect(Object.getPrototypeOf(state)).toBe(Object.prototype);
+    expect(JSON.stringify(state)).toContain('"__proto__"');
+  });
 });
