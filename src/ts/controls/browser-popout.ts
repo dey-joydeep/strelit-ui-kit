@@ -171,7 +171,11 @@ export class BrowserPopout extends EventEmitter {
       return;
     }
 
-    const strelitInstanceLayoutConfig = this.getStrelitInstance().saveLayout();
+    const strelitInstance = this._popoutWindow?.__strelitInstance ?? undefined;
+    const strelitInstanceLayoutConfig =
+      strelitInstance !== undefined
+        ? strelitInstance.saveLayout()
+        : this._config;
     const copiedStrelitLayoutConfig = createResolvedLayoutConfigCopy(
       strelitInstanceLayoutConfig,
     );

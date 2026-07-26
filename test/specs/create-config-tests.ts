@@ -124,6 +124,22 @@ describe('Layout configuration resolution and defaults', function () {
     expect(reloaded.header.dock).toBe('Dock me');
   });
 
+  it('preserves item header dock labels through resolve and copy', () => {
+    const resolved = resolveLayoutConfig({
+      root: {
+        type: 'stack',
+        header: { dock: 'Dock this stack' },
+        content: [{ type: 'component', componentType: 'panel' }],
+      },
+    });
+    const copied = createResolvedLayoutConfigCopy(resolved);
+    const publicConfig = createLayoutConfigFromResolved(copied);
+
+    expect(resolved.root?.header?.dock).toBe('Dock this stack');
+    expect(copied.root?.header?.dock).toBe('Dock this stack');
+    expect(publicConfig.root?.header?.dock).toBe('Dock this stack');
+  });
+
   it('round-trips public popin labels for nested popouts', () => {
     const popout = {
       root: { type: 'component', componentType: 'panel' },

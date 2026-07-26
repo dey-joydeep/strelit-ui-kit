@@ -45,4 +45,37 @@ describe('DragListener iframe handling', () => {
     expect(second.style.getPropertyValue('pointer-events')).toBe('');
     listener.destroy();
   });
+
+  it('ends an active drag when the pointer is cancelled', () => {
+    const handle = document.createElement('div');
+    const iframe = document.createElement('iframe');
+    document.body.append(handle, iframe);
+    elements.push(handle, iframe);
+    const listener = new DragListener(handle, []);
+
+    handle.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        clientX: 0,
+        clientY: 0,
+        isPrimary: true,
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        clientX: 20,
+        clientY: 20,
+        isPrimary: true,
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointercancel', { bubbles: true, isPrimary: true }),
+    );
+
+    expect(listener.isTracking).toBe(false);
+    expect(document.body.classList.contains('lm_dragging')).toBe(false);
+    expect(iframe.style.getPropertyValue('pointer-events')).toBe('');
+    listener.destroy();
+  });
 });

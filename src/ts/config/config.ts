@@ -359,6 +359,7 @@ export function resolveHeaderedItemConfigHeader(
     const result: ResolvedHeaderedItemConfigHeader = {
       show: header.show,
       popout: header.popout,
+      dock: header.dock,
       maximise: header.maximise,
       close: header.close,
       minimise: header.minimise,

@@ -1,4 +1,5 @@
 import { UnreachableCaseError } from '../errors/internal-error';
+import { maximumConfigDepth, maximumConfigNodes } from './resource-limits';
 import { StyleConstants } from './style-constants';
 
 /** @internal */
@@ -134,7 +135,7 @@ export function isSerializableObject(
     !Array.isArray(value) &&
     value !== null &&
     typeof value === 'object' &&
-    isSerializableValueInternal(value, new WeakSet(), new WeakSet())
+    isSerializableValueInternal(value)
   );
 }
 
@@ -155,62 +156,78 @@ export function isSerializableRecord(
 export function isSerializableValue(
   value: unknown,
 ): value is SerializableValue {
-  return isSerializableValueInternal(value, new WeakSet(), new WeakSet());
+  return isSerializableValueInternal(value);
 }
 
 function isSerializableValueInternal(
   value: unknown,
-  seen: WeakSet<object>,
-  verified: WeakSet<object>,
 ): value is SerializableValue {
-  if (
-    value === null ||
-    typeof value === 'boolean' ||
-    typeof value === 'string'
-  ) {
-    return true;
-  }
-  if (typeof value === 'number') {
-    return Number.isFinite(value);
-  }
-  if (Array.isArray(value)) {
-    if (verified.has(value)) {
-      return true;
+  type Frame =
+    | {
+        readonly kind: 'value';
+        readonly value: unknown;
+        readonly depth: number;
+      }
+    | { readonly kind: 'exit'; readonly value: object };
+  const active = new WeakSet<object>();
+  const verified = new WeakSet<object>();
+  const stack: Frame[] = [{ kind: 'value', value, depth: 0 }];
+  let visitedNodes = 0;
+
+  while (stack.length > 0) {
+    const frame = stack.pop()!;
+    if (frame.kind === 'exit') {
+      active.delete(frame.value);
+      verified.add(frame.value);
+      continue;
     }
-    if (seen.has(value)) {
+    if (
+      frame.depth > maximumConfigDepth ||
+      ++visitedNodes > maximumConfigNodes
+    ) {
       return false;
     }
-    seen.add(value);
-    const result = value.every((entry) =>
-      isSerializableValueInternal(entry, seen, verified),
-    );
-    seen.delete(value);
-    if (result) {
-      verified.add(value);
+    const current = frame.value;
+    if (
+      current === null ||
+      typeof current === 'boolean' ||
+      typeof current === 'string'
+    ) {
+      continue;
     }
-    return result;
-  }
-  if (value !== null && typeof value === 'object') {
-    if (!hasPlainObjectPrototype(value)) {
+    if (typeof current === 'number') {
+      if (!Number.isFinite(current)) {
+        return false;
+      }
+      continue;
+    }
+    if (typeof current !== 'object') {
       return false;
     }
-    if (verified.has(value)) {
-      return true;
-    }
-    if (seen.has(value)) {
+    if (!Array.isArray(current) && !hasPlainObjectPrototype(current)) {
       return false;
     }
-    seen.add(value);
-    const result = Object.values(value).every((entry) =>
-      isSerializableValueInternal(entry, seen, verified),
-    );
-    seen.delete(value);
-    if (result) {
-      verified.add(value);
+    if (verified.has(current)) {
+      continue;
     }
-    return result;
+    if (active.has(current)) {
+      return false;
+    }
+    active.add(current);
+    stack.push({ kind: 'exit', value: current });
+    const entries = Array.isArray(current) ? current : Object.values(current);
+    if (entries.length > maximumConfigNodes - visitedNodes) {
+      return false;
+    }
+    for (let index = entries.length - 1; index >= 0; index--) {
+      stack.push({
+        kind: 'value',
+        value: entries[index],
+        depth: frame.depth + 1,
+      });
+    }
   }
-  return false;
+  return true;
 }
 
 function hasPlainObjectPrototype(value: object): boolean {

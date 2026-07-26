@@ -1,9 +1,41 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { StrelitLayout, VirtualLayout } from '../../src';
+import {
+  type ComponentContainer,
+  type ComponentContainerBindableComponent,
+  type ComponentContainerComponent,
+  type LayoutConfig,
+  LayoutManager,
+  type ResolvedComponentItemConfig,
+  StrelitLayout,
+  VirtualLayout,
+} from '../../src';
 import { eventHubChildEventName } from '../../src/ts/utils/event-hub';
 
+class SubwindowTestLayout extends LayoutManager {
+  constructor(config: LayoutConfig) {
+    super({
+      containerElement: document.createElement('div'),
+      isSubWindow: true,
+      subWindowLayoutConfig: config,
+    });
+  }
+
+  bindComponent(
+    _container: ComponentContainer,
+    _itemConfig: ResolvedComponentItemConfig,
+  ): ComponentContainerBindableComponent {
+    return { component: undefined, virtual: false };
+  }
+
+  unbindComponent(
+    _container: ComponentContainer,
+    _virtual: boolean,
+    _component: ComponentContainerComponent | undefined,
+  ): void {}
+}
+
 describe('layout lifecycle', () => {
-  const layouts: StrelitLayout[] = [];
+  const layouts: LayoutManager[] = [];
 
   afterEach(() => {
     for (const layout of layouts) {
@@ -38,5 +70,21 @@ describe('layout lifecycle', () => {
       eventHubChildEventName,
       expect.any(Function),
     );
+  });
+
+  it('applies maximised state after loading a subwindow root', () => {
+    const layout = new SubwindowTestLayout({
+      root: {
+        type: 'stack',
+        id: 'maximised-subwindow-stack',
+        maximised: true,
+        content: [{ type: 'component', componentType: 'panel' }],
+      },
+    });
+    layouts.push(layout);
+
+    layout.init();
+
+    expect(layout.maximisedStack?.id).toBe('maximised-subwindow-stack');
   });
 });

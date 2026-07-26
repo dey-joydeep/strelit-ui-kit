@@ -110,6 +110,7 @@ const nestedTypeReplacements = new Map([
   ['LayoutConfig.Settings', 'LayoutConfigSettings'],
   ['LayoutConfig.Dimensions', 'LayoutConfigDimensions'],
   ['LayoutConfig.Header', 'LayoutConfigHeader'],
+  ['LayoutConfig.Labels', 'LayoutConfigHeader'],
   ['ResolvedLayoutConfig.Settings', 'ResolvedLayoutConfigSettings'],
   ['ResolvedLayoutConfig.Dimensions', 'ResolvedLayoutConfigDimensions'],
   ['ResolvedLayoutConfig.Header', 'ResolvedLayoutConfigHeader'],
@@ -142,6 +143,10 @@ const nestedTypeReplacements = new Map([
   ['EventEmitter.BubblingEvent', 'EventEmitterBubblingEvent'],
   ['LayoutManager.Location', 'LayoutManagerLocation'],
   ['LayoutManager.LocationSelector', 'LayoutManagerLocationSelector'],
+  [
+    'LayoutManager.LocationSelector.TypeId',
+    'LayoutManagerLocationSelectorTypeId',
+  ],
   ['LayoutManager.ConstructorParameters', 'LayoutManagerConstructorParameters'],
   ['GoldenLayout.ComponentConstructor', 'StrelitLayoutComponentConstructor'],
   [

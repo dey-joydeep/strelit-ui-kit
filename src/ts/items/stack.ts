@@ -78,8 +78,10 @@ export type StackContentAreaDimensions = {
 /** Creates stack element. */
 export function createStackElement(document: Document): HTMLDivElement {
   const element = document.createElement('div');
-  element.classList.add(DomConstants.ClassName.Item);
-  element.classList.add(DomConstants.ClassName.Stack);
+  element.classList.add(
+    DomConstants.ClassName.Item,
+    DomConstants.ClassName.Stack,
+  );
   return element;
 }
 
@@ -109,14 +111,14 @@ export class Stack extends ComponentParentableItem {
   /** @internal */
   private readonly _initialWantMaximise: boolean;
   /** @internal */
-  private _initialActiveItemIndex: number;
+  private readonly _initialActiveItemIndex: number;
 
   /** @internal */
-  private _resizeListener = () => this.handleResize();
+  private readonly _resizeListener = () => this.handleResize();
   /** @internal */
-  private _maximisedListener = () => this.handleMaximised();
+  private readonly _maximisedListener = () => this.handleMaximised();
   /** @internal */
-  private _minimisedListener = () => this.handleMinimised();
+  private readonly _minimisedListener = () => this.handleMinimised();
 
   /** Gets the child element container. */
   get childElementContainer(): HTMLElement {
@@ -278,8 +280,8 @@ export class Stack extends ComponentParentableItem {
 
     this.updateNodeSize();
 
-    for (let i = 0; i < this.contentItems.length; i++) {
-      this._childElementContainer.appendChild(this.contentItems[i].element);
+    for (const contentItem of this.contentItems) {
+      this._childElementContainer.appendChild(contentItem.element);
     }
 
     super.init();
@@ -299,7 +301,7 @@ export class Stack extends ComponentParentableItem {
         for (let i = 0; i < contentItemCount; i++) {
           const contentItem = contentItems[i];
           if (!(contentItem instanceof ComponentItem)) {
-            throw new Error(
+            throw new TypeError(
               `Stack Content Item is not of type ComponentItem: ${i} id: ${this.id}`,
             );
           } else {
@@ -329,7 +331,7 @@ export class Stack extends ComponentParentableItem {
     suppressFocusEvent = false,
   ): void {
     if (this._activeComponentItem !== componentItem) {
-      if (this.contentItems.indexOf(componentItem) === -1) {
+      if (!this.contentItems.includes(componentItem)) {
         throw new Error('componentItem is not a child of this stack');
       } else {
         this.layoutManager.beginSizeInvalidation();
@@ -445,7 +447,6 @@ export class Stack extends ComponentParentableItem {
       index !== undefined &&
       index > this.contentItems.length
     ) {
-      index -= 1;
       throw new AssertError('SAC99728'); // undisplayChild() removed so this condition should no longer occur
     }
 
@@ -932,13 +933,9 @@ export class Stack extends ComponentParentableItem {
       }
       this._childElementContainer.style.width = numberToPixels(content.width);
       this._childElementContainer.style.height = numberToPixels(content.height);
-      for (let i = 0; i < this.contentItems.length; i++) {
-        this.contentItems[i].element.style.width = numberToPixels(
-          content.width,
-        );
-        this.contentItems[i].element.style.height = numberToPixels(
-          content.height,
-        );
+      for (const contentItem of this.contentItems) {
+        contentItem.element.style.width = numberToPixels(content.width);
+        contentItem.element.style.height = numberToPixels(content.height);
       }
       this.emit('resize');
       this.emitStateChangedEvent();
@@ -1066,7 +1063,6 @@ export class Stack extends ComponentParentableItem {
     }
 
     dropTargetIndicator.highlightArea(area, 0);
-    return;
   }
 
   /** @internal */
@@ -1195,16 +1191,15 @@ export class Stack extends ComponentParentableItem {
         this._headerConfig,
         show,
       );
-      if (result === undefined) {
-        result = {
-          show,
-          popout: undefined,
-          maximise: undefined,
-          close: undefined,
-          minimise: undefined,
-          tabDropdown: undefined,
-        };
-      }
+      result ??= {
+        show,
+        popout: undefined,
+        dock: undefined,
+        maximise: undefined,
+        close: undefined,
+        minimise: undefined,
+        tabDropdown: undefined,
+      };
       return result;
     }
   }

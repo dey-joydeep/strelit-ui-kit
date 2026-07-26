@@ -45,5 +45,6 @@ This runs:
 
 If your changes export new public interfaces, classes, or types from `src/ts/index.ts`:
 
-- `api-extractor` compares public exports against `api-extractor.json` and generates `temp/strelit-ui-kit.api.md`.
-- If `verify:ordered` fails due to API signature changes, run `npm run apitest:build` or `npx api-extractor run --local --verbose` to refresh the API snapshot report when intentional.
+- `api-extractor` compares public exports against the tracked `etc/strelit-ui-kit.api.md` report.
+- If an API signature change is intentional, run `npm run build:types` followed by `npm run api:report`, review the report diff, and commit it with the source change.
+- `npm run build` and `npm run verify:ordered` use production API Extractor mode and fail when the tracked report is stale.

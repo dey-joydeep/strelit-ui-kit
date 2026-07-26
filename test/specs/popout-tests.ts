@@ -103,6 +103,44 @@ describe('BrowserPopout functionality (item.popout())', function () {
     expect(layout.saveLayout().openPopouts[0].root?.id).toBe('pending');
   });
 
+  it('restores a pending popout when its window closes before initialization', function () {
+    let beforeUnload: (() => void) | undefined;
+    const mockWindow = {
+      closed: false,
+      close: vi.fn(),
+      addEventListener: vi.fn((name: string, listener: () => void) => {
+        if (name === 'beforeunload') {
+          beforeUnload = listener;
+        }
+      }),
+      removeEventListener: vi.fn(),
+      document: {
+        createElement: () => document.createElement('div'),
+        body: document.createElement('body'),
+        head: document.createElement('head'),
+        write: vi.fn(),
+        close: vi.fn(),
+      },
+      location: { href: '' },
+    } as unknown as Window;
+    vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+    layout.loadLayout({
+      settings: { popInOnClose: true },
+      root: {
+        type: 'component',
+        id: 'pending-close',
+        componentType: 'testComponent',
+      },
+    });
+    const item = layout.findFirstComponentItemById(
+      'pending-close',
+    ) as ComponentItem;
+    item.popout();
+
+    expect(() => beforeUnload?.()).not.toThrow();
+    expect(layout.findFirstComponentItemById('pending-close')).toBeDefined();
+  });
+
   it('keeps the item in the layout when popup creation is blocked', function () {
     vi.spyOn(window, 'open').mockReturnValue(null);
     const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem');

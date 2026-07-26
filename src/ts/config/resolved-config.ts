@@ -167,6 +167,8 @@ export interface ResolvedHeaderedItemConfigHeader {
   readonly show: false | Side | undefined;
   /** The popout. */
   readonly popout: false | string | undefined;
+  /** The dock. */
+  readonly dock: false | string | undefined;
   /** The maximise. */
   readonly maximise: false | string | undefined;
   /** The close. */
@@ -191,6 +193,7 @@ export function createResolvedHeaderedItemConfigHeaderCopy(
     return {
       show: show ?? original.show,
       popout: original.popout,
+      dock: original.dock,
       close: original.close,
       maximise: original.maximise,
       minimise: original.minimise,

@@ -2,3 +2,5 @@
 *
 # Except this file
 !.gitignore
+# And the API Extractor compatibility report
+!strelit-ui-kit.api.md

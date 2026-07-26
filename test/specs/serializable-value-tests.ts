@@ -48,4 +48,15 @@ describe('serializable value guards', () => {
     });
     expect(isSerializableValue(nullPrototype)).toBe(true);
   });
+
+  it('returns false instead of overflowing on excessive input', () => {
+    let deep: Record<string, unknown> = { leaf: true };
+    for (let index = 0; index < 130; index++) {
+      deep = { next: deep };
+    }
+    const broad = Array.from({ length: 10_001 }, () => null);
+
+    expect(isSerializableValue(deep)).toBe(false);
+    expect(isSerializableValue(broad)).toBe(false);
+  });
 });

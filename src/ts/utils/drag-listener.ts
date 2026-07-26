@@ -10,11 +10,11 @@ export interface DragListenerPointerCoordinates {
 /** @internal */
 export class DragListener extends EventEmitter {
   private _timeout: ReturnType<typeof setTimeout> | undefined;
-  private _allowableTargets: HTMLElement[];
-  private _oDocument: Document;
-  private _eBody: HTMLElement;
-  private _nDelay: number;
-  private _nDistance: number;
+  private readonly _allowableTargets: HTMLElement[];
+  private readonly _oDocument: Document;
+  private readonly _eBody: HTMLElement;
+  private readonly _nDelay: number;
+  private readonly _nDistance: number;
   private _nX: number;
   private _nY: number;
   private _nOriginalX: number;
@@ -27,14 +27,17 @@ export class DragListener extends EventEmitter {
     priority: string;
   }[] = [];
 
-  private _pointerDownEventListener = (ev: PointerEvent) =>
+  private readonly _pointerDownEventListener = (ev: PointerEvent) =>
     this.onPointerDown(ev);
-  private _pointerMoveEventListener = (ev: PointerEvent) =>
+  private readonly _pointerMoveEventListener = (ev: PointerEvent) =>
     this.onPointerMove(ev);
-  private _pointerUpEventListener = (ev: PointerEvent) => this.onPointerUp(ev);
+  private readonly _pointerUpEventListener = (ev: PointerEvent) =>
+    this.onPointerUp(ev);
+  private readonly _pointerCancelEventListener = (ev: PointerEvent) =>
+    this.onPointerUp(ev);
 
   constructor(
-    private _eElement: HTMLElement,
+    private readonly _eElement: HTMLElement,
     extraAllowableChildTargets: HTMLElement[],
   ) {
     super();
@@ -91,7 +94,7 @@ export class DragListener extends EventEmitter {
   }
 
   cancelDrag(): void {
-    this.processDragStop(undefined);
+    this.processDragStop();
   }
 
   private onPointerDown(oEvent: PointerEvent) {
@@ -115,6 +118,11 @@ export class DragListener extends EventEmitter {
     this._oDocument.addEventListener(
       'pointerup',
       this._pointerUpEventListener,
+      { passive: true },
+    );
+    this._oDocument.addEventListener(
+      'pointercancel',
+      this._pointerCancelEventListener,
       { passive: true },
     );
     this._pointerTracking = true;
@@ -187,6 +195,10 @@ export class DragListener extends EventEmitter {
       this._oDocument.removeEventListener(
         'pointerup',
         this._pointerUpEventListener,
+      );
+      this._oDocument.removeEventListener(
+        'pointercancel',
+        this._pointerCancelEventListener,
       );
       this._pointerTracking = false;
     }

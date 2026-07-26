@@ -122,4 +122,22 @@ describe('Component State Saving & Initial State', function () {
       reorderEnabled: false,
     });
   });
+
+  it('uses the layout reorder default for replacement components', function () {
+    layout.registerComponentFactoryFunction('oldComponent', () => undefined);
+    layout.registerComponentFactoryFunction('newComponent', () => undefined);
+    layout.loadLayout({
+      settings: { reorderEnabled: false },
+      root: { type: 'component', componentType: 'oldComponent' },
+    });
+
+    const item = layout.getComponentItemsByType('oldComponent')[0];
+    item.container.replaceComponent({
+      type: 'component',
+      componentType: 'newComponent',
+    });
+
+    expect(item.reorderEnabled).toBe(false);
+    expect(item.tab.reorderEnabled).toBe(false);
+  });
 });

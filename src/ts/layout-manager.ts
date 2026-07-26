@@ -312,10 +312,10 @@ export abstract class LayoutManager extends EventEmitter {
   /** @internal */
   private _maximisedStack: Stack | undefined;
   /** @internal */
-  private _maximisePlaceholder =
+  private readonly _maximisePlaceholder =
     createLayoutManagerMaximisePlaceElement(document);
   /** @internal */
-  private _tabDropPlaceholder =
+  private readonly _tabDropPlaceholder =
     createLayoutManagerTabDropPlaceholderElement(document);
   /** @internal */
   private _dragSources: DragSource[] = [];
@@ -326,7 +326,7 @@ export abstract class LayoutManager extends EventEmitter {
   /** @internal */
   private _contentItemTreeCreationDepth = 0;
   /** @internal */
-  private _eventHub = new EventHub(this);
+  private readonly _eventHub = new EventHub(this);
   /** @internal */
   private _width: number | null = null;
   /** @internal */
@@ -334,7 +334,7 @@ export abstract class LayoutManager extends EventEmitter {
   /** @internal */
   private _focusedComponentItem: ComponentItem | undefined;
   /** @internal */
-  private _virtualSizedContainers: ComponentContainer[] = [];
+  private readonly _virtualSizedContainers: ComponentContainer[] = [];
   /** @internal */
   private _virtualSizedContainerAddingBeginCount = 0;
   /** @internal */
@@ -343,15 +343,15 @@ export abstract class LayoutManager extends EventEmitter {
   protected _subWindowLayoutConfig: LayoutConfig | undefined;
 
   /** @internal */
-  private _resizeObserver = new ResizeObserver(() =>
+  private readonly _resizeObserver = new ResizeObserver(() =>
     this.handleContainerResize(),
   );
   /** @internal */
-  private _windowBeforeUnloadListener = () => this.onBeforeUnload();
+  private readonly _windowBeforeUnloadListener = () => this.onBeforeUnload();
   /** @internal */
   private _windowBeforeUnloadListening = false;
   /** @internal */
-  private _maximisedStackBeforeDestroyedListener = (
+  private readonly _maximisedStackBeforeDestroyedListener = (
     ev: EventEmitterBubblingEvent,
   ) => this.cleanupBeforeMaximisedStackDestroyed(ev);
 
@@ -564,17 +564,15 @@ export abstract class LayoutManager extends EventEmitter {
     );
     this._groundItem.init();
 
+    if (subWindowRootConfig !== undefined) {
+      this._groundItem.loadRoot(subWindowRootConfig);
+    }
     this.checkLoadedLayoutMaximiseItem();
 
     this._resizeObserver.observe(this._containerElement);
     this._isInitialised = true;
     this.adjustColumnsResponsive();
     this.emit('initialised');
-
-    if (subWindowRootConfig !== undefined) {
-      // must be SubWindow
-      this._groundItem.loadRoot(subWindowRootConfig);
-    }
   }
 
   /**
@@ -587,14 +585,13 @@ export abstract class LayoutManager extends EventEmitter {
     } else {
       if (this._groundItem === undefined) {
         throw new UnexpectedUndefinedError('LMLL11119');
-      } else {
-        this.closeAllOpenPopouts();
-        this.layoutConfig = resolveLayoutConfig(layoutConfig);
-        this.createSubWindows(); // still needs to be tested
-        this._groundItem.loadRoot(this.layoutConfig.root);
-        this.checkLoadedLayoutMaximiseItem();
-        this.adjustColumnsResponsive();
       }
+      this.closeAllOpenPopouts();
+      this.layoutConfig = resolveLayoutConfig(layoutConfig);
+      this.createSubWindows(); // still needs to be tested
+      this._groundItem.loadRoot(this.layoutConfig.root);
+      this.checkLoadedLayoutMaximiseItem();
+      this.adjustColumnsResponsive();
     }
   }
 
@@ -617,42 +614,39 @@ export abstract class LayoutManager extends EventEmitter {
        */
       if (this._groundItem === undefined) {
         throw new UnexpectedUndefinedError('LMTC18244');
-      } else {
-        const groundContent = this._groundItem.calculateConfigContent();
-
-        let rootItemConfig: ResolvedRootItemConfig | undefined;
-        if (groundContent.length !== 1) {
-          rootItemConfig = undefined;
-        } else {
-          rootItemConfig = groundContent[0];
-        }
-
-        /*
-         * Retrieve config for subwindows
-         */
-        this.reconcilePopoutWindows();
-        const openPopouts: ResolvedPopoutLayoutConfig[] = [];
-        for (let i = 0; i < this._openPopouts.length; i++) {
-          openPopouts.push(this._openPopouts[i].toConfig());
-        }
-
-        const config: ResolvedLayoutConfig = {
-          root: rootItemConfig,
-          openPopouts,
-          settings: createResolvedLayoutConfigSettingsCopy(
-            this.layoutConfig.settings,
-          ),
-          dimensions: createResolvedLayoutConfigDimensionsCopy(
-            this.layoutConfig.dimensions,
-          ),
-          header: createResolvedLayoutConfigHeaderCopy(
-            this.layoutConfig.header,
-          ),
-          resolved: true,
-        };
-
-        return config;
       }
+      const groundContent = this._groundItem.calculateConfigContent();
+
+      let rootItemConfig: ResolvedRootItemConfig | undefined;
+      if (groundContent.length !== 1) {
+        rootItemConfig = undefined;
+      } else {
+        rootItemConfig = groundContent[0];
+      }
+
+      /*
+       * Retrieve config for subwindows
+       */
+      this.reconcilePopoutWindows();
+      const openPopouts: ResolvedPopoutLayoutConfig[] = [];
+      for (const element of this._openPopouts) {
+        openPopouts.push(element.toConfig());
+      }
+
+      const config: ResolvedLayoutConfig = {
+        root: rootItemConfig,
+        openPopouts,
+        settings: createResolvedLayoutConfigSettingsCopy(
+          this.layoutConfig.settings,
+        ),
+        dimensions: createResolvedLayoutConfigDimensionsCopy(
+          this.layoutConfig.dimensions,
+        ),
+        header: createResolvedLayoutConfigHeaderCopy(this.layoutConfig.header),
+        resolved: true,
+      };
+
+      return config;
     }
   }
 
@@ -849,10 +843,8 @@ export abstract class LayoutManager extends EventEmitter {
     if (this._groundItem === undefined) {
       throw new Error('Cannot add component before init');
     } else {
-      if (locationSelectors === undefined) {
-        // defaultLocationSelectors should always find a location
-        locationSelectors = layoutManagerDefaultLocationSelectors;
-      }
+      // defaultLocationSelectors should always find a location
+      locationSelectors ??= layoutManagerDefaultLocationSelectors;
 
       const location = this.findFirstLocation(locationSelectors, itemConfig);
       if (location === undefined) {
@@ -1161,9 +1153,7 @@ export abstract class LayoutManager extends EventEmitter {
     if (parent === null) {
       throw new UnexpectedNullError('LMCPFCI00834');
     } else {
-      if (indexInParent === undefined) {
-        indexInParent = parent.contentItems.indexOf(child);
-      }
+      indexInParent ??= parent.contentItems.indexOf(child);
 
       if (parentId !== null) {
         parent.addPopInParentId(parentId);
@@ -1342,8 +1332,8 @@ export abstract class LayoutManager extends EventEmitter {
    */
 
   closeAllOpenPopouts() {
-    for (let i = 0; i < this._openPopouts.length; i++) {
-      this._openPopouts[i].close();
+    for (const element of this._openPopouts) {
+      element.close();
     }
 
     this._openPopouts.length = 0;
@@ -1795,11 +1785,11 @@ export abstract class LayoutManager extends EventEmitter {
   private reconcilePopoutWindows() {
     const openPopouts: BrowserPopout[] = [];
 
-    for (let i = 0; i < this._openPopouts.length; i++) {
-      if (!this._openPopouts[i].getWindow().closed) {
-        openPopouts.push(this._openPopouts[i]);
+    for (const element of this._openPopouts) {
+      if (!element.getWindow().closed) {
+        openPopouts.push(element);
       } else {
-        this.emit('windowClosed', this._openPopouts[i]);
+        this.emit('windowClosed', element);
       }
     }
 
@@ -1828,8 +1818,8 @@ export abstract class LayoutManager extends EventEmitter {
    * @internal
    */
   private createSubWindows() {
-    for (let i = 0; i < this.layoutConfig.openPopouts.length; i++) {
-      const popoutConfig = this.layoutConfig.openPopouts[i];
+    for (const element of this.layoutConfig.openPopouts) {
+      const popoutConfig = element;
       this.createPopoutFromPopoutLayoutConfig(popoutConfig);
     }
   }
@@ -2244,17 +2234,13 @@ export abstract class LayoutManager extends EventEmitter {
       case LayoutManagerLocationSelectorTypeId.Empty: {
         if (this._groundItem === undefined) {
           throw new UnexpectedUndefinedError('LMFLRIF18244');
-        } else {
-          if (this.rootItem !== undefined) {
-            return undefined;
-          } else {
-            if (selectorIndex === undefined || selectorIndex === 0)
-              return { parentItem: this._groundItem, index: 0 };
-            else {
-              return undefined;
-            }
-          }
         }
+        if (this.rootItem !== undefined) {
+          return undefined;
+        }
+        if (selectorIndex === undefined || selectorIndex === 0)
+          return { parentItem: this._groundItem, index: 0 };
+        return undefined;
       }
       case LayoutManagerLocationSelectorTypeId.Root: {
         if (this._groundItem === undefined) {

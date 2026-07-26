@@ -94,10 +94,12 @@ afterEach(() => {
 describe('Golden Layout source migration', () => {
   it('migrates branded and namespace APIs without changing general lm_ selectors', () => {
     const filePath = createFixture(`
-import GoldenLayout, { LayoutConfig, SizeUnitEnum } from 'golden-layout';
+import GoldenLayout, { LayoutConfig, LayoutManager, SizeUnitEnum } from 'golden-layout';
 import 'golden-layout/dist/css/goldenlayout-base.css';
 
 type Settings = LayoutConfig.Settings;
+type Labels = LayoutConfig.Labels;
+const rootSelector = LayoutManager.LocationSelector.TypeId.Root;
 const resolved = LayoutConfig.resolve(config);
 const unit = SizeUnitEnum.tryParse('%');
 const selectors = 'lm_header lm_goldenlayout';
@@ -114,6 +116,8 @@ layout.updateSize(800, 600);
     );
     expect(migrated).toContain('StrelitLayout');
     expect(migrated).toContain('LayoutConfigSettings');
+    expect(migrated).toContain('LayoutConfigHeader');
+    expect(migrated).toContain('LayoutManagerLocationSelectorTypeId.Root');
     expect(migrated).toContain('resolveLayoutConfig(config)');
     expect(migrated).toContain("tryParseSizeUnit('%')");
     expect(migrated).toContain("'lm_header lm_strelit'");

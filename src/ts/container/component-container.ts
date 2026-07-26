@@ -1,7 +1,7 @@
 import {
   type ComponentItemConfig,
   isComponentItemConfig,
-  resolveComponentItemConfig,
+  resolveItemConfigWithComponentReorderEnabledDefault,
 } from '../config/config';
 import { ResolvedComponentItemConfig } from '../config/resolved-config';
 import { Tab } from '../controls/tab';
@@ -319,8 +319,7 @@ export class ComponentContainer extends EventEmitter {
             (ancestorChildItem.size - percentage) /
             (ancestorItem.contentItems.length - 1);
 
-          for (let i = 0; i < ancestorItem.contentItems.length; i++) {
-            const ancestorItemContentItem = ancestorItem.contentItems[i];
+          for (const ancestorItemContentItem of ancestorItem.contentItems) {
             if (ancestorItemContentItem === ancestorChildItem) {
               ancestorItemContentItem.size = percentage;
             } else {
@@ -353,7 +352,10 @@ export class ComponentContainer extends EventEmitter {
     if (!isComponentItemConfig(itemConfig)) {
       throw new Error('ReplaceComponent not passed a component ItemConfig');
     } else {
-      const config = resolveComponentItemConfig(itemConfig);
+      const config = resolveItemConfigWithComponentReorderEnabledDefault(
+        itemConfig,
+        this.layoutManager.layoutConfig.settings.reorderEnabled,
+      ) as ResolvedComponentItemConfig;
       const previousInitialState = this._initialState;
       const previousState = this._state;
       const previousComponentType = this._componentType;
@@ -445,22 +447,18 @@ export class ComponentContainer extends EventEmitter {
           this.setSizeToNodeSize(this._width, this._height, true);
           this.emitShow();
         }
-      } else {
-        if (
-          this._isShownWithZeroDimensions &&
-          (this._height !== 0 || this._width !== 0)
-        ) {
-          this._isShownWithZeroDimensions = false;
-          this.setSizeToNodeSize(this._width, this._height, true);
-          this.emitShow();
-        }
-      }
-    } else {
-      if (this._visible) {
-        this._visible = false;
+      } else if (
+        this._isShownWithZeroDimensions &&
+        (this._height !== 0 || this._width !== 0)
+      ) {
         this._isShownWithZeroDimensions = false;
-        this.emitHide();
+        this.setSizeToNodeSize(this._width, this._height, true);
+        this.emitShow();
       }
+    } else if (this._visible) {
+      this._visible = false;
+      this._isShownWithZeroDimensions = false;
+      this.emitHide();
     }
   }
 
