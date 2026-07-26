@@ -12,6 +12,9 @@ import {
 import { eventHubChildEventName } from '../../src/ts/utils/event-hub';
 
 class SubwindowTestLayout extends LayoutManager {
+  initialisedDuringBind = false;
+  saveLayoutDuringBindSucceeded = false;
+
   constructor(config: LayoutConfig) {
     super({
       containerElement: document.createElement('div'),
@@ -24,6 +27,9 @@ class SubwindowTestLayout extends LayoutManager {
     _container: ComponentContainer,
     _itemConfig: ResolvedComponentItemConfig,
   ): ComponentContainerBindableComponent {
+    this.initialisedDuringBind = this.isInitialised;
+    this.saveLayout();
+    this.saveLayoutDuringBindSucceeded = true;
     return { component: undefined, virtual: false };
   }
 
@@ -86,5 +92,46 @@ describe('layout lifecycle', () => {
     layout.init();
 
     expect(layout.maximisedStack?.id).toBe('maximised-subwindow-stack');
+    expect(layout.initialisedDuringBind).toBe(true);
+    expect(layout.saveLayoutDuringBindSucceeded).toBe(true);
+  });
+
+  it('focuses a component installed directly as the root', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadComponentAsRoot({
+      type: 'component',
+      id: 'root-component',
+      componentType: 'panel',
+    });
+    const root = layout.rootItem;
+    expect(root?.isComponent).toBe(true);
+
+    root?.focus();
+
+    expect(layout.focusedComponentItem).toBe(root);
+    expect(layout.focusedComponentItem?.focused).toBe(true);
+  });
+
+  it('validates a root component before removing the current layout', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadComponentAsRoot({
+      type: 'component',
+      id: 'working-root',
+      componentType: 'panel',
+    });
+    const workingRoot = layout.rootItem;
+
+    expect(() =>
+      layout.loadComponentAsRoot({
+        type: 'component',
+        componentType: 'panel',
+        maximised: true,
+      }),
+    ).toThrow('Root Component cannot be maximised');
+    expect(layout.rootItem).toBe(workingRoot);
   });
 });

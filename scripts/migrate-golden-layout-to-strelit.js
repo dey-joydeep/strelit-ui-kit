@@ -1003,50 +1003,10 @@ function isLayoutItemObjectLiteral(objectLiteral) {
   );
 }
 
-function hasLayoutConfigTypeContext(objectLiteral) {
-  const parent = objectLiteral.parent;
-  const typeNode =
-    ts.isVariableDeclaration(parent) && parent.initializer === objectLiteral
-      ? parent.type
-      : (ts.isAsExpression(parent) || ts.isSatisfiesExpression(parent)) &&
-          parent.expression === objectLiteral
-        ? parent.type
-        : undefined;
-  return (
-    typeNode !== undefined &&
-    /^(?:[A-Za-z_$][\w$]*\.)*(?:LayoutConfig|PopoutLayoutConfig)$/.test(
-      typeNode.getText(),
-    )
-  );
-}
-
-function isLayoutConfigObjectLiteral(objectLiteral) {
-  if (hasLayoutConfigTypeContext(objectLiteral)) {
-    return true;
-  }
-
-  const rootProperty = findObjectProperty(objectLiteral, 'root');
-  if (
-    rootProperty !== undefined &&
-    ts.isObjectLiteralExpression(rootProperty.initializer) &&
-    isLayoutItemObjectLiteral(rootProperty.initializer)
-  ) {
-    return true;
-  }
-
-  const contentProperty = findObjectProperty(objectLiteral, 'content');
-  return (
-    contentProperty !== undefined &&
-    ts.isArrayLiteralExpression(contentProperty.initializer) &&
-    contentProperty.initializer.elements.some(
-      (element) =>
-        ts.isObjectLiteralExpression(element) &&
-        isLayoutItemObjectLiteral(element),
-    )
-  );
-}
-
-function isLayoutDimensionsObjectLiteral(objectLiteral) {
+function isLayoutDimensionsObjectLiteral(
+  objectLiteral,
+  isProvenLayoutConfigObjectLiteral,
+) {
   const parent = objectLiteral.parent;
   return (
     ts.isPropertyAssignment(parent) &&
@@ -1054,12 +1014,16 @@ function isLayoutDimensionsObjectLiteral(objectLiteral) {
     ((ts.isIdentifier(parent.name) && parent.name.text === 'dimensions') ||
       (ts.isStringLiteral(parent.name) && parent.name.text === 'dimensions')) &&
     ts.isObjectLiteralExpression(parent.parent) &&
-    isLayoutConfigObjectLiteral(parent.parent)
+    isProvenLayoutConfigObjectLiteral(parent.parent)
   );
 }
 
 /** Returns a modern size-property replacement for an unambiguous numeric field. */
-function getNumericPropertyMigration(node) {
+function getNumericPropertyMigration(
+  node,
+  isProvenLayoutItemObjectLiteral,
+  isProvenLayoutConfigObjectLiteral,
+) {
   if (
     !ts.isPropertyAssignment(node) ||
     !ts.isObjectLiteralExpression(node.parent) ||
@@ -1078,7 +1042,12 @@ function getNumericPropertyMigration(node) {
   }
 
   if (propertyName === 'minItemWidth' || propertyName === 'minItemHeight') {
-    if (!isLayoutDimensionsObjectLiteral(node.parent)) {
+    if (
+      !isLayoutDimensionsObjectLiteral(
+        node.parent,
+        isProvenLayoutConfigObjectLiteral,
+      )
+    ) {
       return undefined;
     }
     const axis = propertyName === 'minItemWidth' ? 'Width' : 'Height';
@@ -1089,7 +1058,7 @@ function getNumericPropertyMigration(node) {
     return `${target}: '${node.initializer.text}px'`;
   }
 
-  if (!isLayoutItemObjectLiteral(node.parent)) {
+  if (!isProvenLayoutItemObjectLiteral(node.parent)) {
     return undefined;
   }
 
@@ -1375,6 +1344,193 @@ function transformSourceContent(content, filePath) {
     goldenLayoutBindings,
   );
   const sourceManualReviews = new Set(manualOnly.reviews);
+  const layoutConfigTypeNames = new Set([
+    'LayoutConfig',
+    'PopoutLayoutConfig',
+    'ResolvedLayoutConfig',
+    'ResolvedPopoutLayoutConfig',
+  ]);
+  const layoutItemTypeNames = new Set([
+    'ItemConfig',
+    'RootItemConfig',
+    'RowOrColumnItemConfig',
+    'StackItemConfig',
+    'ComponentItemConfig',
+    'ResolvedItemConfig',
+    'ResolvedRootItemConfig',
+    'ResolvedRowOrColumnItemConfig',
+    'ResolvedStackItemConfig',
+    'ResolvedComponentItemConfig',
+  ]);
+
+  function getImportedExportName(identifier) {
+    const symbol = checker.getSymbolAtLocation(identifier);
+    const goldenBinding =
+      symbol === undefined ? undefined : goldenLayoutBindings.get(symbol);
+    if (goldenBinding !== undefined) {
+      return goldenBinding.exportName;
+    }
+    for (const declaration of symbol?.declarations ?? []) {
+      if (
+        ts.isImportSpecifier(declaration) &&
+        ts.isNamedImports(declaration.parent) &&
+        ts.isImportClause(declaration.parent.parent) &&
+        ts.isImportDeclaration(declaration.parent.parent.parent) &&
+        ts.isStringLiteral(declaration.parent.parent.parent.moduleSpecifier) &&
+        declaration.parent.parent.parent.moduleSpecifier.text ===
+          'strelit-ui-kit'
+      ) {
+        return declaration.propertyName?.text ?? declaration.name.text;
+      }
+    }
+    return undefined;
+  }
+
+  function getContextTypeNode(objectLiteral) {
+    const parent = objectLiteral.parent;
+    if (
+      ts.isVariableDeclaration(parent) &&
+      parent.initializer === objectLiteral
+    ) {
+      return parent.type;
+    }
+    if (
+      (ts.isAsExpression(parent) || ts.isSatisfiesExpression(parent)) &&
+      parent.expression === objectLiteral
+    ) {
+      return parent.type;
+    }
+    return undefined;
+  }
+
+  function hasImportedTypeContext(objectLiteral, expectedNames) {
+    const typeNode = getContextTypeNode(objectLiteral);
+    if (typeNode === undefined || !ts.isTypeReferenceNode(typeNode)) {
+      return false;
+    }
+    const root = getRootIdentifier(typeNode.typeName);
+    const exportName =
+      root === undefined ? undefined : getImportedExportName(root);
+    return exportName !== undefined && expectedNames.has(exportName);
+  }
+
+  function usesImportedItemType(objectLiteral) {
+    const typeProperty = findObjectProperty(objectLiteral, 'type');
+    if (
+      typeProperty === undefined ||
+      !ts.isPropertyAccessExpression(typeProperty.initializer)
+    ) {
+      return false;
+    }
+    const root = getRootIdentifier(typeProperty.initializer);
+    return root !== undefined && getImportedExportName(root) === 'ItemType';
+  }
+
+  function isRecognizedLayoutCallArgument(objectLiteral, methodNames) {
+    let expression = objectLiteral;
+    while (
+      (ts.isAsExpression(expression.parent) ||
+        ts.isSatisfiesExpression(expression.parent) ||
+        ts.isParenthesizedExpression(expression.parent)) &&
+      expression.parent.expression === expression
+    ) {
+      expression = expression.parent;
+    }
+    const call = expression.parent;
+    if (
+      !ts.isCallExpression(call) ||
+      !call.arguments.includes(expression) ||
+      !ts.isPropertyAccessExpression(call.expression) ||
+      !methodNames.has(call.expression.name.text)
+    ) {
+      return false;
+    }
+    const receiver = call.expression.expression;
+    const receiverSymbol = ts.isIdentifier(receiver)
+      ? checker.getSymbolAtLocation(receiver)
+      : undefined;
+    return (
+      receiverSymbol !== undefined &&
+      receiverKinds.get(receiverSymbol) === 'layout'
+    );
+  }
+
+  function isOpenPopoutOfProvenConfig(objectLiteral) {
+    const array = objectLiteral.parent;
+    if (!ts.isArrayLiteralExpression(array)) {
+      return false;
+    }
+    const property = array.parent;
+    if (
+      !ts.isPropertyAssignment(property) ||
+      property.initializer !== array ||
+      !(
+        (ts.isIdentifier(property.name) &&
+          property.name.text === 'openPopouts') ||
+        (ts.isStringLiteral(property.name) &&
+          property.name.text === 'openPopouts')
+      ) ||
+      !ts.isObjectLiteralExpression(property.parent)
+    ) {
+      return false;
+    }
+    return isProvenLayoutConfigObjectLiteral(property.parent);
+  }
+
+  function isProvenLayoutConfigObjectLiteral(objectLiteral) {
+    return (
+      hasImportedTypeContext(objectLiteral, layoutConfigTypeNames) ||
+      isOpenPopoutOfProvenConfig(objectLiteral) ||
+      isRecognizedLayoutCallArgument(
+        objectLiteral,
+        new Set(['loadLayout', 'createPopoutFromPopoutLayoutConfig']),
+      )
+    );
+  }
+
+  function isProvenLayoutItemObjectLiteral(objectLiteral) {
+    if (!isLayoutItemObjectLiteral(objectLiteral)) {
+      return false;
+    }
+    if (
+      hasImportedTypeContext(objectLiteral, layoutItemTypeNames) ||
+      usesImportedItemType(objectLiteral) ||
+      isRecognizedLayoutCallArgument(
+        objectLiteral,
+        new Set(['addItem', 'loadComponentAsRoot']),
+      )
+    ) {
+      return true;
+    }
+
+    const parent = objectLiteral.parent;
+    if (
+      ts.isPropertyAssignment(parent) &&
+      parent.initializer === objectLiteral &&
+      ((ts.isIdentifier(parent.name) && parent.name.text === 'root') ||
+        (ts.isStringLiteral(parent.name) && parent.name.text === 'root')) &&
+      ts.isObjectLiteralExpression(parent.parent)
+    ) {
+      return isProvenLayoutConfigObjectLiteral(parent.parent);
+    }
+    if (ts.isArrayLiteralExpression(parent)) {
+      const property = parent.parent;
+      if (
+        ts.isPropertyAssignment(property) &&
+        property.initializer === parent &&
+        ((ts.isIdentifier(property.name) && property.name.text === 'content') ||
+          (ts.isStringLiteral(property.name) &&
+            property.name.text === 'content')) &&
+        ts.isObjectLiteralExpression(property.parent)
+      ) {
+        return (
+          isProvenLayoutItemObjectLiteral(property.parent) ||
+          isProvenLayoutConfigObjectLiteral(property.parent)
+        );
+      }
+    }
+    return false;
+  }
 
   function resolveImportName(exportName) {
     const importedName = importedNames.get(exportName);
@@ -1426,7 +1582,11 @@ function transformSourceContent(content, filePath) {
     if (manualOnly.nodes.has(node)) {
       return;
     }
-    const numericPropertyMigration = getNumericPropertyMigration(node);
+    const numericPropertyMigration = getNumericPropertyMigration(
+      node,
+      isProvenLayoutItemObjectLiteral,
+      isProvenLayoutConfigObjectLiteral,
+    );
     if (numericPropertyMigration !== undefined) {
       addEdit(node, numericPropertyMigration, 'numeric layout item sizing');
       return;
@@ -1902,7 +2062,7 @@ function transformSourceContent(content, filePath) {
       ts.isStringLiteral(node.initializer) &&
       node.initializer.text === 'react-component' &&
       ts.isObjectLiteralExpression(node.parent) &&
-      isLayoutItemObjectLiteral(node.parent)
+      isProvenLayoutItemObjectLiteral(node.parent)
     ) {
       const quote = node.initializer.getText(sourceFile)[0];
       addEdit(
@@ -1921,7 +2081,7 @@ function transformSourceContent(content, filePath) {
         (ts.isStringLiteral(node.name) &&
           node.name.text === 'componentName')) &&
       ts.isObjectLiteralExpression(node.parent) &&
-      isLayoutItemObjectLiteral(node.parent)
+      isProvenLayoutItemObjectLiteral(node.parent)
     ) {
       const migratedName = ts.isStringLiteral(node.name)
         ? `${node.name.getText(sourceFile)[0]}componentType${node.name.getText(sourceFile)[0]}`
@@ -1933,7 +2093,7 @@ function transformSourceContent(content, filePath) {
       ts.isShorthandPropertyAssignment(node) &&
       node.name.text === 'componentName' &&
       ts.isObjectLiteralExpression(node.parent) &&
-      isLayoutItemObjectLiteral(node.parent)
+      isProvenLayoutItemObjectLiteral(node.parent)
     ) {
       addEdit(node, 'componentType: componentName', 'config property');
     }
@@ -2520,46 +2680,84 @@ function addRequiredImports(content, requiredImports, preferRequire = false) {
   const names = entries.map(([exportName, localName]) =>
     exportName === localName ? exportName : `${exportName} as ${localName}`,
   );
-  const importPattern =
-    /import\s*\{([\s\S]*?)\}\s*from\s*(['"])strelit-ui-kit\2;?/;
-  if (importPattern.test(content)) {
-    return content.replace(importPattern, (match, bindings, quote) => {
-      const missing = entries
-        .filter(
-          ([exportName, localName]) =>
-            !hasRequiredBinding(bindings, exportName, localName, 'as'),
-        )
-        .map(([exportName, localName]) =>
-          exportName === localName
-            ? exportName
-            : `${exportName} as ${localName}`,
-        );
-      if (missing.length === 0) {
-        return match;
-      }
-      const separator = bindings.trim() === '' ? '' : ', ';
-      return `import { ${bindings.trim()}${separator}${missing.join(', ')} } from ${quote}strelit-ui-kit${quote};`;
-    });
+  const sourceFile = ts.createSourceFile(
+    'required-imports.ts',
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const existingImport = sourceFile.statements.find(
+    (statement) =>
+      ts.isImportDeclaration(statement) &&
+      ts.isStringLiteral(statement.moduleSpecifier) &&
+      statement.moduleSpecifier.text === 'strelit-ui-kit' &&
+      statement.importClause !== undefined &&
+      !statement.importClause.isTypeOnly &&
+      statement.importClause.namedBindings !== undefined &&
+      ts.isNamedImports(statement.importClause.namedBindings),
+  );
+  if (
+    existingImport !== undefined &&
+    ts.isImportDeclaration(existingImport) &&
+    existingImport.importClause?.namedBindings !== undefined &&
+    ts.isNamedImports(existingImport.importClause.namedBindings)
+  ) {
+    const namedBindings = existingImport.importClause.namedBindings;
+    const bindings = content.slice(
+      namedBindings.getStart(sourceFile) + 1,
+      namedBindings.getEnd() - 1,
+    );
+    const missing = entries
+      .filter(
+        ([exportName, localName]) =>
+          !hasRequiredBinding(bindings, exportName, localName, 'as'),
+      )
+      .map(([exportName, localName]) =>
+        exportName === localName ? exportName : `${exportName} as ${localName}`,
+      );
+    if (missing.length === 0) {
+      return content;
+    }
+    const separator = bindings.trim() === '' ? '' : ', ';
+    const replacement = `{ ${bindings.trim()}${separator}${missing.join(', ')} }`;
+    return `${content.slice(0, namedBindings.getStart(sourceFile))}${replacement}${content.slice(namedBindings.getEnd())}`;
   }
 
-  const requirePattern =
-    /const\s*\{([\s\S]*?)\}\s*=\s*require\((['"])strelit-ui-kit\2\);?/;
-  if (requirePattern.test(content)) {
-    return content.replace(requirePattern, (match, bindings, quote) => {
-      const missing = entries
-        .filter(
-          ([exportName, localName]) =>
-            !hasRequiredBinding(bindings, exportName, localName, ':'),
-        )
-        .map(([exportName, localName]) =>
-          exportName === localName ? exportName : `${exportName}: ${localName}`,
-        );
-      if (missing.length === 0) {
-        return match;
-      }
-      const separator = bindings.trim() === '' ? '' : ', ';
-      return `const { ${bindings.trim()}${separator}${missing.join(', ')} } = require(${quote}strelit-ui-kit${quote});`;
-    });
+  let existingRequire;
+  function findExistingRequire(node) {
+    if (
+      existingRequire === undefined &&
+      ts.isVariableDeclaration(node) &&
+      ts.isObjectBindingPattern(node.name) &&
+      node.initializer !== undefined &&
+      getStaticRequireSpecifier(node.initializer) === 'strelit-ui-kit'
+    ) {
+      existingRequire = node.name;
+      return;
+    }
+    ts.forEachChild(node, findExistingRequire);
+  }
+  findExistingRequire(sourceFile);
+  if (existingRequire !== undefined) {
+    const bindings = content.slice(
+      existingRequire.getStart(sourceFile) + 1,
+      existingRequire.getEnd() - 1,
+    );
+    const missing = entries
+      .filter(
+        ([exportName, localName]) =>
+          !hasRequiredBinding(bindings, exportName, localName, ':'),
+      )
+      .map(([exportName, localName]) =>
+        exportName === localName ? exportName : `${exportName}: ${localName}`,
+      );
+    if (missing.length === 0) {
+      return content;
+    }
+    const separator = bindings.trim() === '' ? '' : ', ';
+    const replacement = `{ ${bindings.trim()}${separator}${missing.join(', ')} }`;
+    return `${content.slice(0, existingRequire.getStart(sourceFile))}${replacement}${content.slice(existingRequire.getEnd())}`;
   }
 
   if (preferRequire) {

@@ -97,10 +97,13 @@ describe('BrowserPopout functionality (item.popout())', function () {
       },
     });
     const item = layout.findFirstComponentItemById('pending') as ComponentItem;
-    item.popout();
+    const popout = item.popout();
 
     expect(() => layout.saveLayout()).not.toThrow();
     expect(layout.saveLayout().openPopouts[0].root?.id).toBe('pending');
+    expect(() => popout.getStrelitInstance()).toThrow(
+      'UnexpectedUndefined: BPGGI24694',
+    );
   });
 
   it('restores a pending popout when its window closes before initialization', function () {
@@ -318,5 +321,142 @@ describe('BrowserPopout functionality (item.popout())', function () {
       'returned',
     ]);
     expect(closeWindow).toHaveBeenCalledOnce();
+  });
+
+  it('wraps a stack root before restoring another stack without its parent', function () {
+    const closeWindow = vi.fn();
+    const childLayout = {
+      isInitialised: false,
+      saveLayout: () =>
+        resolveLayoutConfig({
+          root: {
+            type: 'stack',
+            id: 'returned-stack',
+            content: [
+              {
+                type: 'component',
+                id: 'returned-component',
+                componentType: 'testComponent',
+              },
+            ],
+          },
+        }),
+      closeWindow,
+    };
+    const mockWindow = {
+      closed: false,
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      __strelitInstance: childLayout,
+      document: {
+        createElement: () => document.createElement('div'),
+        body: document.createElement('body'),
+        head: document.createElement('head'),
+        write: vi.fn(),
+        close: vi.fn(),
+      },
+      location: { href: '' },
+    } as unknown as Window;
+    vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        id: 'departing-stack',
+        content: [
+          {
+            type: 'component',
+            id: 'departing-component',
+            componentType: 'testComponent',
+          },
+        ],
+      },
+    });
+    const departing = layout.findFirstComponentItemById(
+      'departing-component',
+    ) as ComponentItem;
+    const popout = departing.popout();
+    layout.groundItem?.loadRoot(
+      resolveLayoutConfig({
+        root: {
+          type: 'stack',
+          id: 'host-stack',
+          content: [
+            {
+              type: 'component',
+              componentType: 'testComponent',
+            },
+          ],
+        },
+      }).root,
+    );
+
+    popout.popIn();
+
+    expect(layout.rootItem?.type).toBe('row');
+    expect(layout.rootItem?.contentItems.map((item) => item.id)).toEqual([
+      'host-stack',
+      'returned-stack',
+    ]);
+    expect(closeWindow).toHaveBeenCalledOnce();
+  });
+
+  it('emits closed once when manual pop-in also unloads the child', function () {
+    vi.useFakeTimers();
+    try {
+      let beforeUnload: (() => void) | undefined;
+      const childLayout = {
+        isInitialised: false,
+        saveLayout: () =>
+          resolveLayoutConfig({
+            root: {
+              type: 'component',
+              id: 'returned-once',
+              componentType: 'testComponent',
+            },
+          }),
+        closeWindow: () => beforeUnload?.(),
+      };
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn((name: string, listener: () => void) => {
+          if (name === 'beforeunload') {
+            beforeUnload = listener;
+          }
+        }),
+        removeEventListener: vi.fn(),
+        __strelitInstance: childLayout,
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        root: {
+          type: 'component',
+          id: 'departing-once',
+          componentType: 'testComponent',
+        },
+      });
+      const departing = layout.findFirstComponentItemById(
+        'departing-once',
+      ) as ComponentItem;
+      const popout = departing.popout();
+      const closed = vi.fn();
+      popout.on('closed', closed);
+
+      popout.popIn();
+      vi.advanceTimersByTime(50);
+
+      expect(closed).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

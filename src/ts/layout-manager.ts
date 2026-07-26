@@ -564,13 +564,18 @@ export abstract class LayoutManager extends EventEmitter {
     );
     this._groundItem.init();
 
-    if (subWindowRootConfig !== undefined) {
-      this._groundItem.loadRoot(subWindowRootConfig);
+    this._isInitialised = true;
+    try {
+      if (subWindowRootConfig !== undefined) {
+        this._groundItem.loadRoot(subWindowRootConfig);
+      }
+      this.checkLoadedLayoutMaximiseItem();
+    } catch (error) {
+      this._isInitialised = false;
+      throw error;
     }
-    this.checkLoadedLayoutMaximiseItem();
 
     this._resizeObserver.observe(this._containerElement);
-    this._isInitialised = true;
     this.adjustColumnsResponsive();
     this.emit('initialised');
   }

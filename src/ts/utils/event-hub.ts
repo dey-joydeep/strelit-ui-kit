@@ -1,3 +1,7 @@
+import {
+  UnexpectedNullError,
+  UnexpectedUndefinedError,
+} from '../errors/internal-error';
 import { LayoutManager } from '../layout-manager';
 import {
   EventEmitter,
@@ -175,11 +179,20 @@ export class EventHub extends EventEmitter {
   private propagateToThisAndSubtree(eventName: string, args: unknown[]) {
     this.emitUnknown(eventName, ...args);
     for (let i = 0; i < this._layoutManager.openPopouts.length; i++) {
-      const childLayout =
-        this._layoutManager.openPopouts[i].getStrelitInstance();
-
-      if (childLayout) {
-        childLayout.eventHub.propagateToThisAndSubtree(eventName, args);
+      try {
+        const childLayout =
+          this._layoutManager.openPopouts[i].getStrelitInstance();
+        if (childLayout !== undefined) {
+          childLayout.eventHub.propagateToThisAndSubtree(eventName, args);
+        }
+      } catch (error) {
+        if (
+          !(error instanceof UnexpectedNullError) &&
+          !(error instanceof UnexpectedUndefinedError)
+        ) {
+          throw error;
+        }
+        // A newly opened child does not expose its layout until initialization.
       }
     }
   }

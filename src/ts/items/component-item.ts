@@ -269,7 +269,7 @@ export class ComponentItem extends ContentItem {
   /** @internal */
   setFocused(suppressEvent: boolean): void {
     this._focused = true;
-    this.tab.setFocused();
+    this._tab?.setFocused();
     if (!suppressEvent) {
       this.emitBaseBubblingEvent('focus');
     }
@@ -287,7 +287,7 @@ export class ComponentItem extends ContentItem {
   /** @internal */
   setBlurred(suppressEvent: boolean): void {
     this._focused = false;
-    this.tab.setBlurred();
+    this._tab?.setBlurred();
     if (!suppressEvent) {
       this.emitBaseBubblingEvent('blur');
     }

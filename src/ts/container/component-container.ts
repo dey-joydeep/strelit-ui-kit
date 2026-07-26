@@ -312,12 +312,23 @@ export class ComponentContainer extends EventEmitter {
           throw new UnexpectedNullError('ICSSCS11194');
         } else {
           const newSize = direction === 'height' ? height : width;
+          const siblingCount = ancestorItem.contentItems.length - 1;
+          if (
+            currentSize <= 0 ||
+            ancestorChildItem.size <= 0 ||
+            siblingCount <= 0 ||
+            newSize < 0 ||
+            !Number.isFinite(newSize)
+          ) {
+            return false;
+          }
 
-          const totalPixel = currentSize * (1 / (ancestorChildItem.size / 100));
+          const totalPixel = currentSize * (100 / ancestorChildItem.size);
           const percentage = (newSize / totalPixel) * 100;
-          const delta =
-            (ancestorChildItem.size - percentage) /
-            (ancestorItem.contentItems.length - 1);
+          if (!Number.isFinite(percentage)) {
+            return false;
+          }
+          const delta = (ancestorChildItem.size - percentage) / siblingCount;
 
           for (const ancestorItemContentItem of ancestorItem.contentItems) {
             if (ancestorItemContentItem === ancestorChildItem) {

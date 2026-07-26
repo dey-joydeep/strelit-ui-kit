@@ -14,7 +14,7 @@ import {
 import { ContentItem } from '../items/content-item';
 import { LayoutManager } from '../layout-manager';
 import { EventEmitter } from '../utils/event-emitter';
-import { Rect } from '../utils/types';
+import { ItemType, Rect } from '../utils/types';
 import { getErrorMessage, getUniqueId } from '../utils/utils';
 
 /**
@@ -38,6 +38,8 @@ export class BrowserPopout extends EventEmitter {
   private _checkReadyInterval: ReturnType<typeof setTimeout> | undefined;
   /** @internal */
   private _isClosingOrPoppingIn = false;
+  /** @internal */
+  private _closeEventScheduled = false;
 
   /**
    * @param _config - StrelitLayout item config
@@ -105,7 +107,11 @@ export class BrowserPopout extends EventEmitter {
     if (this._popoutWindow === null) {
       throw new UnexpectedNullError('BPGGI24693');
     }
-    return this._popoutWindow.__strelitInstance;
+    const strelitInstance = this._popoutWindow.__strelitInstance;
+    if (strelitInstance === undefined) {
+      throw new UnexpectedUndefinedError('BPGGI24694');
+    }
+    return strelitInstance;
   }
 
   /**
@@ -126,8 +132,9 @@ export class BrowserPopout extends EventEmitter {
       return;
     }
     this._isClosingOrPoppingIn = true;
-    if (this.getStrelitInstance()) {
-      this.getStrelitInstance().closeWindow();
+    const strelitInstance = this.tryGetStrelitInstance();
+    if (strelitInstance !== undefined) {
+      strelitInstance.closeWindow();
     } else {
       try {
         this.getWindow().close();
@@ -148,8 +155,9 @@ export class BrowserPopout extends EventEmitter {
     this._isClosingOrPoppingIn = true;
     this.popInInternal();
     if (this._popoutWindow !== null) {
-      if (this.getStrelitInstance()) {
-        this.getStrelitInstance().closeWindow();
+      const strelitInstance = this.tryGetStrelitInstance();
+      if (strelitInstance !== undefined) {
+        strelitInstance.closeWindow();
       } else {
         try {
           this.getWindow().close();
@@ -198,7 +206,11 @@ export class BrowserPopout extends EventEmitter {
     if (parentItem === undefined) {
       if (groundItem.contentItems.length > 0) {
         const rootItem = groundItem.contentItems[0];
-        if (rootItem.isComponent) {
+        const rootCanAcceptReturnedItem =
+          rootItem.isRow ||
+          rootItem.isColumn ||
+          (rootItem.isStack && copiedRoot.type === ItemType.component);
+        if (!rootCanAcceptReturnedItem) {
           groundItem.removeChild(rootItem, true);
           parentItem = this._layoutManager.createAndInitContentItem(
             createResolvedRowOrColumnItemConfigDefault('row'),
@@ -405,6 +417,15 @@ export class BrowserPopout extends EventEmitter {
    * @internal
    */
   private _onClose() {
+    if (this._closeEventScheduled) {
+      return;
+    }
+    this._closeEventScheduled = true;
+    this.clearCheckReadyInterval();
     setTimeout(() => this.emit('closed'), 50);
+  }
+
+  private tryGetStrelitInstance(): LayoutManager | undefined {
+    return this._popoutWindow?.__strelitInstance ?? undefined;
   }
 }

@@ -187,9 +187,6 @@ export class GroundItem extends ComponentParentableItem {
   }
 
   loadComponentAsRoot(itemConfig: ComponentItemConfig): void {
-    // Remove existing root if it exists
-    this.clearRoot();
-
     const resolvedItemConfig =
       resolveItemConfigWithComponentReorderEnabledDefault(
         itemConfig,
@@ -199,6 +196,8 @@ export class GroundItem extends ComponentParentableItem {
     if (resolvedItemConfig.maximised) {
       throw new Error('Root Component cannot be maximised');
     } else {
+      // Validate the replacement before removing the working root.
+      this.clearRoot();
       const rootContentItem = new ComponentItem(
         this.layoutManager,
         resolvedItemConfig,
@@ -414,11 +413,11 @@ export class GroundItem extends ComponentParentableItem {
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   setActiveComponentItem(
-    _item: ComponentItem,
+    item: ComponentItem,
     _focus: boolean,
-    _suppressFocusEvent: boolean,
+    suppressFocusEvent: boolean,
   ): void {
-    // only applicable if ComponentItem is root and then it always has focus
+    this.layoutManager.setFocusedComponentItem(item, suppressFocusEvent);
   }
 
   private updateNodeSize(): void {

@@ -880,9 +880,14 @@ function resolve(resolveLayoutConfig: (value: unknown) => unknown) {
 
   it('scopes config-property rewrites and preserves string escapes', () => {
     const filePath = createFixture(String.raw`
+import type { ComponentItemConfig } from 'golden-layout';
 const metadata = { type: 'button', componentName: 'Button' };
 const config = { type: 'component', componentName: 'editor' };
 const shorthandConfig = { type: 'component', componentName };
+const layoutItem: ComponentItemConfig = {
+  type: 'component',
+  componentName: 'editor',
+};
 const selector = "line\nlm_goldenlayout";
 const mixed = 'xlm_goldenlayout lm_goldenlayout';
 const escapedFirst = '\x6cm_goldenlayout';
@@ -895,15 +900,79 @@ const misaligned = '\x41lm_goldenlayout \u006cm_goldenlayout';
     const migrated = readFileSync(filePath, 'utf8');
 
     expect(migrated).toContain("type: 'button', componentName: 'Button'");
-    expect(migrated).toContain("type: 'component', componentType: 'editor'");
     expect(migrated).toContain(
-      "type: 'component', componentType: componentName",
+      "const config = { type: 'component', componentName: 'editor' }",
     );
+    expect(migrated).toContain(
+      "const shorthandConfig = { type: 'component', componentName }",
+    );
+    expect(migrated).toContain('const layoutItem: ComponentItemConfig');
+    expect(migrated).toContain("componentType: 'editor'");
     expect(migrated).toContain(String.raw`"line\nlm_strelit"`);
     expect(migrated).toContain("'xlm_goldenlayout lm_strelit'");
     expect(migrated.match(/"lm_strelit"/g)).toHaveLength(2);
     expect(migrated).toContain('" lm_strelit"');
     expect(migrated).toContain('"Alm_goldenlayout lm_strelit"');
+  });
+
+  it('adds helpers only to the matching Strelit import declaration', () => {
+    const esmPath = createFixture(`
+import { unrelated } from './other';
+const metadata = { closingBrace: '}' };
+import { StrelitLayout } from 'strelit-ui-kit';
+import { LayoutConfig } from 'golden-layout';
+const resolved = LayoutConfig.resolve(config);
+`);
+    const cjsPath = createFixture(
+      `
+const { unrelated } = require('./other');
+const metadata = { closingBrace: '}' };
+const { StrelitLayout } = require('strelit-ui-kit');
+const { LayoutConfig } = require('golden-layout');
+const resolved = LayoutConfig.resolve(config);
+`,
+      'consumer.cjs',
+    );
+
+    migrate(esmPath);
+    migrate(cjsPath);
+    const esm = readFileSync(esmPath, 'utf8');
+    const cjs = readFileSync(cjsPath, 'utf8');
+
+    expect(esm).toContain("import { unrelated } from './other'");
+    expect(esm).toContain("const metadata = { closingBrace: '}' }");
+    expect(esm).toContain(
+      "import { StrelitLayout, resolveLayoutConfig } from 'strelit-ui-kit'",
+    );
+    expect(esm).toContain('const resolved = resolveLayoutConfig(config)');
+    expect(cjs).toContain("const { unrelated } = require('./other')");
+    expect(cjs).toContain("const metadata = { closingBrace: '}' }");
+    expect(cjs).toContain(
+      "const { StrelitLayout, resolveLayoutConfig } = require('strelit-ui-kit')",
+    );
+    expect(cjs).toContain('const resolved = resolveLayoutConfig(config)');
+  });
+
+  it('does not rewrite item-like application objects without layout context', () => {
+    const filePath = createFixture(`
+const widget = {
+  type: WidgetType.component,
+  componentName: 'editor',
+  width: 300,
+  minWidth: 120,
+};
+`);
+
+    migrate(filePath);
+
+    expect(readFileSync(filePath, 'utf8')).toContain(`
+const widget = {
+  type: WidgetType.component,
+  componentName: 'editor',
+  width: 300,
+  minWidth: 120,
+};
+`);
   });
 
   it('preserves JSX attribute text while migrating selector tokens', () => {
@@ -952,8 +1021,12 @@ const misaligned = '\x41lm_goldenlayout \u006cm_goldenlayout';
 
   it('migrates react-component source items atomically', () => {
     const filePath = createFixture(`
-const item = { type: 'react-component', componentName: 'editor' };
-const layout = {
+import type { ComponentItemConfig, LayoutConfig } from 'golden-layout';
+const item: ComponentItemConfig = {
+  type: 'react-component',
+  componentName: 'editor',
+};
+const layout: LayoutConfig = {
   root: { type: "react-component", componentName: 'preview' },
 };
 `);

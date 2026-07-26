@@ -222,7 +222,12 @@ export function deepCloneValue(value: unknown): unknown {
 
     const [key, entry] = frame.entries[frame.index++];
     const child = createClone(entry, frame.depth + 1);
-    frame.target[key as keyof typeof frame.target] = child.clone as never;
+    Object.defineProperty(frame.target, key, {
+      configurable: true,
+      enumerable: true,
+      value: child.clone,
+      writable: true,
+    });
     if (child.frame !== undefined) {
       stack.push(child.frame);
     }

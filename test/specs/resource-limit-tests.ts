@@ -72,6 +72,22 @@ describe('configuration resource limits', () => {
     );
   });
 
+  it('preserves __proto__ as an own data property without changing prototypes', () => {
+    const source = JSON.parse(
+      '{"__proto__":{"polluted":true},"safe":1}',
+    ) as Record<string, SerializableValue>;
+
+    const clone = deepCloneValue(source) as Record<string, SerializableValue>;
+
+    expect(Object.hasOwn(clone, '__proto__')).toBe(true);
+    expect(clone.__proto__).toEqual({ polluted: true });
+    expect(Object.getPrototypeOf(clone)).toBe(Object.prototype);
+    expect(
+      (clone as Record<string, SerializableValue> & { polluted?: boolean })
+        .polluted,
+    ).toBeUndefined();
+  });
+
   it('rejects values outside the serializable-value contract', () => {
     class CustomState {
       value = true;
