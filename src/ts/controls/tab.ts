@@ -128,6 +128,9 @@ export class Tab {
     this._element.addEventListener('click', this._tabClickListener, {
       passive: true,
     });
+    this._element.addEventListener('auxclick', this._tabClickListener, {
+      passive: true,
+    });
     this._element.addEventListener('touchstart', this._tabTouchStartListener, {
       passive: true,
     });
@@ -181,6 +184,7 @@ export class Tab {
     this._focusEvent = undefined;
     this._dragStartEvent = undefined;
     this._element.removeEventListener('click', this._tabClickListener);
+    this._element.removeEventListener('auxclick', this._tabClickListener);
     this._element.removeEventListener(
       'touchstart',
       this._tabTouchStartListener,

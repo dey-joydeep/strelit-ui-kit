@@ -57,7 +57,6 @@ export function createVirtualLayoutManagerConstructorParameters(
     if (windowConfigStr === null) {
       throw new Error('Missing Strelit popout configuration');
     }
-    localStorage.removeItem(windowConfigKey);
     let minifiedWindowConfig: MinifiedLayoutConfig;
     try {
       minifiedWindowConfig = JSON.parse(

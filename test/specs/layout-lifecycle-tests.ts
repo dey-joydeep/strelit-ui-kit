@@ -171,6 +171,97 @@ describe('layout lifecycle', () => {
     expect(layout.layoutConfig).toBe(workingConfig);
   });
 
+  it('does not create incoming popouts when replacement root creation fails', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('working', () => undefined);
+    layout.registerComponentFactoryFunction('failing', () => {
+      throw new Error('component factory failed');
+    });
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        id: 'working-root',
+        componentType: 'working',
+      },
+    });
+    const workingRoot = layout.rootItem;
+    const openWindow = vi.spyOn(globalThis, 'open');
+
+    expect(() =>
+      layout.loadLayout({
+        root: {
+          type: 'component',
+          componentType: 'failing',
+        },
+        openPopouts: [
+          {
+            root: {
+              type: 'component',
+              componentType: 'working',
+            },
+          },
+        ],
+      }),
+    ).toThrow('component factory failed');
+    expect(openWindow).not.toHaveBeenCalled();
+    expect(layout.rootItem).toBe(workingRoot);
+    expect(layout.openPopouts).toHaveLength(0);
+  });
+
+  it('rejects invalid dimensions without mutating the current size', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.setSize(640, 480);
+
+    for (const [width, height] of [
+      [Number.NaN, 480],
+      [640, Number.POSITIVE_INFINITY],
+      [Number.NEGATIVE_INFINITY, 480],
+      [-1, 480],
+      [640, -1],
+    ]) {
+      expect(() => layout.setSize(width, height)).toThrow(RangeError);
+      expect(layout.width).toBe(640);
+      expect(layout.height).toBe(480);
+    }
+  });
+
+  it('uses window scroll offsets when calculating item areas', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadComponentAsRoot({
+      type: 'component',
+      componentType: 'panel',
+    });
+    const root = layout.rootItem;
+    if (root === undefined) {
+      throw new Error('Expected a root item');
+    }
+    vi.spyOn(root.element, 'getBoundingClientRect').mockReturnValue({
+      bottom: 60,
+      height: 40,
+      left: 10,
+      right: 40,
+      top: 20,
+      width: 30,
+      x: 10,
+      y: 20,
+      toJSON: () => undefined,
+    });
+    vi.spyOn(globalThis, 'scrollX', 'get').mockReturnValue(25);
+    vi.spyOn(globalThis, 'scrollY', 'get').mockReturnValue(35);
+
+    expect(root.getElementArea()).toMatchObject({
+      x1: 35,
+      y1: 55,
+      x2: 65,
+      y2: 95,
+      surface: 1200,
+    });
+  });
+
   it('clears focus when a directly rooted component is destroyed', () => {
     const layout = new StrelitLayout();
     layouts.push(layout);
@@ -217,6 +308,27 @@ describe('layout lifecycle', () => {
     expect(document.body.style.overflow).toBe('clip');
     layout.destroy();
 
+    expect(documentElement.style.cssText).toBe(documentStyle);
+    expect(document.body.style.cssText).toBe(bodyStyle);
+  });
+
+  it('restores shared body styles only after the last layout is destroyed', () => {
+    const documentElement = document.documentElement;
+    documentElement.style.cssText =
+      'height: 42px; margin: 3px; padding: 4px; overflow: auto;';
+    document.body.style.cssText =
+      'height: 84px; margin: 5px; padding: 6px; overflow: scroll;';
+    const documentStyle = documentElement.style.cssText;
+    const bodyStyle = document.body.style.cssText;
+    const first = new StrelitLayout();
+    const second = new StrelitLayout();
+    layouts.push(first, second);
+
+    first.destroy();
+    expect(documentElement.style.height).toBe('100%');
+    expect(document.body.style.overflow).toBe('clip');
+
+    second.destroy();
     expect(documentElement.style.cssText).toBe(documentStyle);
     expect(document.body.style.cssText).toBe(bodyStyle);
   });

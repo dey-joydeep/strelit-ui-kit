@@ -183,4 +183,28 @@ describe('Tabs configuration and behavior', function () {
       thirdComponent.tab.element,
     );
   });
+
+  it('closes a closable tab on a middle-button auxclick', function () {
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: [
+          {
+            type: 'component',
+            id: 'middle-click-close',
+            componentType: 'testComponent',
+          },
+        ],
+      },
+    });
+    const stack = layout.rootItem as Stack;
+
+    stack.header.tabs[0].element.dispatchEvent(
+      new MouseEvent('auxclick', { bubbles: true, button: 1 }),
+    );
+
+    expect(
+      layout.findFirstComponentItemById('middle-click-close'),
+    ).toBeUndefined();
+  });
 });

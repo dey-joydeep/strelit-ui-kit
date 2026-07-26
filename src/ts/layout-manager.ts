@@ -118,6 +118,16 @@ interface InlineStyleSnapshot {
   }[];
 }
 
+interface BodyContainerStyleOwnership {
+  count: number;
+  readonly snapshots: readonly InlineStyleSnapshot[];
+}
+
+const bodyContainerStyleOwnership = new WeakMap<
+  Document,
+  BodyContainerStyleOwnership
+>();
+
 function assertResolvedItemConfigWithinLimits(root: ResolvedItemConfig): void {
   type ValidationFrame =
     | { readonly config: ResolvedItemConfig; readonly depth: number }
@@ -350,8 +360,7 @@ export abstract class LayoutManager extends EventEmitter {
   /** @internal */
   private _focusedComponentItem: ComponentItem | undefined;
   /** @internal */
-  private _bodyContainerStyleSnapshots:
-    readonly InlineStyleSnapshot[] | undefined;
+  private _ownsBodyContainerStyles = false;
   /** @internal */
   private readonly _virtualSizedContainers: ComponentContainer[] = [];
   /** @internal */
@@ -613,13 +622,13 @@ export abstract class LayoutManager extends EventEmitter {
       if (this._groundItem === undefined) {
         throw new UnexpectedUndefinedError('LMLL11119');
       }
-      this.closeAllOpenPopouts();
       const previousLayoutConfig = this.layoutConfig;
       this.layoutConfig = resolveLayoutConfig(layoutConfig);
       try {
-        this.createSubWindows(); // still needs to be tested
         this._groundItem.loadRoot(this.layoutConfig.root);
         this.checkLoadedLayoutMaximiseItem();
+        this.closeAllOpenPopouts();
+        this.createSubWindows(); // still needs to be tested
         this.adjustColumnsResponsive();
       } catch (error) {
         this.layoutConfig = previousLayoutConfig;
@@ -956,6 +965,14 @@ export abstract class LayoutManager extends EventEmitter {
    * @param height - Height in pixels
    */
   setSize(width: number, height: number): void {
+    if (
+      !Number.isFinite(width) ||
+      !Number.isFinite(height) ||
+      width < 0 ||
+      height < 0
+    ) {
+      throw new RangeError('Layout dimensions must be finite and non-negative');
+    }
     this._width = width;
     this._height = height;
 
@@ -1217,30 +1234,23 @@ export abstract class LayoutManager extends EventEmitter {
           `${i18nStrings[I18nStringId.PopoutCannotBeCreatedWithGroundItemConfig]}`,
         );
       } else {
-        parent.removeChild(child, true);
-
+        const browserPopout = this.createPopoutFromItemConfig(
+          itemConfig,
+          window,
+          parentId,
+          indexInParent,
+        );
         try {
-          const browserPopout = this.createPopoutFromItemConfig(
-            itemConfig,
-            window,
-            parentId,
-            indexInParent,
-          );
-          try {
-            browserPopout.getWindow();
-          } catch {
-            parent.addChild(child, indexInParent);
-            return browserPopout;
-          }
-          child.destroy();
-          if (parent.isRow || parent.isColumn) {
-            (parent as unknown as { checkCollapse(): void }).checkCollapse();
-          }
+          browserPopout.getWindow();
+        } catch {
           return browserPopout;
-        } catch (error) {
-          parent.addChild(child, indexInParent);
-          throw error;
         }
+        browserPopout.on('initialised', () => {
+          if (child.parent === parent) {
+            parent.removeChild(child);
+          }
+        });
+        return browserPopout;
       }
     }
   }
@@ -1909,10 +1919,19 @@ export abstract class LayoutManager extends EventEmitter {
       this.resizeWithContainerAutomatically = true;
 
       const documentElement = document.documentElement;
-      this._bodyContainerStyleSnapshots = [
-        this.captureInlineStyle(documentElement),
-        this.captureInlineStyle(bodyElement),
-      ];
+      const ownership = bodyContainerStyleOwnership.get(document);
+      if (ownership === undefined) {
+        bodyContainerStyleOwnership.set(document, {
+          count: 1,
+          snapshots: [
+            this.captureInlineStyle(documentElement),
+            this.captureInlineStyle(bodyElement),
+          ],
+        });
+      } else {
+        ownership.count++;
+      }
+      this._ownsBodyContainerStyles = true;
       documentElement.style.height = '100%';
       documentElement.style.margin = '0';
       documentElement.style.padding = '0';
@@ -1938,10 +1957,15 @@ export abstract class LayoutManager extends EventEmitter {
   }
 
   private restoreBodyContainerStyles(): void {
-    if (this._bodyContainerStyleSnapshots === undefined) {
+    if (!this._ownsBodyContainerStyles) {
       return;
     }
-    for (const snapshot of this._bodyContainerStyleSnapshots) {
+    this._ownsBodyContainerStyles = false;
+    const ownership = bodyContainerStyleOwnership.get(document);
+    if (ownership === undefined || --ownership.count > 0) {
+      return;
+    }
+    for (const snapshot of ownership.snapshots) {
       for (const property of snapshot.properties) {
         if (property.value === '') {
           snapshot.element.style.removeProperty(property.name);
@@ -1954,7 +1978,7 @@ export abstract class LayoutManager extends EventEmitter {
         }
       }
     }
-    this._bodyContainerStyleSnapshots = undefined;
+    bodyContainerStyleOwnership.delete(document);
   }
 
   private onBeforeUnload(): void {

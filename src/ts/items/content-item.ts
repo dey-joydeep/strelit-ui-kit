@@ -517,8 +517,8 @@ export abstract class ContentItem extends EventEmitter {
     element = element ?? this._element;
 
     const rect = element.getBoundingClientRect();
-    const top = rect.top + document.body.scrollTop;
-    const left = rect.left + document.body.scrollLeft;
+    const top = rect.top + globalThis.scrollY;
+    const left = rect.left + globalThis.scrollX;
 
     const width = rect.width;
     const height = rect.height;

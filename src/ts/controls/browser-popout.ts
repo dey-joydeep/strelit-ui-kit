@@ -40,6 +40,8 @@ export class BrowserPopout extends EventEmitter {
   private _isClosingOrPoppingIn = false;
   /** @internal */
   private _closeEventScheduled = false;
+  /** @internal */
+  private _storageKey: string | undefined;
 
   /**
    * @param _config - StrelitLayout item config
@@ -245,6 +247,7 @@ export class BrowserPopout extends EventEmitter {
    */
   private createWindow(): void {
     const { url, storageKey } = this.createUrl();
+    this._storageKey = storageKey;
 
     /**
      * Bogus title to prevent re-usage of existing window with the
@@ -291,16 +294,9 @@ export class BrowserPopout extends EventEmitter {
     this._popoutWindow.addEventListener(
       'beforeunload',
       () => {
-        if (this._isClosingOrPoppingIn) {
-          this._onClose();
-          return;
-        }
-        this._isClosingOrPoppingIn = true;
-        if (this._layoutManager.layoutConfig.settings.popInOnClose) {
-          this.popInInternal();
-        } else {
-          this._onClose();
-        }
+        // beforeunload also fires for reloads; wait for Window.closed before
+        // treating it as a real close.
+        this._onClose();
       },
       { passive: true },
     );
@@ -423,13 +419,28 @@ export class BrowserPopout extends EventEmitter {
     this._closeEventScheduled = true;
     this.clearCheckReadyInterval();
     setTimeout(() => {
-      this.emit('closed');
+      const windowClosed =
+        this._popoutWindow === null || this._popoutWindow.closed;
+      if (
+        windowClosed &&
+        !this._isClosingOrPoppingIn &&
+        this._layoutManager.layoutConfig.settings.popInOnClose
+      ) {
+        this._isClosingOrPoppingIn = true;
+        this.popInInternal();
+      }
       this._closeEventScheduled = false;
-      if (this._popoutWindow !== null && !this._popoutWindow.closed) {
+      if (!windowClosed) {
         // beforeunload also fires for reloads and navigation. Resume detection
         // when reconciliation confirms that the window is still open.
         this._isClosingOrPoppingIn = false;
         this._checkReadyInterval = setInterval(() => this.checkReady(), 10);
+      } else {
+        this.emit('closed');
+        if (this._storageKey !== undefined) {
+          localStorage.removeItem(this._storageKey);
+          this._storageKey = undefined;
+        }
       }
     }, 50);
   }

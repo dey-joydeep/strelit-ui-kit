@@ -78,4 +78,35 @@ describe('DragListener iframe handling', () => {
     expect(iframe.style.getPropertyValue('pointer-events')).toBe('');
     listener.destroy();
   });
+
+  it('ignores non-primary mouse buttons while preserving pointer input', () => {
+    const handle = document.createElement('div');
+    document.body.append(handle);
+    elements.push(handle);
+    const listener = new DragListener(handle, []);
+
+    handle.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        button: 2,
+        clientX: 0,
+        clientY: 0,
+        isPrimary: true,
+        pointerType: 'mouse',
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        clientX: 20,
+        clientY: 20,
+        isPrimary: true,
+        pointerType: 'mouse',
+      }),
+    );
+
+    expect(listener.isTracking).toBe(false);
+    expect(document.body.classList.contains('lm_dragging')).toBe(false);
+    listener.destroy();
+  });
 });

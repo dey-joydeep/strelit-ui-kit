@@ -1458,6 +1458,26 @@ const componentState = { minItemWidth: 12 };
     );
   });
 
+  it('migrates layout literals through nullable and utility type wrappers', () => {
+    const filePath = createFixture(`
+import { LayoutConfig } from 'golden-layout';
+
+const nullableLayout: LayoutConfig | undefined = {
+  root: { type: 'component', componentName: 'nullable-editor' },
+};
+const readonlyLayout: Readonly<LayoutConfig> = {
+  root: { type: 'component', componentName: 'readonly-editor' },
+};
+`);
+
+    migrate(filePath, ['--from', 'v1']);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain("componentType: 'nullable-editor'");
+    expect(migrated).toContain("componentType: 'readonly-editor'");
+    expect(migrated).not.toContain('componentName');
+  });
+
   it('does not rewrite unrelated dimensions or duplicate modern defaults', () => {
     const filePath = createFixture(`
 import { LayoutConfig } from 'golden-layout';

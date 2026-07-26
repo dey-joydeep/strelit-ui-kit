@@ -100,7 +100,8 @@ export class DragListener extends EventEmitter {
   private onPointerDown(oEvent: PointerEvent) {
     if (
       this._allowableTargets.includes(oEvent.target as HTMLElement) &&
-      oEvent.isPrimary
+      oEvent.isPrimary &&
+      (oEvent.pointerType !== 'mouse' || oEvent.button === 0)
     ) {
       const coordinates = this.getPointerCoordinates(oEvent);
       this.processPointerDown(coordinates);

@@ -106,6 +106,55 @@ describe('BrowserPopout functionality (item.popout())', function () {
     );
   });
 
+  it('removes the source item only after the child layout initializes', function () {
+    vi.useFakeTimers();
+    try {
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        root: {
+          type: 'component',
+          id: 'initialising-popout',
+          componentType: 'testComponent',
+        },
+      });
+      const item = layout.findFirstComponentItemById(
+        'initialising-popout',
+      ) as ComponentItem;
+
+      item.popout();
+      expect(layout.findFirstComponentItemById('initialising-popout')).toBe(
+        item,
+      );
+
+      mockWindow.__strelitInstance = {
+        closeWindow: vi.fn(),
+        isInitialised: true,
+        on: vi.fn(),
+      } as never;
+      vi.advanceTimersByTime(10);
+
+      expect(
+        layout.findFirstComponentItemById('initialising-popout'),
+      ).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('restores a pending popout when its window closes before initialization', function () {
     let beforeUnload: (() => void) | undefined;
     const mockWindow = {
@@ -415,7 +464,10 @@ describe('BrowserPopout functionality (item.popout())', function () {
               componentType: 'testComponent',
             },
           }),
-        closeWindow: () => beforeUnload?.(),
+        closeWindow: () => {
+          (mockWindow as unknown as { closed: boolean }).closed = true;
+          beforeUnload?.();
+        },
       };
       const mockWindow = {
         closed: false,
@@ -464,6 +516,21 @@ describe('BrowserPopout functionality (item.popout())', function () {
     vi.useFakeTimers();
     try {
       let beforeUnload: (() => void) | undefined;
+      const setItem = vi.spyOn(Storage.prototype, 'setItem');
+      const childLayout = {
+        isInitialised: true,
+        on: vi.fn(),
+        saveLayout: () =>
+          resolveLayoutConfig({
+            root: {
+              type: 'component',
+              id: 'reload-popout',
+              componentType: 'testComponent',
+            },
+          }),
+        width: 320,
+        height: 200,
+      };
       const mockWindow = {
         closed: false,
         close: vi.fn(),
@@ -473,6 +540,7 @@ describe('BrowserPopout functionality (item.popout())', function () {
           }
         }),
         removeEventListener: vi.fn(),
+        __strelitInstance: childLayout,
         document: {
           createElement: () => document.createElement('div'),
           body: document.createElement('body'),
@@ -484,7 +552,7 @@ describe('BrowserPopout functionality (item.popout())', function () {
       } as unknown as Window;
       vi.spyOn(window, 'open').mockReturnValue(mockWindow);
       layout.loadLayout({
-        settings: { popInOnClose: false },
+        settings: { popInOnClose: true },
         root: {
           type: 'component',
           id: 'reload-popout',
@@ -497,14 +565,32 @@ describe('BrowserPopout functionality (item.popout())', function () {
       const popout = departing.popout();
       const closed = vi.fn();
       popout.on('closed', closed);
+      vi.advanceTimersByTime(10);
+      expect(
+        layout.findFirstComponentItemById('reload-popout'),
+      ).toBeUndefined();
+      const storageKey = setItem.mock.calls.find(([key]) =>
+        key.startsWith('strelit-window-config-'),
+      )?.[0];
+      expect(storageKey).toBeDefined();
+      if (storageKey === undefined) {
+        throw new Error('Expected a popout storage key');
+      }
 
+      mockWindow.__strelitInstance = undefined;
       beforeUnload?.();
       vi.advanceTimersByTime(50);
-      expect(closed).toHaveBeenCalledOnce();
+      expect(closed).not.toHaveBeenCalled();
+      expect(
+        layout.findFirstComponentItemById('reload-popout'),
+      ).toBeUndefined();
+      expect(localStorage.getItem(storageKey)).not.toBeNull();
 
       (mockWindow as unknown as { closed: boolean }).closed = true;
       vi.advanceTimersByTime(60);
-      expect(closed).toHaveBeenCalledTimes(2);
+      expect(closed).toHaveBeenCalledOnce();
+      expect(layout.findFirstComponentItemById('reload-popout')).toBeDefined();
+      expect(localStorage.getItem(storageKey)).toBeNull();
     } finally {
       vi.useRealTimers();
     }

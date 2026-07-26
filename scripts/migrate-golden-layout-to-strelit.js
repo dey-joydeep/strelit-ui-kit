@@ -1405,13 +1405,34 @@ function transformSourceContent(content, filePath) {
 
   function hasImportedTypeContext(objectLiteral, expectedNames) {
     const typeNode = getContextTypeNode(objectLiteral);
-    if (typeNode === undefined || !ts.isTypeReferenceNode(typeNode)) {
-      return false;
+    function containsImportedType(node) {
+      if (ts.isParenthesizedTypeNode(node)) {
+        return containsImportedType(node.type);
+      }
+      if (ts.isUnionTypeNode(node)) {
+        return node.types.some(
+          (member) =>
+            member.kind !== ts.SyntaxKind.UndefinedKeyword &&
+            member.kind !== ts.SyntaxKind.NullKeyword &&
+            containsImportedType(member),
+        );
+      }
+      if (!ts.isTypeReferenceNode(node)) {
+        return false;
+      }
+      const root = getRootIdentifier(node.typeName);
+      const exportName =
+        root === undefined ? undefined : getImportedExportName(root);
+      if (exportName !== undefined && expectedNames.has(exportName)) {
+        return true;
+      }
+      return (
+        ts.isIdentifier(node.typeName) &&
+        ['Readonly', 'Required', 'Partial'].includes(node.typeName.text) &&
+        node.typeArguments?.some(containsImportedType) === true
+      );
     }
-    const root = getRootIdentifier(typeNode.typeName);
-    const exportName =
-      root === undefined ? undefined : getImportedExportName(root);
-    return exportName !== undefined && expectedNames.has(exportName);
+    return typeNode !== undefined && containsImportedType(typeNode);
   }
 
   function usesImportedItemType(objectLiteral) {
