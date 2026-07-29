@@ -120,38 +120,53 @@ export class GroundItem extends ComponentParentableItem {
    * Loads a new Layout
    * Internal only. To load a new layout with API, use {@link LayoutManager.loadLayout}
    */
-  loadRoot(rootItemConfig: ResolvedRootItemConfig | undefined): void {
-    if (rootItemConfig === undefined) {
-      this.clearRoot();
-      return;
-    }
-
-    const rootContentItem = this.layoutManager.createAndInitContentItem(
-      rootItemConfig,
-      this,
-    );
-    this.replaceRoot(rootContentItem);
+  loadRoot(
+    rootItemConfig: ResolvedRootItemConfig | undefined,
+    postProcess?: () => void,
+  ): void {
+    const rootContentItem =
+      rootItemConfig === undefined
+        ? undefined
+        : this.layoutManager.createAndInitContentItem(rootItemConfig, this);
+    this.replaceRoot(rootContentItem, postProcess);
   }
 
-  private replaceRoot(rootContentItem: ContentItem): void {
+  private replaceRoot(
+    rootContentItem: ContentItem | undefined,
+    postProcess?: () => void,
+  ): void {
     const previousRoot = this.contentItems[0];
     if (previousRoot !== undefined) {
       super.removeChild(previousRoot, true);
     }
     try {
-      this.addChild(rootContentItem, 0);
+      if (rootContentItem !== undefined) {
+        this.addChild(rootContentItem, 0);
+      }
+      postProcess?.();
     } catch (error) {
-      if (this.contentItems.includes(rootContentItem)) {
+      if (
+        rootContentItem !== undefined &&
+        this.contentItems.includes(rootContentItem)
+      ) {
         super.removeChild(rootContentItem, true);
       }
-      rootContentItem.destroy();
       if (previousRoot !== undefined) {
         // Restore structure without re-entering the failure-prone sizing path.
         super.addChild(previousRoot, 0, true);
       }
+      try {
+        rootContentItem?.destroy();
+      } catch {
+        // Preserve the transaction failure after restoring the live root.
+      }
       throw error;
     }
-    previousRoot?.destroy();
+    try {
+      previousRoot?.destroy();
+    } catch {
+      // The replacement is committed; cleanup failures must not roll it back.
+    }
   }
 
   clearRoot(): void {

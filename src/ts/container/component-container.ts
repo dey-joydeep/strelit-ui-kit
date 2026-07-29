@@ -428,6 +428,7 @@ export class ComponentContainer extends EventEmitter {
       const previousInitialState = this._initialState;
       const previousState = this._state;
       const previousComponentType = this._componentType;
+      const previousIsClosable = this._isClosable;
       const previousStateRequestEvent = this.stateRequestEvent;
       const previousLiveState = deepCloneValue(
         previousStateRequestEvent === undefined
@@ -467,17 +468,44 @@ export class ComponentContainer extends EventEmitter {
             this,
             previousConfig,
           );
-        } catch {
-          // If rollback fails, keep existing _boundComponent
+        } catch (rollbackError) {
+          this._boundComponent = { component: undefined, virtual: false };
+          throw rollbackError;
         }
         throw error;
       }
 
-      this._isClosable = config.isClosable;
-      this._updateItemConfigEvent(config);
-
       this._boundComponent = nextBoundComponent;
       this.updateElementPositionPropertyFromBoundComponent();
+      this._isClosable = config.isClosable;
+      try {
+        this._updateItemConfigEvent(config);
+      } catch (error) {
+        this.releaseComponent();
+        this.stateRequestEvent = previousStateRequestEvent;
+        this._initialState = previousInitialState;
+        this._state = previousLiveState;
+        this._componentType = previousComponentType;
+        this._isClosable = previousIsClosable;
+        try {
+          this._boundComponent = this.layoutManager.bindComponent(
+            this,
+            previousConfig,
+          );
+          this.updateElementPositionPropertyFromBoundComponent();
+          this._updateItemConfigEvent(previousConfig);
+        } catch (rollbackError) {
+          if (
+            this._boundComponent.component === nextBoundComponent.component &&
+            this._boundComponent.virtual === nextBoundComponent.virtual
+          ) {
+            this._boundComponent = { component: undefined, virtual: false };
+            throw rollbackError;
+          }
+          // The previous binding is live; preserve the original observer error.
+        }
+        throw error;
+      }
 
       if (this._boundComponent.virtual) {
         if (this.virtualVisibilityChangeRequiredEvent !== undefined) {

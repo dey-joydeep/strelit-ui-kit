@@ -5,6 +5,7 @@ import {
   type ComponentContainerComponent,
   type LayoutConfig,
   LayoutManager,
+  resolveLayoutConfig,
   type ResolvedComponentItemConfig,
   StrelitLayout,
   VirtualLayout,
@@ -219,6 +220,151 @@ describe('layout lifecycle', () => {
       layout.findFirstComponentItemById('replacement-root'),
     ).toBeUndefined();
   });
+
+  it('preserves live component instances when responsive post-processing fails', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    const workingComponent = { id: 'working-component' };
+    const workingFactory = vi.fn(() => workingComponent);
+    layout.registerComponentFactoryFunction('working', workingFactory);
+    layout.registerComponentFactoryFunction('replacement', () => ({
+      id: 'replacement-component',
+    }));
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        id: 'working-root',
+        componentType: 'working',
+      },
+    });
+    const workingRoot = layout.rootItem;
+    const workingConfig = layout.layoutConfig;
+    vi.spyOn(
+      layout as unknown as { adjustColumnsResponsive(): void },
+      'adjustColumnsResponsive',
+    ).mockImplementationOnce(() => {
+      throw new Error('responsive post-processing failed');
+    });
+
+    expect(() =>
+      layout.loadLayout({
+        root: {
+          type: 'component',
+          id: 'replacement-root',
+          componentType: 'replacement',
+        },
+      }),
+    ).toThrow('responsive post-processing failed');
+
+    expect(layout.rootItem).toBe(workingRoot);
+    expect(layout.layoutConfig).toBe(workingConfig);
+    expect(workingFactory).toHaveBeenCalledOnce();
+    expect(
+      layout.findFirstComponentItemById('working-root')?.container.component,
+    ).toBe(workingComponent);
+  });
+
+  it('commits the replacement when an old child close request fails', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('working', () => undefined);
+    const nativeClose = vi.fn();
+    const mockWindow = {
+      closed: false,
+      close: nativeClose,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      __strelitInstance: {
+        isInitialised: true,
+        on: vi.fn(),
+        saveLayout: () =>
+          resolveLayoutConfig({
+            root: {
+              type: 'component',
+              componentType: 'working',
+            },
+          }),
+        closeWindow: () => {
+          throw new Error('old popout close failed');
+        },
+        width: 320,
+        height: 200,
+      },
+      document: {
+        createElement: () => document.createElement('div'),
+        body: document.createElement('body'),
+        head: document.createElement('head'),
+      },
+      location: { href: '' },
+    } as unknown as Window;
+    vi.spyOn(globalThis, 'open').mockReturnValue(mockWindow);
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        id: 'working-root',
+        componentType: 'working',
+      },
+      openPopouts: [
+        {
+          root: {
+            type: 'component',
+            componentType: 'working',
+          },
+        },
+      ],
+    });
+
+    expect(() =>
+      layout.loadLayout({
+        root: {
+          type: 'component',
+          id: 'replacement-root',
+          componentType: 'working',
+        },
+      }),
+    ).not.toThrow();
+
+    expect(layout.rootItem?.id).toBe('replacement-root');
+    expect(nativeClose).toHaveBeenCalledOnce();
+    expect(layout.openPopouts).toHaveLength(0);
+  });
+
+  it.each([1, 2])(
+    'destroys %i constructed siblings when a later child factory fails',
+    (failureIndex) => {
+      const layout = new StrelitLayout();
+      layouts.push(layout);
+      const unbindComponent = vi.spyOn(layout, 'unbindComponent');
+      layout.registerComponentFactoryFunction('working', () => undefined);
+      layout.registerComponentFactoryFunction('failing', () => {
+        throw new Error('later child factory failed');
+      });
+      const content = Array.from({ length: failureIndex + 1 }, (_, index) => ({
+        type: 'component' as const,
+        id: `child-${index}`,
+        componentType: index === failureIndex ? 'failing' : 'working',
+      }));
+
+      expect(() =>
+        layout.loadLayout({
+          root: {
+            type: 'row',
+            content,
+          },
+        }),
+      ).toThrow('later child factory failed');
+
+      expect(unbindComponent).toHaveBeenCalledTimes(failureIndex);
+      expect(layout.rootItem).toBeUndefined();
+      expect(
+        (
+          layout as unknown as {
+            _registeredComponentMap: Map<unknown, unknown>;
+          }
+        )._registeredComponentMap.size,
+      ).toBe(0);
+    },
+  );
 
   it('restores the working root when direct component sizing fails', () => {
     const layout = new StrelitLayout();

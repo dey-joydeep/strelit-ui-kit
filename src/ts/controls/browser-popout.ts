@@ -65,11 +65,11 @@ export class BrowserPopout extends EventEmitter {
 
   /** Performs the to config operation. */
   toConfig(): ResolvedPopoutLayoutConfig {
-    if (!this._isInitialised) {
+    const strelitInstance = this.tryGetStrelitInstance();
+    if (!this._isInitialised || strelitInstance === undefined) {
       return createResolvedPopoutLayoutConfigCopy(this._config);
     }
 
-    const strelitInstance = this.getStrelitInstance();
     const strelitInstanceConfig = strelitInstance.saveLayout();
 
     let left: number | null;
@@ -101,6 +101,7 @@ export class BrowserPopout extends EventEmitter {
       resolved: true,
     };
 
+    this._config = createResolvedPopoutLayoutConfigCopy(config);
     return config;
   }
 
@@ -136,7 +137,15 @@ export class BrowserPopout extends EventEmitter {
     this._isClosingOrPoppingIn = true;
     const strelitInstance = this.tryGetStrelitInstance();
     if (strelitInstance !== undefined) {
-      strelitInstance.closeWindow();
+      try {
+        strelitInstance.closeWindow();
+      } catch {
+        try {
+          this.getWindow().close();
+        } catch {
+          //
+        }
+      }
     } else {
       try {
         this.getWindow().close();
@@ -155,7 +164,12 @@ export class BrowserPopout extends EventEmitter {
       return;
     }
     this._isClosingOrPoppingIn = true;
-    this.popInInternal();
+    try {
+      this.popInInternal();
+    } catch (error) {
+      this._isClosingOrPoppingIn = false;
+      throw error;
+    }
     if (this._popoutWindow !== null) {
       const strelitInstance = this.tryGetStrelitInstance();
       if (strelitInstance !== undefined) {
@@ -211,6 +225,8 @@ export class BrowserPopout extends EventEmitter {
      * Fallback if parentItem is not available. Either add it to the topmost
      * item or make it the topmost item if the layout is empty
      */
+    let rootItemToWrap: ContentItem | undefined;
+    let wrapperItem: ContentItem | undefined;
     if (parentItem === undefined) {
       if (groundItem.contentItems.length > 0) {
         const rootItem = groundItem.contentItems[0];
@@ -219,13 +235,12 @@ export class BrowserPopout extends EventEmitter {
           rootItem.isColumn ||
           (rootItem.isStack && copiedRoot.type === ItemType.component);
         if (!rootCanAcceptReturnedItem) {
-          groundItem.removeChild(rootItem, true);
-          parentItem = this._layoutManager.createAndInitContentItem(
+          rootItemToWrap = rootItem;
+          wrapperItem = this._layoutManager.createAndInitContentItem(
             createResolvedRowOrColumnItemConfigDefault('row'),
             groundItem,
           );
-          groundItem.addChild(parentItem);
-          parentItem.addChild(rootItem);
+          parentItem = wrapperItem;
           index = 1;
         } else {
           parentItem = rootItem;
@@ -237,20 +252,83 @@ export class BrowserPopout extends EventEmitter {
       }
     }
 
-    if (index !== undefined) {
-      const normalizedIndex = Number.isFinite(index) ? Math.trunc(index) : 0;
-      index = Math.max(
-        0,
-        Math.min(normalizedIndex, parentItem.contentItems.length),
+    let newContentItem: ContentItem;
+    try {
+      newContentItem = this._layoutManager.createAndInitContentItem(
+        copiedRoot,
+        parentItem,
       );
+    } catch (error) {
+      wrapperItem?.destroy();
+      throw error;
     }
 
-    const newContentItem = this._layoutManager.createAndInitContentItem(
-      copiedRoot,
-      parentItem,
-    );
+    if (rootItemToWrap !== undefined && wrapperItem !== undefined) {
+      try {
+        wrapperItem.addChild(newContentItem, 0, true);
+      } catch (error) {
+        if (!wrapperItem.contentItems.includes(newContentItem)) {
+          newContentItem.destroy();
+        }
+        wrapperItem.destroy();
+        throw error;
+      }
 
-    parentItem.addChild(newContentItem, index);
+      try {
+        groundItem.removeChild(rootItemToWrap, true);
+        groundItem.addChild(wrapperItem);
+        wrapperItem.addChild(rootItemToWrap, 0, true);
+      } catch (error) {
+        if (wrapperItem.contentItems.includes(rootItemToWrap)) {
+          try {
+            wrapperItem.removeChild(rootItemToWrap, true);
+          } catch {
+            //
+          }
+        }
+        if (groundItem.contentItems.includes(wrapperItem)) {
+          try {
+            groundItem.removeChild(wrapperItem, true);
+          } catch {
+            //
+          }
+        }
+        if (!groundItem.contentItems.includes(rootItemToWrap)) {
+          try {
+            groundItem.addChild(rootItemToWrap);
+          } catch {
+            //
+          }
+        }
+        wrapperItem.destroy();
+        throw error;
+      }
+      this._onClose();
+      return;
+    }
+
+    try {
+      if (index !== undefined) {
+        const normalizedIndex = Number.isFinite(index) ? Math.trunc(index) : 0;
+        index = Math.max(
+          0,
+          Math.min(normalizedIndex, parentItem.contentItems.length),
+        );
+      }
+      parentItem.addChild(newContentItem, index);
+    } catch (error) {
+      if (parentItem.contentItems.includes(newContentItem)) {
+        try {
+          parentItem.removeChild(newContentItem, true);
+        } catch {
+          //
+        }
+      }
+      if (!parentItem.contentItems.includes(newContentItem)) {
+        newContentItem.destroy();
+      }
+      throw error;
+    }
     this._onClose();
   }
 
@@ -441,7 +519,13 @@ export class BrowserPopout extends EventEmitter {
         this._layoutManager.layoutConfig.settings.popInOnClose
       ) {
         this._isClosingOrPoppingIn = true;
-        this.popInInternal();
+        try {
+          this.popInInternal();
+        } catch (error) {
+          this._isClosingOrPoppingIn = false;
+          this._closeEventScheduled = false;
+          throw error;
+        }
       }
       this._closeEventScheduled = false;
       if (!windowClosed) {

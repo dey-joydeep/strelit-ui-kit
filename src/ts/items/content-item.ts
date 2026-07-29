@@ -598,10 +598,20 @@ export abstract class ContentItem extends EventEmitter {
    * @internal
    */
   private createContentItems(content: readonly ResolvedItemConfig[]) {
-    const count = content.length;
-    const result = Array<ContentItem>(count);
-    for (let i = 0; i < content.length; i++) {
-      result[i] = this.layoutManager.createContentItem(content[i], this);
+    const result: ContentItem[] = [];
+    try {
+      for (let i = 0; i < content.length; i++) {
+        result.push(this.layoutManager.createContentItem(content[i], this));
+      }
+    } catch (error) {
+      for (let i = result.length - 1; i >= 0; i--) {
+        try {
+          result[i].destroy();
+        } catch {
+          // Continue releasing earlier siblings and preserve the construction error.
+        }
+      }
+      throw error;
     }
     return result;
   }

@@ -623,46 +623,49 @@ export abstract class LayoutManager extends EventEmitter {
         throw new UnexpectedUndefinedError('LMLL11119');
       }
       const previousLayoutConfig = this.layoutConfig;
-      const previousRootConfig = this._groundItem.calculateConfigContent()[0];
       const previousOpenPopouts = [...this._openPopouts];
+      const previousMaximisedStack = this._maximisedStack;
       this.layoutConfig = resolveLayoutConfig(layoutConfig);
-      let rootReplaced = false;
       try {
         this.createSubWindows();
         const incomingOpenPopouts = this._openPopouts.slice(
           previousOpenPopouts.length,
         );
-        this._groundItem.loadRoot(this.layoutConfig.root);
-        rootReplaced = true;
-        this.checkLoadedLayoutMaximiseItem();
-        this.adjustColumnsResponsive();
-        for (const popout of previousOpenPopouts) {
-          popout.close();
-        }
-        this._openPopouts = incomingOpenPopouts;
-        if (
-          incomingOpenPopouts.length === 0 &&
-          this._windowBeforeUnloadListening
-        ) {
-          globalThis.removeEventListener(
-            'beforeunload',
-            this._windowBeforeUnloadListener,
-          );
-          this._windowBeforeUnloadListening = false;
-        }
+        this._groundItem.loadRoot(this.layoutConfig.root, () => {
+          this.checkLoadedLayoutMaximiseItem();
+          this.adjustColumnsResponsive();
+          for (const popout of previousOpenPopouts) {
+            popout.close();
+          }
+          this._openPopouts = incomingOpenPopouts;
+          if (
+            incomingOpenPopouts.length === 0 &&
+            this._windowBeforeUnloadListening
+          ) {
+            globalThis.removeEventListener(
+              'beforeunload',
+              this._windowBeforeUnloadListener,
+            );
+            this._windowBeforeUnloadListening = false;
+          }
+        });
       } catch (error) {
         const incomingOpenPopouts = this._openPopouts.slice(
           previousOpenPopouts.length,
         );
         for (const popout of incomingOpenPopouts) {
-          popout.close();
+          try {
+            popout.close();
+          } catch {
+            // Popout cleanup must not interrupt root and configuration rollback.
+          }
         }
         this._openPopouts = previousOpenPopouts;
         this.layoutConfig = previousLayoutConfig;
-        if (rootReplaced) {
-          this._groundItem.loadRoot(previousRootConfig);
-          this.checkLoadedLayoutMaximiseItem();
-          this.adjustColumnsResponsive();
+        if (previousMaximisedStack === undefined) {
+          this.setMaximisedStack(undefined);
+        } else if (this._maximisedStack !== previousMaximisedStack) {
+          previousMaximisedStack.maximise();
         }
         throw error;
       }
@@ -1285,17 +1288,17 @@ export abstract class LayoutManager extends EventEmitter {
           window,
           parentId,
           indexInParent,
+          () => {
+            if (child.parent === parent) {
+              parent.removeChild(child);
+            }
+          },
         );
         try {
           browserPopout.getWindow();
         } catch {
           return browserPopout;
         }
-        browserPopout.on('initialised', () => {
-          if (child.parent === parent) {
-            parent.removeChild(child);
-          }
-        });
         return browserPopout;
       }
     }
@@ -1358,6 +1361,7 @@ export abstract class LayoutManager extends EventEmitter {
     window: ResolvedPopoutLayoutConfigWindow,
     parentId: string | null,
     indexInParent: number | null,
+    beforeWindowOpened?: () => void,
   ) {
     const layoutConfig = this.saveLayout();
 
@@ -1373,12 +1377,19 @@ export abstract class LayoutManager extends EventEmitter {
       resolved: true,
     };
 
-    return this.createPopoutFromPopoutLayoutConfig(popoutLayoutConfig);
+    return this.createBrowserPopout(popoutLayoutConfig, beforeWindowOpened);
   }
 
   /** @internal */
   createPopoutFromPopoutLayoutConfig(
     config: ResolvedPopoutLayoutConfig,
+  ): BrowserPopout {
+    return this.createBrowserPopout(config);
+  }
+
+  private createBrowserPopout(
+    config: ResolvedPopoutLayoutConfig,
+    beforeWindowOpened?: () => void,
   ): BrowserPopout {
     const configWindow = config.window;
     const initialWindow: Rect = {
@@ -1398,9 +1409,10 @@ export abstract class LayoutManager extends EventEmitter {
       return browserPopout;
     }
 
-    browserPopout.on('initialised', () =>
-      this.emit('windowOpened', browserPopout),
-    );
+    browserPopout.on('initialised', () => {
+      beforeWindowOpened?.();
+      this.emit('windowOpened', browserPopout);
+    });
     browserPopout.on('closed', () => this.reconcilePopoutWindows());
 
     this._openPopouts.push(browserPopout);

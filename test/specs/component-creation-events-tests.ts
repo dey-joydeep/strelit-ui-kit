@@ -93,4 +93,158 @@ describe('component creation events', function () {
       replacementState,
     ]);
   });
+
+  it('installs the replacement before publishing its item metadata', function () {
+    const replacementComponent = { source: 'replacement' };
+    layout.registerComponentFactoryFunction(
+      'replacementComponent',
+      () => replacementComponent,
+    );
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        componentType: 'testComponent',
+        title: 'Initial',
+      },
+    });
+    const componentItem = layout.getComponentItemsByType('testComponent')[0];
+    const observedComponent = vi.fn();
+    componentItem.on('titleChanged', () => {
+      observedComponent(
+        componentItem.container.component,
+        componentItem.container.componentType,
+      );
+    });
+
+    componentItem.container.replaceComponent({
+      type: 'component',
+      componentType: 'replacementComponent',
+      title: 'Replacement',
+    });
+
+    expect(observedComponent).toHaveBeenCalledWith(
+      replacementComponent,
+      'replacementComponent',
+    );
+  });
+
+  it('restores the previous binding when a metadata observer rejects replacement', function () {
+    const initialComponent = { source: 'initial' };
+    const replacementComponent = { source: 'replacement' };
+    layout.registerComponentFactoryFunction(
+      'statefulInitial',
+      () => initialComponent,
+    );
+    layout.registerComponentFactoryFunction(
+      'replacementComponent',
+      () => replacementComponent,
+    );
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        componentType: 'statefulInitial',
+        componentState: { value: 'initial' },
+        title: 'Initial',
+      },
+    });
+    const componentItem = layout.getComponentItemsByType('statefulInitial')[0];
+    componentItem.on('titleChanged', () => {
+      throw new Error('observer rejected replacement');
+    });
+
+    expect(() =>
+      componentItem.container.replaceComponent({
+        type: 'component',
+        componentType: 'replacementComponent',
+        componentState: { value: 'replacement' },
+        title: 'Replacement',
+      }),
+    ).toThrow('observer rejected replacement');
+
+    expect(componentItem.container.component).toBe(initialComponent);
+    expect(componentItem.container.componentType).toBe('statefulInitial');
+    expect(componentItem.container.state).toEqual({ value: 'initial' });
+    expect(componentItem.title).toBe('Initial');
+  });
+
+  it('does not report old metadata when releasing a rejected replacement fails', function () {
+    const initialComponent = { source: 'initial' };
+    const replacementComponent = { source: 'replacement' };
+    layout.registerComponentFactoryFunction(
+      'statefulInitial',
+      () => initialComponent,
+    );
+    layout.registerComponentFactoryFunction(
+      'replacementComponent',
+      () => replacementComponent,
+    );
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        componentType: 'statefulInitial',
+        title: 'Initial',
+      },
+    });
+    const componentItem = layout.getComponentItemsByType('statefulInitial')[0];
+    const originalUnbind = layout.unbindComponent.bind(layout);
+    let unbindCount = 0;
+    vi.spyOn(layout, 'unbindComponent').mockImplementation(
+      (container, virtual, component) => {
+        if (++unbindCount === 2) {
+          throw new Error('replacement release failed');
+        }
+        originalUnbind(container, virtual, component);
+      },
+    );
+    componentItem.on('titleChanged', () => {
+      throw new Error('observer rejected replacement');
+    });
+
+    expect(() =>
+      componentItem.container.replaceComponent({
+        type: 'component',
+        componentType: 'replacementComponent',
+        title: 'Replacement',
+      }),
+    ).toThrow('replacement release failed');
+
+    expect(componentItem.container.component).toBe(replacementComponent);
+    expect(componentItem.container.componentType).toBe('replacementComponent');
+  });
+
+  it('surfaces a failed previous-component rebind as an unbound rollback', function () {
+    const initialComponent = { source: 'initial' };
+    let initialBindCount = 0;
+    layout.registerComponentFactoryFunction('statefulInitial', () => {
+      if (++initialBindCount > 1) {
+        throw new Error('previous rebind failed');
+      }
+      return initialComponent;
+    });
+    layout.registerComponentFactoryFunction('replacementComponent', () => ({
+      source: 'replacement',
+    }));
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        componentType: 'statefulInitial',
+        title: 'Initial',
+      },
+    });
+    const componentItem = layout.getComponentItemsByType('statefulInitial')[0];
+    componentItem.on('titleChanged', () => {
+      throw new Error('observer rejected replacement');
+    });
+
+    expect(() =>
+      componentItem.container.replaceComponent({
+        type: 'component',
+        componentType: 'replacementComponent',
+        title: 'Replacement',
+      }),
+    ).toThrow('previous rebind failed');
+
+    expect(componentItem.container.component).toBeUndefined();
+    expect(componentItem.container.componentType).toBe('statefulInitial');
+  });
 });

@@ -172,6 +172,15 @@ describe('BrowserPopout functionality (item.popout())', function () {
       const item = layout.findFirstComponentItemById(
         'initialising-popout',
       ) as ComponentItem;
+      const windowOpened = vi.fn(() => {
+        expect(
+          layout.findFirstComponentItemById('initialising-popout'),
+        ).toBeUndefined();
+        const saved = layout.saveLayout();
+        expect(saved.root).toBeUndefined();
+        expect(saved.openPopouts[0].root?.id).toBe('initialising-popout');
+      });
+      layout.on('windowOpened', windowOpened);
 
       item.popout();
       expect(layout.findFirstComponentItemById('initialising-popout')).toBe(
@@ -195,6 +204,7 @@ describe('BrowserPopout functionality (item.popout())', function () {
       } as never;
       vi.advanceTimersByTime(10);
 
+      expect(windowOpened).toHaveBeenCalledOnce();
       expect(
         layout.findFirstComponentItemById('initialising-popout'),
       ).toBeUndefined();
@@ -648,6 +658,97 @@ describe('BrowserPopout functionality (item.popout())', function () {
     },
   );
 
+  it('allows pop-in to retry after insertion fails', function () {
+    let attempts = 0;
+    layout.registerComponentFactoryFunction('flaky', () => {
+      if (++attempts === 1) {
+        throw new Error('transient bind failure');
+      }
+      return undefined;
+    });
+    const childLayout = {
+      isInitialised: true,
+      on: vi.fn(),
+      saveLayout: () =>
+        resolveLayoutConfig({
+          root: {
+            type: 'stack',
+            id: 'retry-return-stack',
+            content: [
+              {
+                type: 'component',
+                id: 'retry-return',
+                componentType: 'flaky',
+              },
+            ],
+          },
+        }),
+      closeWindow: vi.fn(),
+    };
+    const mockWindow = {
+      closed: false,
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      __strelitInstance: childLayout,
+      document: {
+        createElement: () => document.createElement('div'),
+        body: document.createElement('body'),
+        head: document.createElement('head'),
+        write: vi.fn(),
+        close: vi.fn(),
+      },
+      location: { href: '' },
+    } as unknown as Window;
+    vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        id: 'host',
+        componentType: 'testComponent',
+      },
+      openPopouts: [
+        {
+          root: {
+            type: 'stack',
+            id: 'retry-return-stack',
+            content: [
+              {
+                type: 'component',
+                id: 'retry-return',
+                componentType: 'flaky',
+              },
+            ],
+          },
+          parentId: null,
+        },
+      ],
+    });
+    const popout = layout.openPopouts[0] as unknown as {
+      _isInitialised: boolean;
+      popIn(): void;
+    };
+    popout._isInitialised = true;
+    const originalRoot = layout.rootItem;
+    const destroyedRows: unknown[] = [];
+    layout.on('itemDestroyed', (event) => {
+      const target = event.target as unknown as { isRow: boolean };
+      if (target.isRow) {
+        destroyedRows.push(target);
+      }
+    });
+
+    expect(() => popout.popIn()).toThrow('transient bind failure');
+    expect(layout.rootItem).toBe(originalRoot);
+    expect(layout.rootItem?.type).toBe('stack');
+    expect(destroyedRows).toHaveLength(1);
+    expect(() => popout.popIn()).not.toThrow();
+
+    expect(attempts).toBe(2);
+    expect(layout.findFirstComponentItemById('retry-return')).toBeDefined();
+    expect(childLayout.closeWindow).toHaveBeenCalledOnce();
+  });
+
   it('wraps a stack root before restoring another stack without its parent', function () {
     const closeWindow = vi.fn();
     const childLayout = {
@@ -913,10 +1014,12 @@ describe('BrowserPopout functionality (item.popout())', function () {
       if (storageKey === undefined) {
         throw new Error('Expected a popout storage key');
       }
+      expect(layout.saveLayout().openPopouts[0].root?.id).toBe('reload-popout');
 
       mockWindow.__strelitInstance = undefined;
       beforeUnload?.();
       vi.advanceTimersByTime(50);
+      expect(popout.toConfig().root?.id).toBe('reload-popout');
       expect(closed).not.toHaveBeenCalled();
       expect(
         layout.findFirstComponentItemById('reload-popout'),
