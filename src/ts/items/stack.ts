@@ -421,6 +421,7 @@ export class Stack extends ComponentParentableItem {
 
   /** Adds item. */
   addItem(itemConfig: ComponentItemConfig, index?: number): number {
+    this.validateInsertionIndex(index);
     this.layoutManager.checkMinimiseMaximisedStack();
 
     const resolvedItemConfig =
@@ -442,13 +443,7 @@ export class Stack extends ComponentParentableItem {
     suspendResize = false,
     focus = false,
   ): number {
-    if (
-      index !== null &&
-      index !== undefined &&
-      index > this.contentItems.length
-    ) {
-      throw new AssertError('SAC99728'); // undisplayChild() removed so this condition should no longer occur
-    }
+    this.validateInsertionIndex(index);
 
     if (!(contentItem instanceof ComponentItem)) {
       throw new AssertError('SACC88532'); // Stacks can only have Component children
@@ -465,6 +460,18 @@ export class Stack extends ComponentParentableItem {
       this._header.updateClosability();
       this.emitStateChangedEvent();
       return index;
+    }
+  }
+
+  private validateInsertionIndex(index: number | null | undefined): void {
+    if (
+      index !== null &&
+      index !== undefined &&
+      (!Number.isInteger(index) ||
+        index < 0 ||
+        index > this.contentItems.length)
+    ) {
+      throw new AssertError('SAC99728'); // undisplayChild() removed so this condition should no longer occur
     }
   }
 

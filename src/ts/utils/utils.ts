@@ -140,8 +140,13 @@ export function deepCloneValue(value: unknown): unknown {
         'Serializable value exceeds resource limits',
       );
     }
+    if (source === undefined) {
+      if (depth === 0) {
+        return { clone: source };
+      }
+      throw new ConfigurationError('Value is not serializable');
+    }
     if (
-      source === undefined ||
       source === null ||
       typeof source === 'string' ||
       typeof source === 'boolean'
@@ -173,6 +178,9 @@ export function deepCloneValue(value: unknown): unknown {
         if (index in source) {
           entries.push([index.toString(), source[index]]);
         }
+      }
+      if (entries.length !== source.length) {
+        throw new ConfigurationError('Value is not serializable');
       }
       const clone = Array<unknown>(source.length);
       return {

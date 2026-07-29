@@ -108,6 +108,119 @@ describe('drag source', function () {
     });
   });
 
+  it('restores an internal drag without dropping when the pointer is cancelled', function () {
+    layout.destroy();
+    layout = TestTools.createLayout({
+      root: {
+        type: 'stack',
+        content: [
+          {
+            type: 'component',
+            id: 'cancelled-drag',
+            componentType: TestTools.TEST_COMPONENT_NAME,
+          },
+        ],
+      },
+    });
+    const item = layout.findFirstComponentItemById('cancelled-drag');
+    if (item === undefined) {
+      throw new Error('Expected a component item');
+    }
+    const itemDropped = vi.fn();
+    const originalRoot = layout.rootItem;
+    layout.on('itemDropped', itemDropped);
+
+    item.tab.element.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        clientX: 0,
+        clientY: 0,
+        isPrimary: true,
+        pointerId: 9,
+        pointerType: 'touch',
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        clientX: 20,
+        clientY: 20,
+        pointerId: 9,
+        pointerType: 'touch',
+      }),
+    );
+    expect(TestTools.getDragProxy()).not.toBeNull();
+
+    document.dispatchEvent(
+      new PointerEvent('pointercancel', {
+        bubbles: true,
+        pointerId: 9,
+        pointerType: 'touch',
+      }),
+    );
+
+    expect(TestTools.getDragProxy()).toBeNull();
+    expect(layout.findFirstComponentItemById('cancelled-drag')).toBe(item);
+    expect(layout.rootItem).toBe(originalRoot);
+    expect(layout.rootItem?.isStack).toBe(true);
+    expect(itemDropped).not.toHaveBeenCalled();
+  });
+
+  it('restores a cancelled tab to its original index', function () {
+    layout.destroy();
+    layout = TestTools.createLayout({
+      root: {
+        type: 'stack',
+        content: [
+          {
+            type: 'component',
+            id: 'first',
+            componentType: TestTools.TEST_COMPONENT_NAME,
+          },
+          {
+            type: 'component',
+            id: 'second',
+            componentType: TestTools.TEST_COMPONENT_NAME,
+          },
+        ],
+      },
+    });
+    const item = layout.findFirstComponentItemById('first');
+    if (item === undefined) {
+      throw new Error('Expected a component item');
+    }
+
+    item.tab.element.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        isPrimary: true,
+        pointerId: 10,
+        pointerType: 'touch',
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        clientX: 20,
+        clientY: 20,
+        pointerId: 10,
+        pointerType: 'touch',
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointercancel', {
+        bubbles: true,
+        pointerId: 10,
+        pointerType: 'touch',
+      }),
+    );
+
+    expect(layout.rootItem?.contentItems.map((child) => child.id)).toEqual([
+      'first',
+      'second',
+    ]);
+  });
+
   function doComponentDragTest(): void {
     let dragProxy = TestTools.getDragProxy();
     expect(dragProxy).toBeNull();

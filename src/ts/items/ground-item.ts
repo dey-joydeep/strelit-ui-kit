@@ -130,8 +130,24 @@ export class GroundItem extends ComponentParentableItem {
       rootItemConfig,
       this,
     );
-    this.clearRoot();
-    this.addChild(rootContentItem, 0);
+    const previousRoot = this.contentItems[0];
+    if (previousRoot !== undefined) {
+      super.removeChild(previousRoot, true);
+    }
+    try {
+      this.addChild(rootContentItem, 0);
+    } catch (error) {
+      if (this.contentItems.includes(rootContentItem)) {
+        super.removeChild(rootContentItem, true);
+      }
+      rootContentItem.destroy();
+      if (previousRoot !== undefined) {
+        // Restore structure without re-entering the failure-prone sizing path.
+        super.addChild(previousRoot, 0, true);
+      }
+      throw error;
+    }
+    previousRoot?.destroy();
   }
 
   clearRoot(): void {

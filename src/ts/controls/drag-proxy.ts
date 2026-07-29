@@ -29,13 +29,16 @@ export class DragProxy extends EventEmitter {
   private _element!: HTMLElement;
   private _proxyContainerElement!: HTMLElement;
   private _componentItemFocused: boolean;
+  private readonly _originalIndex: number;
+  private readonly _originalParentWasClosable: boolean;
 
   private readonly _onDragHandler = (
     offsetX: number,
     offsetY: number,
     event: PointerEvent,
   ) => this.onDrag(offsetX, offsetY, event);
-  private readonly _onDragStopHandler = () => this.onDrop();
+  private readonly _onDragStopHandler = (event: PointerEvent | undefined) =>
+    this.onDrop(event === undefined || event.type === 'pointercancel');
 
   get element(): HTMLElement {
     return this._element;
@@ -70,7 +73,11 @@ export class DragProxy extends EventEmitter {
     if (this._componentItemFocused) {
       this._componentItem.blur();
     }
-    this._componentItem.parent.removeChild(this._componentItem, true);
+    this._originalIndex = this._componentItem.parent.contentItems.indexOf(
+      this._componentItem,
+    );
+    this._originalParentWasClosable = this._originalParent.isClosable;
+    this.detachComponentItem();
 
     this.setDimensions();
 
@@ -206,7 +213,7 @@ export class DragProxy extends EventEmitter {
    * and adds the child to it
    * @internal
    */
-  private onDrop(): void {
+  private onDrop(cancelled = false): void {
     const dropTargetIndicator = this._layoutManager.dropTargetIndicator;
     if (dropTargetIndicator === null) {
       throw new UnexpectedNullError('DPOD30011');
@@ -223,7 +230,7 @@ export class DragProxy extends EventEmitter {
      * Valid drop area found
      */
     let droppedComponentItem: ComponentItem | undefined;
-    if (this._area !== null) {
+    if (!cancelled && this._area !== null) {
       droppedComponentItem = this._componentItem;
       this._area.contentItem.onDrop(droppedComponentItem, this._area);
       if (
@@ -239,7 +246,7 @@ export class DragProxy extends EventEmitter {
        * No valid drop area available at present, but one has been found before.
        * Use it
        */
-    } else if (this._lastValidArea !== null) {
+    } else if (!cancelled && this._lastValidArea !== null) {
       droppedComponentItem = this._componentItem;
       const newParentContentItem = this._lastValidArea.contentItem;
       newParentContentItem.onDrop(droppedComponentItem, this._lastValidArea);
@@ -260,7 +267,10 @@ export class DragProxy extends EventEmitter {
     } else if (this._originalParent && !this._originalParent.isGround) {
       droppedComponentItem = this._componentItem;
       if (this.isParentAttached(this._originalParent)) {
-        this._originalParent.addChild(droppedComponentItem);
+        this._originalParent.addChild(
+          droppedComponentItem,
+          this._originalIndex,
+        );
       } else {
         const rootItem = this._layoutManager.rootItem;
         if (rootItem !== undefined) {
@@ -288,7 +298,11 @@ export class DragProxy extends EventEmitter {
 
     this._element.remove();
 
-    if (droppedComponentItem !== undefined) {
+    if (!cancelled && droppedComponentItem !== undefined) {
+      this.removeEmptyOriginalParent();
+    }
+
+    if (!cancelled && droppedComponentItem !== undefined) {
       this._layoutManager.emit('itemDropped', this._componentItem);
     }
 
@@ -330,8 +344,42 @@ export class DragProxy extends EventEmitter {
   private isParentAttached(parent: ContentItem): boolean {
     let current: ContentItem | null = parent;
     while (current !== null && !current.isGround) {
-      current = current.parent;
+      const nextParent: ContentItem | null = current.parent;
+      if (nextParent === null || !nextParent.contentItems.includes(current)) {
+        return false;
+      }
+      current = nextParent;
     }
     return current !== null && current.isGround;
+  }
+
+  private detachComponentItem(): void {
+    if (!(this._originalParent instanceof Stack)) {
+      this._originalParent.removeChild(this._componentItem, true);
+      return;
+    }
+    const parentInternals = this._originalParent as unknown as {
+      _isClosable: boolean;
+    };
+    parentInternals._isClosable = false;
+    try {
+      this._originalParent.removeChild(this._componentItem, true);
+    } finally {
+      parentInternals._isClosable = this._originalParentWasClosable;
+    }
+  }
+
+  private removeEmptyOriginalParent(): void {
+    if (
+      this._originalParent instanceof Stack &&
+      this._originalParentWasClosable &&
+      this._originalParent.contentItems.length === 0 &&
+      this.isParentAttached(this._originalParent)
+    ) {
+      const parent = this._originalParent.parent;
+      if (parent !== null) {
+        parent.removeChild(this._originalParent);
+      }
+    }
   }
 }

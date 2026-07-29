@@ -107,6 +107,43 @@ describe('BrowserPopout functionality (item.popout())', function () {
     );
   });
 
+  it('preserves a pending popout loaded from configuration', function () {
+    const mockWindow = {
+      closed: false,
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      document: {
+        createElement: () => document.createElement('div'),
+        body: document.createElement('body'),
+        head: document.createElement('head'),
+        write: vi.fn(),
+        close: vi.fn(),
+      },
+      location: { href: '' },
+    } as unknown as Window;
+    vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+
+    layout.loadLayout({
+      openPopouts: [
+        {
+          parentId: 'persisted-parent',
+          indexInParent: 1,
+          root: {
+            type: 'component',
+            id: 'configured-pending',
+            componentType: 'testComponent',
+          },
+        },
+      ],
+    });
+
+    const saved = layout.saveLayout();
+    expect(saved.root).toBeUndefined();
+    expect(saved.openPopouts).toHaveLength(1);
+    expect(saved.openPopouts[0].root?.id).toBe('configured-pending');
+  });
+
   it('removes the source item only after the child layout initializes', function () {
     vi.useFakeTimers();
     try {
@@ -593,6 +630,67 @@ describe('BrowserPopout functionality (item.popout())', function () {
       vi.advanceTimersByTime(50);
 
       expect(closed).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('closes an empty child window without trying to insert a root', function () {
+    vi.useFakeTimers();
+    let beforeUnload: (() => void) | undefined;
+    const closeWindow = vi.fn();
+    const mockWindow = {
+      closed: false,
+      close: vi.fn(),
+      addEventListener: vi.fn((name: string, listener: () => void) => {
+        if (name === 'beforeunload') {
+          beforeUnload = listener;
+        }
+      }),
+      removeEventListener: vi.fn(),
+      __strelitInstance: {
+        isInitialised: true,
+        on: vi.fn(),
+        saveLayout: () => resolveLayoutConfig({}),
+        closeWindow: () => {
+          closeWindow();
+          (mockWindow as unknown as { closed: boolean }).closed = true;
+          beforeUnload?.();
+        },
+        width: 320,
+        height: 200,
+      },
+      document: {
+        createElement: () => document.createElement('div'),
+        body: document.createElement('body'),
+        head: document.createElement('head'),
+        write: vi.fn(),
+        close: vi.fn(),
+      },
+      location: { href: '' },
+    } as unknown as Window;
+    vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+    layout.loadLayout({
+      openPopouts: [
+        {
+          root: {
+            type: 'component',
+            componentType: 'testComponent',
+          },
+        },
+      ],
+    });
+    const popout = layout.openPopouts[0];
+    const closed = vi.fn();
+    popout.on('closed', closed);
+
+    try {
+      expect(() => popout.popIn()).not.toThrow();
+      vi.advanceTimersByTime(50);
+      expect(closeWindow).toHaveBeenCalledOnce();
+      expect(closed).toHaveBeenCalledOnce();
+      expect(layout.openPopouts).toHaveLength(0);
+      expect(layout.rootItem).toBeUndefined();
     } finally {
       vi.useRealTimers();
     }

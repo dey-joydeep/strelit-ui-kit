@@ -704,12 +704,20 @@ export abstract class LayoutManager extends EventEmitter {
       this.reconcilePopoutWindows();
       const openPopouts: ResolvedPopoutLayoutConfig[] = [];
       for (const element of this._openPopouts) {
+        let initialised = false;
         try {
-          if (element.getStrelitInstance().isInitialised) {
-            openPopouts.push(element.toConfig());
-          }
+          initialised = element.getStrelitInstance().isInitialised;
         } catch {
-          // The source subtree remains in the root until initialization.
+          // A child instance is unavailable while its window is starting.
+        }
+        const popoutConfig = element.toConfig();
+        const parentId = popoutConfig.parentId;
+        const sourceAttached =
+          typeof parentId === 'string' &&
+          (this._groundItem.popInParentIds.includes(parentId) ||
+            this._groundItem.getItemsByPopInParentId(parentId).length > 0);
+        if (initialised || !sourceAttached) {
+          openPopouts.push(popoutConfig);
         }
       }
 
@@ -2072,24 +2080,42 @@ export abstract class LayoutManager extends EventEmitter {
               const stackColumnCount = columnCount - finalColumnCount;
 
               const rootContentItem = this._groundItem.contentItems[0];
-              const allStacks = this.getAllStacks();
-              if (allStacks.length === 0) {
+              const rootBranches = [...rootContentItem.contentItems];
+              let firstStackContainer: Stack | undefined;
+              let destinationBranch: ContentItem | undefined;
+              for (const branch of rootBranches) {
+                const branchStacks = branch.getItemsByType(
+                  ItemType.stack,
+                ) as Stack[];
+                if (branchStacks.length > 0) {
+                  firstStackContainer = branchStacks[0];
+                  destinationBranch = branch;
+                  break;
+                }
+              }
+              if (
+                firstStackContainer === undefined ||
+                destinationBranch === undefined
+              ) {
+                this._updatingColumnsResponsive = false;
                 throw new AssertError('LMACRS77413');
               } else {
-                const firstStackContainer = allStacks[0];
-                for (let i = 0; i < stackColumnCount; i++) {
-                  // Stack from right.
-                  const column =
-                    rootContentItem.contentItems[
-                      rootContentItem.contentItems.length - 1
-                    ];
-                  this.addChildContentItemsToContainer(
-                    firstStackContainer,
-                    column,
-                  );
+                const columnsToCollapse = rootBranches
+                  .filter((branch) => branch !== destinationBranch)
+                  .slice(-stackColumnCount);
+                try {
+                  for (const column of columnsToCollapse) {
+                    this.addChildContentItemsToContainer(
+                      firstStackContainer,
+                      column,
+                    );
+                    if (rootContentItem.contentItems.includes(column)) {
+                      rootContentItem.removeChild(column);
+                    }
+                  }
+                } finally {
+                  this._updatingColumnsResponsive = false;
                 }
-
-                this._updatingColumnsResponsive = false;
               }
             }
           }

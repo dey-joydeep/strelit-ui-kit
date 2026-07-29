@@ -37,4 +37,33 @@ describe('responsive layout', () => {
     );
     expect(layout.getComponentItemsByType('component')).toHaveLength(3);
   });
+
+  it('retains the branch that owns the responsive destination stack', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('component', () => undefined);
+    layout.setSize(300, 300);
+
+    expect(() =>
+      layout.loadLayout({
+        settings: { responsiveMode: 'always' },
+        dimensions: { defaultMinItemWidth: '300px' },
+        root: {
+          type: 'row',
+          content: [
+            { type: 'row', content: [] },
+            {
+              type: 'component',
+              id: 'retained',
+              componentType: 'component',
+            },
+          ],
+        },
+      }),
+    ).not.toThrow();
+
+    expect(layout.getComponentItemsByType('component')).toHaveLength(1);
+    expect(layout.findFirstComponentItemById('retained')).toBeDefined();
+    expect(layout.rootItem?.getItemsByType('stack')).toHaveLength(1);
+  });
 });

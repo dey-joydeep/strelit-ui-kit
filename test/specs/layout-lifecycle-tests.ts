@@ -171,6 +171,55 @@ describe('layout lifecycle', () => {
     expect(layout.layoutConfig).toBe(workingConfig);
   });
 
+  it('restores the working root when replacement sizing fails after attachment', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        id: 'working-root',
+        componentType: 'panel',
+      },
+    });
+    const groundItem = layout.groundItem;
+    const workingRoot = layout.rootItem;
+    const workingConfig = layout.layoutConfig;
+    if (groundItem === undefined) {
+      throw new Error('Expected a ground item');
+    }
+    vi.spyOn(groundItem, 'updateSize').mockImplementationOnce(() => {
+      throw new Error('virtual recting failed');
+    });
+
+    expect(() =>
+      layout.loadLayout({
+        root: {
+          type: 'component',
+          id: 'replacement-root',
+          componentType: 'panel',
+        },
+      }),
+    ).toThrow('virtual recting failed');
+
+    expect(layout.rootItem).toBe(workingRoot);
+    expect(layout.layoutConfig).toBe(workingConfig);
+    expect(
+      (workingRoot as unknown as { _isDestroyed: boolean })._isDestroyed,
+    ).toBe(false);
+    expect(workingRoot?.element.isConnected).toBe(true);
+    expect(
+      (
+        layout as unknown as {
+          _registeredComponentMap: Map<unknown, unknown>;
+        }
+      )._registeredComponentMap.size,
+    ).toBe(1);
+    expect(
+      layout.findFirstComponentItemById('replacement-root'),
+    ).toBeUndefined();
+  });
+
   it('closes incoming popouts when replacement root creation fails', () => {
     const layout = new StrelitLayout();
     layouts.push(layout);

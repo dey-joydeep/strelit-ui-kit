@@ -191,7 +191,8 @@ export class BrowserPopout extends EventEmitter {
     );
     const copiedRoot = copiedStrelitLayoutConfig.root;
     if (copiedRoot === undefined) {
-      throw new UnexpectedUndefinedError('BPPIR19998');
+      this._onClose();
+      return;
     }
     const groundItem = this._layoutManager.groundItem;
     if (groundItem === undefined) {

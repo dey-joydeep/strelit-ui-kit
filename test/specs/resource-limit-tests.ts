@@ -107,6 +107,19 @@ describe('configuration resource limits', () => {
     }
   });
 
+  it('allows absent top-level state but rejects undefined within containers', () => {
+    expect(deepCloneValue(undefined)).toBeUndefined();
+
+    for (const value of [
+      { nested: undefined },
+      [undefined],
+      Array(1),
+      { nested: [{ value: undefined }] },
+    ]) {
+      expect(() => deepCloneValue(value)).toThrow('Value is not serializable');
+    }
+  });
+
   it('enforces the state budget through config copying and component binding', () => {
     const componentState = createNestedState(maximumDepth + 1);
     const resolved = resolveItemConfig({

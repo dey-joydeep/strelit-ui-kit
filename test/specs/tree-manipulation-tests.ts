@@ -139,6 +139,58 @@ describe('Runtime layout tree manipulation', function () {
     },
   );
 
+  it.each([-1, 0.5, 2, Number.NaN])(
+    'rejects invalid stack insertion index %s before binding',
+    (index) => {
+      const countedFactory = vi.fn(() => undefined);
+      layout.registerComponentFactoryFunction('counted', countedFactory);
+      layout.loadLayout({
+        root: {
+          type: 'stack',
+          content: [{ type: 'component', componentType: 'testComponent' }],
+        },
+      });
+      const stack = layout.rootItem as Stack;
+      const children = [...stack.contentItems];
+
+      expect(() =>
+        stack.addItem({ type: 'component', componentType: 'counted' }, index),
+      ).toThrow();
+      expect(countedFactory).not.toHaveBeenCalled();
+      expect(stack.contentItems).toEqual(children);
+    },
+  );
+
+  it.each([-1, 0.5, 2, Number.NaN])(
+    'rejects direct stack child insertion index %s without mutation',
+    (index) => {
+      layout.loadLayout({
+        root: {
+          type: 'stack',
+          content: [{ type: 'component', componentType: 'testComponent' }],
+        },
+      });
+      const stack = layout.rootItem as Stack;
+      const child = layout.createAndInitContentItem(
+        {
+          ...stack.contentItems[0].toConfig(),
+          id: `detached-${index}`,
+        },
+        stack,
+      );
+      const children = [...stack.contentItems];
+      const tabCount = stack.header.tabs.length;
+
+      try {
+        expect(() => stack.addChild(child, index)).toThrow();
+        expect(stack.contentItems).toEqual(children);
+        expect(stack.header.tabs).toHaveLength(tabCount);
+      } finally {
+        child.destroy();
+      }
+    },
+  );
+
   it('clears maximisedStack when the maximised stack is destroyed', function () {
     const config: LayoutConfig = {
       root: {
