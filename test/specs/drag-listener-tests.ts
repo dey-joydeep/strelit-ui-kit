@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DragListener } from '../../src/ts/utils/drag-listener';
 
 describe('DragListener iframe handling', () => {
@@ -107,6 +107,57 @@ describe('DragListener iframe handling', () => {
 
     expect(listener.isTracking).toBe(false);
     expect(document.body.classList.contains('lm_dragging')).toBe(false);
+    listener.destroy();
+  });
+
+  it('ignores events from pointers that did not start the drag', () => {
+    const handle = document.createElement('div');
+    document.body.append(handle);
+    elements.push(handle);
+    const listener = new DragListener(handle, []);
+    const dragStop = vi.fn();
+    listener.on('dragStop', dragStop);
+
+    handle.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        clientX: 0,
+        clientY: 0,
+        isPrimary: true,
+        pointerId: 7,
+        pointerType: 'touch',
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        clientX: 20,
+        clientY: 20,
+        pointerId: 7,
+        pointerType: 'touch',
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointerup', {
+        bubbles: true,
+        pointerId: 8,
+        pointerType: 'touch',
+      }),
+    );
+
+    expect(listener.isTracking).toBe(true);
+    expect(document.body.classList.contains('lm_dragging')).toBe(true);
+    expect(dragStop).not.toHaveBeenCalled();
+
+    document.dispatchEvent(
+      new PointerEvent('pointerup', {
+        bubbles: true,
+        pointerId: 7,
+        pointerType: 'touch',
+      }),
+    );
+    expect(listener.isTracking).toBe(false);
+    expect(dragStop).toHaveBeenCalledOnce();
     listener.destroy();
   });
 });

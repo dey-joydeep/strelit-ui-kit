@@ -73,7 +73,7 @@ describe('BrowserPopout functionality (item.popout())', function () {
     openSpy.mockRestore();
   });
 
-  it('saves a pending popout before its child layout initializes', function () {
+  it('keeps a pending popout only in the root snapshot', function () {
     const mockWindow = {
       closed: false,
       close: vi.fn(),
@@ -99,8 +99,9 @@ describe('BrowserPopout functionality (item.popout())', function () {
     const item = layout.findFirstComponentItemById('pending') as ComponentItem;
     const popout = item.popout();
 
-    expect(() => layout.saveLayout()).not.toThrow();
-    expect(layout.saveLayout().openPopouts[0].root?.id).toBe('pending');
+    const saved = layout.saveLayout();
+    expect(saved.root?.id).toBe('pending');
+    expect(saved.openPopouts).toHaveLength(0);
     expect(() => popout.getStrelitInstance()).toThrow(
       'UnexpectedUndefined: BPGGI24694',
     );
@@ -144,12 +145,25 @@ describe('BrowserPopout functionality (item.popout())', function () {
         closeWindow: vi.fn(),
         isInitialised: true,
         on: vi.fn(),
+        saveLayout: () =>
+          resolveLayoutConfig({
+            root: {
+              type: 'component',
+              id: 'initialising-popout',
+              componentType: 'testComponent',
+            },
+          }),
+        width: 320,
+        height: 200,
       } as never;
       vi.advanceTimersByTime(10);
 
       expect(
         layout.findFirstComponentItemById('initialising-popout'),
       ).toBeUndefined();
+      const saved = layout.saveLayout();
+      expect(saved.root).toBeUndefined();
+      expect(saved.openPopouts[0].root?.id).toBe('initialising-popout');
     } finally {
       vi.useRealTimers();
     }
@@ -228,6 +242,78 @@ describe('BrowserPopout functionality (item.popout())', function () {
     expect(removeItemSpy).toHaveBeenCalledWith(
       expect.stringMatching(/^strelit-window-config-/),
     );
+  });
+
+  it('rolls back partially opened popouts before replacing the root', function () {
+    const oldWindowClose = vi.fn();
+    const partialWindowClose = vi.fn();
+    const createWindow = (close: ReturnType<typeof vi.fn>) =>
+      ({
+        closed: false,
+        close,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      }) as unknown as Window;
+    const oldWindow = createWindow(oldWindowClose);
+    const partialWindow = createWindow(partialWindowClose);
+    vi.spyOn(window, 'open')
+      .mockReturnValueOnce(oldWindow)
+      .mockReturnValueOnce(partialWindow)
+      .mockReturnValueOnce(null);
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        id: 'working-root',
+        componentType: 'testComponent',
+      },
+      openPopouts: [
+        {
+          root: {
+            type: 'component',
+            componentType: 'testComponent',
+          },
+        },
+      ],
+    });
+    const workingRoot = layout.rootItem;
+    const existingPopout = layout.openPopouts[0];
+
+    expect(() =>
+      layout.loadLayout({
+        root: {
+          type: 'component',
+          id: 'replacement-root',
+          componentType: 'testComponent',
+        },
+        openPopouts: [
+          {
+            root: {
+              type: 'component',
+              componentType: 'testComponent',
+            },
+          },
+          {
+            root: {
+              type: 'component',
+              componentType: 'testComponent',
+            },
+          },
+        ],
+      }),
+    ).toThrow('Popout blocked');
+
+    expect(layout.rootItem).toBe(workingRoot);
+    expect(layout.openPopouts).toEqual([existingPopout]);
+    expect(oldWindowClose).not.toHaveBeenCalled();
+    expect(partialWindowClose).toHaveBeenCalledOnce();
   });
 
   it('does not throw when calling close() on a blocked popout', function () {

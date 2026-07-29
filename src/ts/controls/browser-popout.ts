@@ -200,6 +200,11 @@ export class BrowserPopout extends EventEmitter {
     if (this._config.parentId !== null) {
       parentItem = groundItem.getItemsByPopInParentId(this._config.parentId)[0];
     }
+    if (!this._isInitialised && parentItem !== undefined) {
+      // A source-item popout remains attached until the child initializes.
+      this._onClose();
+      return;
+    }
 
     /*
      * Fallback if parentItem is not available. Either add it to the topmost

@@ -1646,7 +1646,7 @@ export function parseSize(
     firstNonNumericCharPart: firstNonDigitPart,
   } = splitStringAtFirstNonNumericChar(sizeString);
   const size = Number.parseFloat(digitsPart);
-  if (isNaN(size)) {
+  if (!Number.isFinite(size)) {
     throw new ConfigurationError(
       `${i18nStrings[I18nStringId.InvalidNumberPartInSizeString]}: ${sizeString}`,
     );

@@ -54,4 +54,64 @@ describe('ComponentContainer sizing', () => {
       layout.destroy();
     }
   });
+
+  it('takes growth only from sibling space above minimum sizes', () => {
+    const layout = new StrelitLayout();
+    try {
+      layout.registerComponentFactoryFunction(
+        'panel',
+        (_container: ComponentContainer) => undefined,
+      );
+      layout.loadLayout({
+        dimensions: { defaultMinItemWidth: '10px' },
+        root: {
+          type: 'row',
+          content: [
+            {
+              type: 'component',
+              id: 'target',
+              componentType: 'panel',
+              size: '10%',
+            },
+            {
+              type: 'component',
+              componentType: 'panel',
+              size: '1%',
+            },
+            {
+              type: 'component',
+              componentType: 'panel',
+              size: '89%',
+            },
+          ],
+        },
+      });
+      const item = layout.findFirstComponentItemById('target') as ComponentItem;
+      const row = item.parentItem.parent;
+      expect(row?.isRow).toBe(true);
+      (
+        item.container as unknown as {
+          _width: number;
+        }
+      )._width = 96;
+      const previousTotal =
+        row?.contentItems.reduce(
+          (total, contentItem) => total + contentItem.size,
+          0,
+        ) ?? 0;
+
+      expect(item.container.setSize(192, 100)).toBe(true);
+      const sizes =
+        row?.contentItems.map((contentItem) => contentItem.size) ?? [];
+      expect(sizes.every((size) => Number.isFinite(size) && size >= 0)).toBe(
+        true,
+      );
+      expect(sizes.reduce((total, size) => total + size, 0)).toBeCloseTo(
+        previousTotal,
+      );
+      expect(sizes[1]).toBeGreaterThan(0);
+    } finally {
+      layout.destroy();
+    }
+  });
 });

@@ -21,6 +21,7 @@ export class DragListener extends EventEmitter {
   private _nOriginalY: number;
   private _dragging: boolean;
   private _pointerTracking = false;
+  private _activePointerId: number | undefined;
   private _iframePointerEvents: {
     element: HTMLIFrameElement;
     value: string;
@@ -104,13 +105,17 @@ export class DragListener extends EventEmitter {
       (oEvent.pointerType !== 'mouse' || oEvent.button === 0)
     ) {
       const coordinates = this.getPointerCoordinates(oEvent);
-      this.processPointerDown(coordinates);
+      this.processPointerDown(coordinates, oEvent.pointerId);
     }
   }
 
-  private processPointerDown(coordinates: DragListenerPointerCoordinates) {
+  private processPointerDown(
+    coordinates: DragListenerPointerCoordinates,
+    pointerId: number,
+  ) {
     this._nOriginalX = coordinates.x;
     this._nOriginalY = coordinates.y;
+    this._activePointerId = pointerId;
 
     this._oDocument.addEventListener(
       'pointermove',
@@ -139,7 +144,7 @@ export class DragListener extends EventEmitter {
   }
 
   private onPointerMove(oEvent: PointerEvent) {
-    if (this._pointerTracking) {
+    if (this._pointerTracking && oEvent.pointerId === this._activePointerId) {
       this.processDragMove(oEvent);
       oEvent.preventDefault();
     }
@@ -164,7 +169,9 @@ export class DragListener extends EventEmitter {
   }
 
   private onPointerUp(oEvent: PointerEvent) {
-    this.processDragStop(oEvent);
+    if (oEvent.pointerId === this._activePointerId) {
+      this.processDragStop(oEvent);
+    }
   }
 
   private processDragStop(dragEvent?: PointerEvent) {
@@ -172,6 +179,7 @@ export class DragListener extends EventEmitter {
       clearTimeout(this._timeout);
       this._timeout = undefined;
     }
+    this._activePointerId = undefined;
 
     this.checkRemovePointerTrackingEventListeners();
 

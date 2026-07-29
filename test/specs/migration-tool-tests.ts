@@ -788,6 +788,31 @@ const resolved = LayoutConfig.resolve(config);
     expect(migrated).not.toContain('import {');
   });
 
+  it('inserts generated helpers after shebangs and directives', () => {
+    const filePath = createFixture(
+      `#!/usr/bin/env node
+'use strict';
+'use client';
+const LayoutConfig = require('golden-layout').LayoutConfig;
+const resolved = LayoutConfig.resolve(config);
+`,
+      'consumer.cjs',
+    );
+
+    migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+    const shebangIndex = migrated.indexOf('#!/usr/bin/env node');
+    const strictIndex = migrated.indexOf("'use strict'");
+    const clientIndex = migrated.indexOf("'use client'");
+    const requireIndex = migrated.indexOf("require('strelit-ui-kit')");
+
+    expect(shebangIndex).toBe(0);
+    expect(strictIndex).toBeGreaterThan(shebangIndex);
+    expect(clientIndex).toBeGreaterThan(strictIndex);
+    expect(requireIndex).toBeGreaterThan(clientIndex);
+    expect(migrated).toContain('resolveLayoutConfig(config)');
+  });
+
   it('discovers modern TypeScript module extensions', () => {
     const directory = mkdtempSync(join(tmpdir(), 'strelit-migration-modules-'));
     temporaryDirectories.push(directory);

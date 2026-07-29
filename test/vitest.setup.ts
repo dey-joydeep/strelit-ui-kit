@@ -8,11 +8,13 @@ class ResizeObserverMock {
 
 class PointerEventMock extends MouseEvent {
   readonly isPrimary: boolean;
+  readonly pointerId: number;
   readonly pointerType: string;
 
   constructor(type: string, init: PointerEventInit = {}) {
     super(type, init);
     this.isPrimary = init.isPrimary ?? false;
+    this.pointerId = init.pointerId ?? 0;
     this.pointerType = init.pointerType ?? '';
     Object.defineProperty(this, 'pageX', {
       value: init.clientX ?? 0,

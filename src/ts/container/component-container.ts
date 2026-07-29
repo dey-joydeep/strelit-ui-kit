@@ -15,6 +15,7 @@ import {
   LogicalZIndex,
   LogicalZIndexToDefaultMap,
   SerializableValue,
+  SizeUnit,
 } from '../utils/types';
 import { setElementHeight, setElementWidth } from '../utils/utils';
 
@@ -328,15 +329,59 @@ export class ComponentContainer extends EventEmitter {
           if (!Number.isFinite(percentage)) {
             return false;
           }
-          const delta = (ancestorChildItem.size - percentage) / siblingCount;
-
-          for (const ancestorItemContentItem of ancestorItem.contentItems) {
-            if (ancestorItemContentItem === ancestorChildItem) {
-              ancestorItemContentItem.size = percentage;
-            } else {
-              ancestorItemContentItem.size += delta;
+          const siblings = ancestorItem.contentItems.filter(
+            (item) => item !== ancestorChildItem,
+          );
+          const dimensions = this.layoutManager.layoutConfig.dimensions;
+          const defaultMinSize = ancestorItem.isColumn
+            ? dimensions.defaultMinItemHeight
+            : dimensions.defaultMinItemWidth;
+          const getMinPercentage = (item: ContentItem) => {
+            if (
+              item.minSize !== undefined &&
+              item.minSizeUnit !== SizeUnit.Pixel
+            ) {
+              return Number.POSITIVE_INFINITY;
+            }
+            return ((item.minSize ?? defaultMinSize) / totalPixel) * 100;
+          };
+          const targetMinPercentage = getMinPercentage(ancestorChildItem);
+          if (percentage < targetMinPercentage) {
+            return false;
+          }
+          const sizeIncrease = percentage - ancestorChildItem.size;
+          if (sizeIncrease > 0) {
+            const availableBySibling = siblings.map((item) =>
+              Math.max(0, item.size - getMinPercentage(item)),
+            );
+            const totalAvailable = availableBySibling.reduce(
+              (total, available) => total + available,
+              0,
+            );
+            if (sizeIncrease > totalAvailable + 1e-10) {
+              return false;
+            }
+            for (let i = 0; i < siblings.length; i++) {
+              const reduction =
+                totalAvailable === 0
+                  ? 0
+                  : sizeIncrease * (availableBySibling[i] / totalAvailable);
+              siblings[i].size -= reduction;
+            }
+          } else {
+            const releasedSize = -sizeIncrease;
+            const siblingTotal = siblings.reduce(
+              (total, item) => total + item.size,
+              0,
+            );
+            for (const sibling of siblings) {
+              sibling.size +=
+                siblingTotal === 0
+                  ? releasedSize / siblingCount
+                  : releasedSize * (sibling.size / siblingTotal);
             }
           }
+          ancestorChildItem.size = percentage;
 
           ancestorItem.updateSize(false);
 

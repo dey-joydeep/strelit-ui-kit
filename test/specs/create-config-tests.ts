@@ -88,6 +88,20 @@ describe('Layout configuration resolution and defaults', function () {
     expect(root?.content[1].size).toBe(0.5);
   });
 
+  it('rejects parsed sizes that overflow to infinity', function () {
+    const overflowingSize = `${'9'.repeat(400)}%`;
+
+    expect(() =>
+      resolveLayoutConfig({
+        root: {
+          type: 'component',
+          componentType: 'panel',
+          size: overflowingSize,
+        },
+      }),
+    ).toThrow(ConfigurationError);
+  });
+
   it('preserves the popout unload policy', function () {
     expect(resolveLayoutConfig({}).settings.closePopoutsOnUnload).toBe(true);
     expect(

@@ -112,6 +112,33 @@ describe('Runtime layout tree manipulation', function () {
     }).not.toThrow();
   });
 
+  it.each([-1, 0.5, 3, Number.NaN])(
+    'rejects invalid row insertion index %s without mutation',
+    (index) => {
+      layout.loadLayout({
+        root: {
+          type: 'row',
+          content: [
+            { type: 'component', componentType: 'testComponent' },
+            { type: 'component', componentType: 'testComponent' },
+          ],
+        },
+      });
+      const row = layout.rootItem as RowOrColumn;
+      const children = [...row.contentItems];
+      const childElementCount = row.element.childElementCount;
+
+      expect(() =>
+        row.newItem(
+          { type: 'component', componentType: 'testComponent' },
+          index,
+        ),
+      ).toThrow(RangeError);
+      expect(row.contentItems).toEqual(children);
+      expect(row.element.childElementCount).toBe(childElementCount);
+    },
+  );
+
   it('clears maximisedStack when the maximised stack is destroyed', function () {
     const config: LayoutConfig = {
       root: {

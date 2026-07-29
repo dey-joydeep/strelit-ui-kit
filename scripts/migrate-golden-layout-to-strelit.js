@@ -2789,23 +2789,38 @@ function addRequiredImports(content, requiredImports, preferRequire = false) {
     const bindings = entries.map(([exportName, localName]) =>
       exportName === localName ? exportName : `${exportName}: ${localName}`,
     );
-    return prependAfterShebang(
+    return insertAfterDirectivePrologue(
       content,
       `const { ${bindings.join(', ')} } = require('strelit-ui-kit');`,
+      sourceFile,
     );
   }
-  return prependAfterShebang(
+  return insertAfterDirectivePrologue(
     content,
     `import { ${names.join(', ')} } from 'strelit-ui-kit';`,
+    sourceFile,
   );
 }
 
-function prependAfterShebang(content, statement) {
+function insertAfterDirectivePrologue(content, statement, sourceFile) {
   const shebang = content.match(/^#![^\r\n]*(?:\r?\n|$)/)?.[0];
-  if (shebang === undefined) {
-    return `${statement}\n${content}`;
+  let insertionPosition = shebang?.length ?? 0;
+  for (const sourceStatement of sourceFile.statements) {
+    if (
+      ts.isExpressionStatement(sourceStatement) &&
+      ts.isStringLiteral(sourceStatement.expression)
+    ) {
+      insertionPosition = sourceStatement.getEnd();
+    } else {
+      break;
+    }
   }
-  return `${shebang}${statement}\n${content.slice(shebang.length)}`;
+  const prefix = content.slice(0, insertionPosition);
+  const suffix = content.slice(insertionPosition);
+  const beforeStatement =
+    prefix.length === 0 || prefix.endsWith('\n') ? '' : '\n';
+  const afterStatement = suffix.startsWith('\n') ? '' : '\n';
+  return `${prefix}${beforeStatement}${statement}${afterStatement}${suffix}`;
 }
 
 /** Executes discovery, dry-run reporting, and guarded write-mode updates. */

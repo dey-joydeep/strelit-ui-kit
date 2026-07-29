@@ -197,6 +197,7 @@ export class RowOrColumn extends ContentItem {
     itemConfig: RowOrColumnItemConfig | StackItemConfig | ComponentItemConfig,
     index?: number,
   ): number {
+    this.validateInsertionIndex(index);
     this.layoutManager.checkMinimiseMaximisedStack();
     const resolvedItemConfig =
       resolveItemConfigWithComponentReorderEnabledDefault(
@@ -229,6 +230,7 @@ export class RowOrColumn extends ContentItem {
   ): number {
     // contentItem = this.layoutManager._$normalizeContentItem(contentItem, this);
 
+    this.validateInsertionIndex(index);
     if (index === undefined) {
       index = this.contentItems.length;
     }
@@ -281,6 +283,19 @@ export class RowOrColumn extends ContentItem {
     this.emitBaseBubblingEvent('stateChanged');
 
     return index;
+  }
+
+  private validateInsertionIndex(index: number | undefined): void {
+    if (
+      index !== undefined &&
+      (!Number.isInteger(index) ||
+        index < 0 ||
+        index > this.contentItems.length)
+    ) {
+      throw new RangeError(
+        `Insertion index must be an integer between 0 and ${this.contentItems.length}`,
+      );
+    }
   }
 
   /**

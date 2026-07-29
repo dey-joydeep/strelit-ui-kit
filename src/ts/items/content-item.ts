@@ -125,6 +125,8 @@ export abstract class ContentItem extends EventEmitter {
   /** @internal */
   private _pendingEventPropagations: Record<string, unknown>;
   /** @internal */
+  private _pendingEventPropagationFrames: Record<string, number | undefined>;
+  /** @internal */
   private _throttledEvents: string[];
   /** @internal */
   private _isInitialised;
@@ -234,6 +236,7 @@ export abstract class ContentItem extends EventEmitter {
     this._isClosable = config.isClosable;
 
     this._pendingEventPropagations = {};
+    this._pendingEventPropagationFrames = {};
     this._throttledEvents = ['stateChanged'];
 
     this._contentItems = this.createContentItems(config.content);
@@ -499,6 +502,11 @@ export abstract class ContentItem extends EventEmitter {
       return;
     }
     this._isDestroyed = true;
+    for (const frame of Object.values(this._pendingEventPropagationFrames)) {
+      if (frame !== undefined) {
+        globalThis.cancelAnimationFrame(frame);
+      }
+    }
     for (let i = 0; i < this._contentItems.length; i++) {
       this._contentItems[i].destroy();
     }
@@ -670,9 +678,10 @@ export abstract class ContentItem extends EventEmitter {
     } else {
       if (this._pendingEventPropagations[name] !== true) {
         this._pendingEventPropagations[name] = true;
-        globalThis.requestAnimationFrame(() =>
-          this.propagateEventToLayoutManager(name, event),
-        );
+        this._pendingEventPropagationFrames[name] =
+          globalThis.requestAnimationFrame(() =>
+            this.propagateEventToLayoutManager(name, event),
+          );
       }
     }
   }
@@ -688,7 +697,10 @@ export abstract class ContentItem extends EventEmitter {
     event: EventEmitterBubblingEvent,
   ) {
     this._pendingEventPropagations[name] = false;
-    this.layoutManager.emitUnknown(name, event);
+    this._pendingEventPropagationFrames[name] = undefined;
+    if (!this._isDestroyed && !this.layoutManager.isDestroyed) {
+      this.layoutManager.emitUnknown(name, event);
+    }
   }
 
   private getItemsByFilter(

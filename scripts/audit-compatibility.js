@@ -600,11 +600,30 @@ function readSnapshot(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
+function validatePreservedApiTargets(entries, currentApi) {
+  for (const entry of entries) {
+    if (
+      entry.disposition === 'preserved-or-renamed' &&
+      !currentApi.has(entry.target)
+    ) {
+      throw new Error(
+        `Preserved v2 API target does not exist in the current report: ${entry.target}`,
+      );
+    }
+  }
+}
+
 /** Validates committed inventory provenance, completeness, and current targets. */
 function validateSnapshots() {
   const apiSnapshot = readSnapshot(apiOutputPath);
   const v1Snapshot = readSnapshot(v1OutputPath);
   const testSnapshot = readSnapshot(testOutputPath);
+  const currentApi = collectApiSurface(
+    fs.readFileSync(
+      path.join(repoRoot, 'etc', 'strelit-ui-kit.api.md'),
+      'utf8',
+    ),
+  );
   const allowedApiDispositions = new Set([
     'preserved-or-renamed',
     'removed-internal',
@@ -653,6 +672,7 @@ function validateSnapshots() {
       );
     }
   }
+  validatePreservedApiTargets(apiSnapshot.entries, currentApi);
 
   for (const entry of v1Snapshot.entries) {
     if (!allowedV1Dispositions.has(entry.disposition)) {
@@ -729,4 +749,8 @@ function main() {
   );
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = { validatePreservedApiTargets };

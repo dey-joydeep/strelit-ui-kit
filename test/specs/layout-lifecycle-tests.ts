@@ -171,7 +171,7 @@ describe('layout lifecycle', () => {
     expect(layout.layoutConfig).toBe(workingConfig);
   });
 
-  it('does not create incoming popouts when replacement root creation fails', () => {
+  it('closes incoming popouts when replacement root creation fails', () => {
     const layout = new StrelitLayout();
     layouts.push(layout);
     layout.registerComponentFactoryFunction('working', () => undefined);
@@ -186,7 +186,24 @@ describe('layout lifecycle', () => {
       },
     });
     const workingRoot = layout.rootItem;
-    const openWindow = vi.spyOn(globalThis, 'open');
+    const popupWindowClose = vi.fn();
+    const popupWindow = {
+      closed: false,
+      close: popupWindowClose,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      document: {
+        createElement: () => document.createElement('div'),
+        body: document.createElement('body'),
+        head: document.createElement('head'),
+        write: vi.fn(),
+        close: vi.fn(),
+      },
+      location: { href: '' },
+    } as unknown as Window;
+    const openWindow = vi
+      .spyOn(globalThis, 'open')
+      .mockReturnValue(popupWindow);
 
     expect(() =>
       layout.loadLayout({
@@ -204,7 +221,8 @@ describe('layout lifecycle', () => {
         ],
       }),
     ).toThrow('component factory failed');
-    expect(openWindow).not.toHaveBeenCalled();
+    expect(openWindow).toHaveBeenCalledOnce();
+    expect(popupWindowClose).toHaveBeenCalledOnce();
     expect(layout.rootItem).toBe(workingRoot);
     expect(layout.openPopouts).toHaveLength(0);
   });
@@ -276,6 +294,37 @@ describe('layout lifecycle', () => {
     layout.loadLayout({});
 
     expect(layout.focusedComponentItem).toBeUndefined();
+  });
+
+  it('cancels throttled state events when the layout is destroyed', () => {
+    const scheduledCallbacks: FrameRequestCallback[] = [];
+    vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(
+      (callback) => {
+        scheduledCallbacks.push(callback);
+        return 73 + scheduledCallbacks.length;
+      },
+    );
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadComponentAsRoot({
+      type: 'component',
+      componentType: 'panel',
+    });
+    for (const callback of scheduledCallbacks.splice(0)) {
+      callback(0);
+    }
+    const cancelAnimationFrame = vi.spyOn(globalThis, 'cancelAnimationFrame');
+    const stateChanged = vi.fn();
+    layout.on('stateChanged', stateChanged);
+
+    layout.rootItem?.setTitle('updated');
+    expect(scheduledCallbacks).toHaveLength(1);
+    layout.destroy();
+
+    expect(cancelAnimationFrame).toHaveBeenCalledWith(74);
+    scheduledCallbacks[0](0);
+    expect(stateChanged).not.toHaveBeenCalled();
   });
 
   it('destroys partial layout state when initialization fails', () => {

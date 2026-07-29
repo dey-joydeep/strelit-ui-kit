@@ -623,15 +623,47 @@ export abstract class LayoutManager extends EventEmitter {
         throw new UnexpectedUndefinedError('LMLL11119');
       }
       const previousLayoutConfig = this.layoutConfig;
+      const previousRootConfig = this._groundItem.calculateConfigContent()[0];
+      const previousOpenPopouts = [...this._openPopouts];
       this.layoutConfig = resolveLayoutConfig(layoutConfig);
+      let rootReplaced = false;
       try {
+        this.createSubWindows();
+        const incomingOpenPopouts = this._openPopouts.slice(
+          previousOpenPopouts.length,
+        );
         this._groundItem.loadRoot(this.layoutConfig.root);
+        rootReplaced = true;
         this.checkLoadedLayoutMaximiseItem();
-        this.closeAllOpenPopouts();
-        this.createSubWindows(); // still needs to be tested
+        for (const popout of previousOpenPopouts) {
+          popout.close();
+        }
+        this._openPopouts = incomingOpenPopouts;
+        if (
+          incomingOpenPopouts.length === 0 &&
+          this._windowBeforeUnloadListening
+        ) {
+          globalThis.removeEventListener(
+            'beforeunload',
+            this._windowBeforeUnloadListener,
+          );
+          this._windowBeforeUnloadListening = false;
+        }
         this.adjustColumnsResponsive();
       } catch (error) {
+        const incomingOpenPopouts = this._openPopouts.slice(
+          previousOpenPopouts.length,
+        );
+        for (const popout of incomingOpenPopouts) {
+          popout.close();
+        }
+        this._openPopouts = previousOpenPopouts;
         this.layoutConfig = previousLayoutConfig;
+        if (rootReplaced) {
+          this._groundItem.loadRoot(previousRootConfig);
+          this.checkLoadedLayoutMaximiseItem();
+          this.adjustColumnsResponsive();
+        }
         throw error;
       }
     }
@@ -672,7 +704,13 @@ export abstract class LayoutManager extends EventEmitter {
       this.reconcilePopoutWindows();
       const openPopouts: ResolvedPopoutLayoutConfig[] = [];
       for (const element of this._openPopouts) {
-        openPopouts.push(element.toConfig());
+        try {
+          if (element.getStrelitInstance().isInitialised) {
+            openPopouts.push(element.toConfig());
+          }
+        } catch {
+          // The source subtree remains in the root until initialization.
+        }
       }
 
       const config: ResolvedLayoutConfig = {

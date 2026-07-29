@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StrelitLayout, LayoutConfig } from '../../src';
+import { DragProxy } from '../../src/ts/controls/drag-proxy';
 import TestTools from './test-tools';
 
 describe('drag source', function () {
@@ -75,6 +76,36 @@ describe('drag source', function () {
     layout.removeDragSource(dragSource);
 
     expect(destroySpy).toHaveBeenCalledOnce();
+  });
+
+  it('uses document scroll offsets for constrained drag bounds', function () {
+    const element = document.createElement('div');
+    vi.spyOn(element, 'getBoundingClientRect').mockReturnValue(
+      DOMRect.fromRect({ x: 10, y: 20, width: 300, height: 200 }),
+    );
+    vi.spyOn(globalThis, 'scrollX', 'get').mockReturnValue(40);
+    vi.spyOn(globalThis, 'scrollY', 'get').mockReturnValue(60);
+    const proxyInternals = {
+      _layoutManager: { groundItem: { element } },
+      _minX: 0,
+      _minY: 0,
+      _maxX: 0,
+      _maxY: 0,
+    };
+    const determineMinMaxXY = (
+      DragProxy.prototype as unknown as {
+        determineMinMaxXY(this: typeof proxyInternals): void;
+      }
+    ).determineMinMaxXY.bind(proxyInternals);
+
+    determineMinMaxXY();
+
+    expect(proxyInternals).toMatchObject({
+      _minX: 50,
+      _minY: 80,
+      _maxX: 350,
+      _maxY: 280,
+    });
   });
 
   function doComponentDragTest(): void {

@@ -143,8 +143,8 @@ export class DragProxy extends EventEmitter {
     } else {
       const groundElement = groundItem.element;
       const rect = groundElement.getBoundingClientRect();
-      this._minX = rect.left + document.body.scrollLeft;
-      this._minY = rect.top + document.body.scrollTop;
+      this._minX = rect.left + globalThis.scrollX;
+      this._minY = rect.top + globalThis.scrollY;
       this._maxX = this._minX + rect.width;
       this._maxY = this._minY + rect.height;
     }
