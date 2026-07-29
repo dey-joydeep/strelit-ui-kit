@@ -130,6 +130,10 @@ export class GroundItem extends ComponentParentableItem {
       rootItemConfig,
       this,
     );
+    this.replaceRoot(rootContentItem);
+  }
+
+  private replaceRoot(rootContentItem: ContentItem): void {
     const previousRoot = this.contentItems[0];
     if (previousRoot !== undefined) {
       super.removeChild(previousRoot, true);
@@ -224,8 +228,7 @@ export class GroundItem extends ComponentParentableItem {
         rootContentItem.destroy();
         throw error;
       }
-      this.clearRoot();
-      this.addChild(rootContentItem, 0);
+      this.replaceRoot(rootContentItem);
     }
   }
 

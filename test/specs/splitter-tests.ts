@@ -82,6 +82,45 @@ describe('splitter limits', () => {
     expect(row.contentItems.map((item) => item.size)).toEqual([50, 50]);
   });
 
+  it('rolls back splitter movement when the pointer is cancelled', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('component', () => undefined);
+    layout.loadLayout({
+      root: {
+        type: 'row',
+        content: [
+          { type: 'component', componentType: 'component' },
+          { type: 'component', componentType: 'component' },
+        ],
+      },
+    });
+    const row = layout.rootItem as RowOrColumn;
+    for (const item of row.contentItems) {
+      item.element.style.width = '400px';
+    }
+    const originalSizes = row.contentItems.map((item) => item.size);
+    const internals = row as unknown as {
+      _splitter: { element: HTMLElement }[];
+      _splitterPosition: number | null;
+      onSplitterDragStart(splitter: unknown): void;
+      onSplitterDrag(splitter: unknown, offsetX: number, offsetY: number): void;
+      onSplitterDragStop(splitter: unknown, event?: PointerEvent): void;
+    };
+    const splitter = internals._splitter[0];
+
+    internals.onSplitterDragStart(splitter);
+    internals.onSplitterDrag(splitter, 100, 0);
+    internals.onSplitterDragStop(
+      splitter,
+      new PointerEvent('pointercancel', { isPrimary: true }),
+    );
+
+    expect(row.contentItems.map((item) => item.size)).toEqual(originalSizes);
+    expect(splitter.element.style.left).toBe('0px');
+    expect(internals._splitterPosition).toBeNull();
+  });
+
   it('normalizes fractional children when percent children already total 100', () => {
     const layout = new StrelitLayout();
     layouts.push(layout);

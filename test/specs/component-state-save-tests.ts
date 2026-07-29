@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   ComponentContainer,
+  ComponentItem,
   StrelitLayout,
   LayoutConfig,
+  resolveLayoutConfig,
   SerializableValue,
 } from '../../src';
 
@@ -63,6 +65,158 @@ describe('Component State Saving & Initial State', function () {
       nested: { value: 'saved' },
     });
   });
+
+  it.each([
+    {
+      label: 'object',
+      state: { nested: { value: 'initial' } },
+      mutate: (state: { nested: { value: string } }) => {
+        state.nested.value = 'mutated';
+      },
+      expected: { nested: { value: 'initial' } },
+    },
+    {
+      label: 'array',
+      state: [{ value: 'initial' }],
+      mutate: (state: { value: string }[]) => {
+        state[0].value = 'mutated';
+      },
+      expected: [{ value: 'initial' }],
+    },
+  ])(
+    'detaches loaded $label state from the caller configuration',
+    ({ state, mutate, expected }) => {
+      layout.registerComponentFactoryFunction(
+        'stateComponent',
+        () => undefined,
+      );
+      layout.loadLayout({});
+      const resolvedRoot = resolveLayoutConfig({
+        root: {
+          type: 'component',
+          componentType: 'stateComponent',
+          componentState: state,
+        },
+      }).root;
+      if (
+        resolvedRoot === undefined ||
+        resolvedRoot.type !== 'component' ||
+        layout.groundItem === undefined
+      ) {
+        throw new Error('Expected resolved root and ground item');
+      }
+      const createdItem = layout.createAndInitContentItem(
+        resolvedRoot,
+        layout.groundItem,
+      );
+      const item = (
+        createdItem.isComponent ? createdItem : createdItem.contentItems[0]
+      ) as ComponentItem;
+
+      mutate(resolvedRoot.componentState as never);
+
+      expect(item.container.initialState).toEqual(expected);
+      expect(item.container.state).toEqual(expected);
+      expect(item.toConfig().componentState).toEqual(expected);
+      createdItem.destroy();
+    },
+  );
+
+  it('uses requested live state when replacement binding rolls back', function () {
+    const receivedStates: (SerializableValue | undefined)[] = [];
+    let stateRequestCount = 0;
+    layout.registerComponentFactoryFunction(
+      'oldComponent',
+      (container, state) => {
+        receivedStates.push(state);
+        container.stateRequestEvent =
+          receivedStates.length === 1
+            ? () => {
+                stateRequestCount++;
+                if (stateRequestCount > 1) {
+                  throw new Error('live state requested twice');
+                }
+                return { source: 'live-state' };
+              }
+            : () => ({ source: 'live-state' });
+      },
+    );
+    layout.registerComponentFactoryFunction('failingComponent', () => {
+      throw new Error('replacement bind failed');
+    });
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        componentType: 'oldComponent',
+        componentState: { source: 'initial-state' },
+      },
+    });
+    const item = layout.getComponentItemsByType('oldComponent')[0];
+
+    expect(() =>
+      item.container.replaceComponent({
+        type: 'component',
+        componentType: 'failingComponent',
+      }),
+    ).toThrow('replacement bind failed');
+
+    expect(receivedStates).toEqual([
+      { source: 'initial-state' },
+      { source: 'live-state' },
+    ]);
+    expect(stateRequestCount).toBe(1);
+    expect(layout.saveLayout().root?.content[0].componentState).toEqual({
+      source: 'live-state',
+    });
+  });
+
+  it.each([
+    {
+      label: 'cyclic',
+      create: () => {
+        const state: Record<string, unknown> = {};
+        state.self = state;
+        return state;
+      },
+    },
+    {
+      label: 'unsupported',
+      create: () => ({ callback: () => undefined }),
+    },
+    {
+      label: 'non-finite',
+      create: () => ({ value: Number.POSITIVE_INFINITY }),
+    },
+  ])(
+    'keeps the current component bound when $label replacement state is invalid',
+    ({ create }) => {
+      layout.registerComponentFactoryFunction('oldComponent', () => undefined);
+      layout.registerComponentFactoryFunction('newComponent', () => undefined);
+      layout.loadLayout({
+        root: {
+          type: 'component',
+          componentType: 'oldComponent',
+          componentState: { source: 'working' },
+        },
+      });
+      const item = layout.getComponentItemsByType('oldComponent')[0];
+
+      expect(() =>
+        item.container.replaceComponent({
+          type: 'component',
+          componentType: 'newComponent',
+          componentState: create() as never,
+        }),
+      ).toThrow();
+
+      expect(layout.getComponentItemsByType('oldComponent')).toEqual([item]);
+      expect(layout.getComponentItemsByType('newComponent')).toEqual([]);
+      expect(layout.saveLayout().root?.content[0]).toMatchObject({
+        componentType: 'oldComponent',
+        componentState: { source: 'working' },
+      });
+    },
+  );
 
   it('clears the previous state request hook when replacing a component', function () {
     layout.registerComponentFactoryFunction('oldComponent', (container) => {

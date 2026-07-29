@@ -736,7 +736,9 @@ export class RowOrColumn extends ContentItem {
     splitter.on('drag', (offsetX, offsetY) =>
       this.onSplitterDrag(splitter, offsetX, offsetY),
     );
-    splitter.on('dragStop', () => this.onSplitterDragStop(splitter));
+    splitter.on('dragStop', (event) =>
+      this.onSplitterDragStop(splitter, event),
+    );
     splitter.on('dragStart', () => this.onSplitterDragStart(splitter));
     this._splitter.splice(index, 0, splitter);
     return splitter;
@@ -834,10 +836,16 @@ export class RowOrColumn extends ContentItem {
    * on the next animation frame
    * @internal
    */
-  private onSplitterDragStop(splitter: Splitter) {
+  private onSplitterDragStop(splitter: Splitter, event?: PointerEvent): void {
     if (this._splitterPosition === null) {
       throw new UnexpectedNullError('ROCOSDS66932');
     } else {
+      splitter.element.style.top = numberToPixels(0);
+      splitter.element.style.left = numberToPixels(0);
+      if (event?.type === 'pointercancel') {
+        this._splitterPosition = null;
+        return;
+      }
       const items = this.getSplitItems(splitter);
       const sizeBefore = pixelsToNumber(
         items.before.element.style[this._dimension],
@@ -853,9 +861,7 @@ export class RowOrColumn extends ContentItem {
       items.before.size = splitterPositionInRange * totalRelativeSize;
       items.after.size = (1 - splitterPositionInRange) * totalRelativeSize;
 
-      splitter.element.style.top = numberToPixels(0);
-      splitter.element.style.left = numberToPixels(0);
-
+      this._splitterPosition = null;
       globalThis.requestAnimationFrame(() => this.updateSize(false));
     }
   }

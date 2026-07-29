@@ -237,6 +237,14 @@ export class BrowserPopout extends EventEmitter {
       }
     }
 
+    if (index !== undefined) {
+      const normalizedIndex = Number.isFinite(index) ? Math.trunc(index) : 0;
+      index = Math.max(
+        0,
+        Math.min(normalizedIndex, parentItem.contentItems.length),
+      );
+    }
+
     const newContentItem = this._layoutManager.createAndInitContentItem(
       copiedRoot,
       parentItem,

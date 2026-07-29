@@ -635,6 +635,7 @@ export abstract class LayoutManager extends EventEmitter {
         this._groundItem.loadRoot(this.layoutConfig.root);
         rootReplaced = true;
         this.checkLoadedLayoutMaximiseItem();
+        this.adjustColumnsResponsive();
         for (const popout of previousOpenPopouts) {
           popout.close();
         }
@@ -649,7 +650,6 @@ export abstract class LayoutManager extends EventEmitter {
           );
           this._windowBeforeUnloadListening = false;
         }
-        this.adjustColumnsResponsive();
       } catch (error) {
         const incomingOpenPopouts = this._openPopouts.slice(
           previousOpenPopouts.length,
@@ -1880,10 +1880,15 @@ export abstract class LayoutManager extends EventEmitter {
     const openPopouts: BrowserPopout[] = [];
 
     for (const element of this._openPopouts) {
-      if (!element.getWindow().closed) {
+      try {
+        if (!element.getWindow().closed) {
+          openPopouts.push(element);
+        } else {
+          this.emit('windowClosed', element);
+        }
+      } catch {
+        // Configured popouts remain serializable when popup creation is blocked.
         openPopouts.push(element);
-      } else {
-        this.emit('windowClosed', element);
       }
     }
 
@@ -1914,7 +1919,11 @@ export abstract class LayoutManager extends EventEmitter {
   private createSubWindows() {
     for (const element of this.layoutConfig.openPopouts) {
       const popoutConfig = element;
-      this.createPopoutFromPopoutLayoutConfig(popoutConfig);
+      const browserPopout =
+        this.createPopoutFromPopoutLayoutConfig(popoutConfig);
+      if (!this._openPopouts.includes(browserPopout)) {
+        this._openPopouts.push(browserPopout);
+      }
     }
   }
 

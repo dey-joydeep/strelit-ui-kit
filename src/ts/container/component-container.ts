@@ -17,7 +17,13 @@ import {
   SerializableValue,
   SizeUnit,
 } from '../utils/types';
-import { setElementHeight, setElementWidth } from '../utils/utils';
+import {
+  deepCloneValue,
+  getElementHeight,
+  getElementWidth,
+  setElementHeight,
+  setElementWidth,
+} from '../utils/utils';
 
 /**
  * Represents component container component.
@@ -218,7 +224,8 @@ export class ComponentContainer extends EventEmitter {
 
     this._componentType = _config.componentType;
     this._isClosable = _config.isClosable;
-    this._initialState = _config.componentState;
+    this._initialState = deepCloneValue(_config.componentState) as
+      SerializableValue | undefined;
     this._state = this._initialState;
 
     this._boundComponent = this.layoutManager.bindComponent(this, _config);
@@ -324,8 +331,14 @@ export class ComponentContainer extends EventEmitter {
             return false;
           }
 
-          const totalPixel = currentSize * (100 / ancestorChildItem.size);
-          const percentage = (newSize / totalPixel) * 100;
+          const measuredOuterSize = ancestorItem.isColumn
+            ? getElementHeight(ancestorChildItem.element)
+            : getElementWidth(ancestorChildItem.element);
+          const outerSize =
+            measuredOuterSize > 0 ? measuredOuterSize : currentSize;
+          const fixedOuterOffset = Math.max(0, outerSize - currentSize);
+          const totalPixel = outerSize * (100 / ancestorChildItem.size);
+          const percentage = ((newSize + fixedOuterOffset) / totalPixel) * 100;
           if (!Number.isFinite(percentage)) {
             return false;
           }
@@ -416,11 +429,29 @@ export class ComponentContainer extends EventEmitter {
       const previousState = this._state;
       const previousComponentType = this._componentType;
       const previousStateRequestEvent = this.stateRequestEvent;
+      const previousLiveState = deepCloneValue(
+        previousStateRequestEvent === undefined
+          ? previousState
+          : previousStateRequestEvent(),
+      ) as SerializableValue | undefined;
+      const nextInitialState = deepCloneValue(config.componentState) as
+        SerializableValue | undefined;
+      let previousConfig: ResolvedComponentItemConfig;
+      this.stateRequestEvent = undefined;
+      try {
+        previousConfig = {
+          ...this._parent.toConfig(),
+          componentType: previousComponentType,
+          componentState: previousLiveState,
+        };
+      } finally {
+        this.stateRequestEvent = previousStateRequestEvent;
+      }
 
       this.releaseComponent();
       this.stateRequestEvent = undefined;
-      this._initialState = config.componentState;
-      this._state = config.componentState;
+      this._initialState = nextInitialState;
+      this._state = this._initialState;
       this._componentType = config.componentType;
 
       let nextBoundComponent: ComponentContainerBindableComponent;
@@ -429,13 +460,8 @@ export class ComponentContainer extends EventEmitter {
       } catch (error) {
         this.stateRequestEvent = previousStateRequestEvent;
         this._initialState = previousInitialState;
-        this._state = previousState;
+        this._state = previousLiveState;
         this._componentType = previousComponentType;
-        const previousConfig: ResolvedComponentItemConfig = {
-          ...this._parent.toConfig(),
-          componentType: previousComponentType,
-          componentState: previousInitialState,
-        };
         try {
           this._boundComponent = this.layoutManager.bindComponent(
             this,

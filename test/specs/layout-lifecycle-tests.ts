@@ -220,6 +220,42 @@ describe('layout lifecycle', () => {
     ).toBeUndefined();
   });
 
+  it('restores the working root when direct component sizing fails', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadComponentAsRoot({
+      type: 'component',
+      id: 'working-root',
+      componentType: 'panel',
+    });
+    const groundItem = layout.groundItem;
+    const workingRoot = layout.rootItem;
+    if (groundItem === undefined) {
+      throw new Error('Expected a ground item');
+    }
+    vi.spyOn(groundItem, 'updateSize').mockImplementationOnce(() => {
+      throw new Error('direct root sizing failed');
+    });
+
+    expect(() =>
+      layout.loadComponentAsRoot({
+        type: 'component',
+        id: 'replacement-root',
+        componentType: 'panel',
+      }),
+    ).toThrow('direct root sizing failed');
+
+    expect(layout.rootItem).toBe(workingRoot);
+    expect(
+      (workingRoot as unknown as { _isDestroyed: boolean })._isDestroyed,
+    ).toBe(false);
+    expect(workingRoot?.element.isConnected).toBe(true);
+    expect(
+      layout.findFirstComponentItemById('replacement-root'),
+    ).toBeUndefined();
+  });
+
   it('closes incoming popouts when replacement root creation fails', () => {
     const layout = new StrelitLayout();
     layouts.push(layout);

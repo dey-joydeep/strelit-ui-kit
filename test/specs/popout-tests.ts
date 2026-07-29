@@ -281,6 +281,28 @@ describe('BrowserPopout functionality (item.popout())', function () {
     );
   });
 
+  it('preserves configured popouts when popup creation is blocked', function () {
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    layout.loadLayout({
+      settings: { blockedPopoutsThrowError: false },
+      openPopouts: [
+        {
+          root: {
+            type: 'component',
+            id: 'blocked-configured-popout',
+            componentType: 'testComponent',
+          },
+        },
+      ],
+    });
+
+    const saved = layout.saveLayout();
+
+    expect(layout.openPopouts).toHaveLength(1);
+    expect(saved.openPopouts).toHaveLength(1);
+    expect(saved.openPopouts[0].root?.id).toBe('blocked-configured-popout');
+  });
+
   it('rolls back partially opened popouts before replacing the root', function () {
     const oldWindowClose = vi.fn();
     const partialWindowClose = vi.fn();
@@ -351,6 +373,62 @@ describe('BrowserPopout functionality (item.popout())', function () {
     expect(layout.openPopouts).toEqual([existingPopout]);
     expect(oldWindowClose).not.toHaveBeenCalled();
     expect(partialWindowClose).toHaveBeenCalledOnce();
+  });
+
+  it('keeps existing popouts open when replacement post-processing fails', function () {
+    const existingWindowClose = vi.fn();
+    const existingWindow = {
+      closed: false,
+      close: existingWindowClose,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      document: {
+        createElement: () => document.createElement('div'),
+        body: document.createElement('body'),
+        head: document.createElement('head'),
+        write: vi.fn(),
+        close: vi.fn(),
+      },
+      location: { href: '' },
+    } as unknown as Window;
+    vi.spyOn(window, 'open').mockReturnValue(existingWindow);
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        id: 'working-root',
+        componentType: 'testComponent',
+      },
+      openPopouts: [
+        {
+          root: {
+            type: 'component',
+            componentType: 'testComponent',
+          },
+        },
+      ],
+    });
+    const workingRoot = layout.rootItem;
+    const existingPopout = layout.openPopouts[0];
+    vi.spyOn(
+      layout as unknown as { adjustColumnsResponsive(): void },
+      'adjustColumnsResponsive',
+    ).mockImplementationOnce(() => {
+      throw new Error('responsive adjustment failed');
+    });
+
+    expect(() =>
+      layout.loadLayout({
+        root: {
+          type: 'component',
+          id: 'replacement-root',
+          componentType: 'testComponent',
+        },
+      }),
+    ).toThrow('responsive adjustment failed');
+
+    expect(layout.rootItem).toBe(workingRoot);
+    expect(layout.openPopouts).toEqual([existingPopout]);
+    expect(existingWindowClose).not.toHaveBeenCalled();
   });
 
   it('does not throw when calling close() on a blocked popout', function () {
@@ -494,6 +572,81 @@ describe('BrowserPopout functionality (item.popout())', function () {
     ]);
     expect(closeWindow).toHaveBeenCalledOnce();
   });
+
+  it.each([
+    { index: -3, expectedIds: ['returned', 'host'] },
+    { index: 0.5, expectedIds: ['returned', 'host'] },
+    { index: 99, expectedIds: ['host', 'returned'] },
+  ])(
+    'normalizes configured pop-in index $index before binding',
+    ({ index, expectedIds }) => {
+      const closeWindow = vi.fn();
+      const childLayout = {
+        isInitialised: true,
+        on: vi.fn(),
+        saveLayout: () =>
+          resolveLayoutConfig({
+            root: {
+              type: 'component',
+              id: 'returned',
+              componentType: 'testComponent',
+            },
+          }),
+        closeWindow,
+      };
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        __strelitInstance: childLayout,
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        root: {
+          type: 'stack',
+          content: [
+            {
+              type: 'component',
+              id: 'host',
+              componentType: 'testComponent',
+            },
+          ],
+        },
+        openPopouts: [
+          {
+            root: {
+              type: 'component',
+              id: 'returned',
+              componentType: 'testComponent',
+            },
+            parentId: 'return-parent',
+            indexInParent: index,
+          },
+        ],
+      });
+      const parent = layout.rootItem;
+      parent?.addPopInParentId('return-parent');
+      const popout = layout.openPopouts[0] as unknown as {
+        _isInitialised: boolean;
+        popIn(): void;
+      };
+      popout._isInitialised = true;
+
+      expect(() => popout.popIn()).not.toThrow();
+
+      expect(parent?.contentItems.map((item) => item.id)).toEqual(expectedIds);
+      expect(closeWindow).toHaveBeenCalledOnce();
+    },
+  );
 
   it('wraps a stack root before restoring another stack without its parent', function () {
     const closeWindow = vi.fn();
