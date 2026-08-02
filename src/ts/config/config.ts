@@ -1338,8 +1338,12 @@ function resolveLayoutConfigWithBudget(
   layoutConfig: LayoutConfig,
   budget: LayoutResolutionBudget,
   forcePopout = false,
+  popoutDepth = 0,
 ): ResolvedLayoutConfig {
-  if (budget.nodes >= maximumConfigNodes) {
+  if (
+    budget.nodes >= maximumConfigNodes ||
+    (forcePopout && popoutDepth > maximumConfigDepth)
+  ) {
     throw new ConfigurationError(
       'Layout configuration exceeds resource limits',
     );
@@ -1355,6 +1359,7 @@ function resolveLayoutConfigWithBudget(
       return resolvePopoutLayoutConfigWithBudget(
         layoutConfig as PopoutLayoutConfig,
         budget,
+        popoutDepth,
       );
     }
 
@@ -1369,6 +1374,7 @@ function resolveLayoutConfigWithBudget(
       openPopouts: resolveOpenPopoutLayoutConfigsWithBudget(
         layoutConfig.openPopouts,
         budget,
+        popoutDepth,
       ),
       dimensions: resolveLayoutConfigDimensions(layoutConfig.dimensions),
       settings,
@@ -1439,6 +1445,7 @@ export function resolveOpenPopoutLayoutConfigs(
 function resolveOpenPopoutLayoutConfigsWithBudget(
   popoutConfigs: PopoutLayoutConfig[] | undefined,
   budget: LayoutResolutionBudget,
+  popoutDepth = 0,
 ): ResolvedPopoutLayoutConfig[] {
   if (popoutConfigs === undefined) {
     return [];
@@ -1460,6 +1467,7 @@ function resolveOpenPopoutLayoutConfigsWithBudget(
         popoutConfigs[i],
         budget,
         true,
+        popoutDepth + 1,
       ) as ResolvedPopoutLayoutConfig;
     }
     return result;
@@ -1550,6 +1558,7 @@ export function resolvePopoutLayoutConfig(
 function resolvePopoutLayoutConfigWithBudget(
   popoutConfig: PopoutLayoutConfig,
   budget: LayoutResolutionBudget,
+  popoutDepth: number,
 ): ResolvedPopoutLayoutConfig {
   const settings = resolveLayoutConfigSettings(popoutConfig.settings);
   return {
@@ -1561,6 +1570,7 @@ function resolvePopoutLayoutConfigWithBudget(
     openPopouts: resolveOpenPopoutLayoutConfigsWithBudget(
       popoutConfig.openPopouts,
       budget,
+      popoutDepth,
     ),
     dimensions: resolveLayoutConfigDimensions(popoutConfig.dimensions),
     settings,

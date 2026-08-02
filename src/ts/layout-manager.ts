@@ -524,6 +524,7 @@ export abstract class LayoutManager extends EventEmitter {
         attempt(() => this.closeAllOpenPopouts());
       }
     }
+    this._openPopouts = [];
 
     attempt(() => this.checkClearResizeTimeout());
 
@@ -692,7 +693,7 @@ export abstract class LayoutManager extends EventEmitter {
         } else if (this._maximisedStack !== previousMaximisedStack) {
           previousMaximisedStack.maximise();
         }
-        this.setFocusedComponentItem(previousFocusedComponentItem);
+        this.setFocusedComponentItem(previousFocusedComponentItem, true);
         throw error;
       }
     }
@@ -1436,10 +1437,19 @@ export abstract class LayoutManager extends EventEmitter {
     }
 
     browserPopout.on('initialised', () => {
+      if (this._isDestroyed) {
+        return;
+      }
       beforeWindowOpened?.();
-      this.emit('windowOpened', browserPopout);
+      if (!this._isDestroyed) {
+        this.emit('windowOpened', browserPopout);
+      }
     });
-    browserPopout.on('closed', () => this.reconcilePopoutWindows());
+    browserPopout.on('closed', () => {
+      if (!this._isDestroyed) {
+        this.reconcilePopoutWindows();
+      }
+    });
 
     this._openPopouts.push(browserPopout);
 
@@ -1484,9 +1494,11 @@ export abstract class LayoutManager extends EventEmitter {
         if (!element.getWindow().closed) {
           failedPopouts.push(element);
         }
-      } catch {
-        // Keep blocked or inaccessible windows owned until closure is known.
-        failedPopouts.push(element);
+      } catch (error) {
+        if (!(error instanceof UnexpectedNullError)) {
+          // Keep inaccessible live windows owned until closure is known.
+          failedPopouts.push(element);
+        }
       }
     }
     this._openPopouts = failedPopouts;
@@ -1947,6 +1959,9 @@ export abstract class LayoutManager extends EventEmitter {
    * @internal
    */
   private reconcilePopoutWindows() {
+    if (this._isDestroyed) {
+      return;
+    }
     const openPopouts: BrowserPopout[] = [];
 
     for (const element of this._openPopouts) {

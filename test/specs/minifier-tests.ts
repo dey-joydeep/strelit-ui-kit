@@ -8,6 +8,67 @@ import {
 import { translateObject } from '../../src/ts/utils/config-minifier';
 
 describe('resolved layout config minifier', function () {
+  it('round-trips the maximum supported semantic layout depth', function () {
+    let componentState: Record<string, unknown> = { leaf: true };
+    for (let depth = 0; depth < 128; depth++) {
+      componentState = { next: componentState };
+    }
+    let root: NonNullable<LayoutConfig['root']> = {
+      type: 'component',
+      componentType: 'deep-component',
+      componentState,
+    };
+    for (let depth = 0; depth < 128; depth++) {
+      root = { type: 'row', content: [root] };
+    }
+    const resolved = resolveLayoutConfig({ root });
+
+    const minified = minifyResolvedLayoutConfig(resolved);
+
+    expect(unminifyResolvedLayoutConfig(minified)).toEqual(resolved);
+  });
+
+  it('round-trips combined maximum popout, layout, and state depth', function () {
+    let componentState: Record<string, unknown> = { leaf: true };
+    for (let depth = 0; depth < 128; depth++) {
+      componentState = { next: componentState };
+    }
+    let root: NonNullable<LayoutConfig['root']> = {
+      type: 'component',
+      componentType: 'deep-component',
+      componentState,
+    };
+    for (let depth = 0; depth < 128; depth++) {
+      root = { type: 'row', content: [root] };
+    }
+    let config: LayoutConfig = { root };
+    for (let depth = 0; depth < 128; depth++) {
+      config = {
+        openPopouts: [{ ...config, parentId: null, indexInParent: null }],
+      };
+    }
+    const resolved = resolveLayoutConfig(config);
+
+    const minified = minifyResolvedLayoutConfig(resolved);
+
+    expect(unminifyResolvedLayoutConfig(minified)).toEqual(resolved);
+  });
+
+  it('accepts the representation boundary and rejects the next level', function () {
+    const createNestedArrays = (depth: number): Record<string, unknown> => {
+      let value: unknown = true;
+      for (let index = 0; index < depth; index++) {
+        value = [value];
+      }
+      return { value };
+    };
+
+    expect(() => translateObject(createNestedArrays(648), true)).not.toThrow();
+    expect(() => translateObject(createNestedArrays(649), true)).toThrow(
+      /translation limit/i,
+    );
+  });
+
   it('minifies and unminifies a resolved configuration object accurately', function () {
     const config: LayoutConfig = {
       root: {

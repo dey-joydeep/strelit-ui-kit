@@ -7,6 +7,10 @@ import { ComponentItem } from '../items/component-item';
  * @public
  */
 export const eventEmitterAllEventName = '__all';
+
+const eventDispatchGuardSymbol = Symbol.for(
+  'strelit-ui-kit.event-dispatch-guard',
+);
 /**
  * Provides the event emitter header click event name.
  * @public
@@ -272,6 +276,17 @@ export class EventEmitter {
   /** @internal */
   private _subscriptionsMap = new Map<string, EventEmitterUnknownCallback[]>();
 
+  /** @internal */
+  private isEventDispatchAllowed(eventName: string): boolean {
+    const guard = (
+      this as unknown as Record<
+        symbol,
+        ((guardedEventName: string) => boolean) | undefined
+      >
+    )[eventDispatchGuardSymbol];
+    return guard?.(eventName) ?? true;
+  }
+
   /** Performs the try bubble event operation. */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   tryBubbleEvent(name: string, args: unknown[]): void {
@@ -293,12 +308,21 @@ export class EventEmitter {
     if (subscriptions !== undefined) {
       subscriptions = subscriptions.slice();
       for (let i = 0; i < subscriptions.length; i++) {
+        if (!this.isEventDispatchAllowed(eventName)) {
+          return;
+        }
         const subscription = subscriptions[i];
         subscription(...args);
       }
     }
 
+    if (!this.isEventDispatchAllowed(eventName)) {
+      return;
+    }
     this.emitAllEvent(eventName, args);
+    if (!this.isEventDispatchAllowed(eventName)) {
+      return;
+    }
     this.tryBubbleEvent(eventName, args);
   }
 
@@ -309,11 +333,20 @@ export class EventEmitter {
     if (subs !== undefined) {
       subs = subs.slice();
       for (let i = 0; i < subs.length; i++) {
+        if (!this.isEventDispatchAllowed(eventName)) {
+          return;
+        }
         subs[i](...args);
       }
     }
 
+    if (!this.isEventDispatchAllowed(eventName)) {
+      return;
+    }
     this.emitAllEvent(eventName, args);
+    if (!this.isEventDispatchAllowed(eventName)) {
+      return;
+    }
     this.tryBubbleEvent(eventName, args);
   }
 
@@ -452,6 +485,9 @@ export class EventEmitter {
       const allEventSubcriptions = this._allEventSubscriptions.slice();
 
       for (let i = 0; i < allEventSubscriptionsCount; i++) {
+        if (!this.isEventDispatchAllowed(eventName)) {
+          return;
+        }
         allEventSubcriptions[i](...unknownArgs);
       }
     }

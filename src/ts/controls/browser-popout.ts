@@ -62,6 +62,15 @@ export class BrowserPopout extends EventEmitter {
   ) {
     super();
 
+    Object.defineProperty(
+      this,
+      Symbol.for('strelit-ui-kit.event-dispatch-guard'),
+      {
+        value: (eventName: string) =>
+          !this._layoutManager.isDestroyed ||
+          (eventName !== 'initialised' && eventName !== 'closed'),
+      },
+    );
     this._isInitialised = false;
     this._popoutWindow = null;
     this.createWindow();
@@ -540,6 +549,9 @@ export class BrowserPopout extends EventEmitter {
    * @internal
    */
   private onInitialised(): void {
+    if (this._layoutManager.isDestroyed) {
+      return;
+    }
     this._isInitialised = true;
     this.getStrelitInstance().on('popIn', () => this.popIn());
     this.emit('initialised');
@@ -590,7 +602,9 @@ export class BrowserPopout extends EventEmitter {
       } else {
         this._pendingPopInRollback = undefined;
         this._closeRequested = false;
-        this.emit('closed');
+        if (!this._layoutManager.isDestroyed) {
+          this.emit('closed');
+        }
         if (this._storageKey !== undefined) {
           localStorage.removeItem(this._storageKey);
           this._storageKey = undefined;

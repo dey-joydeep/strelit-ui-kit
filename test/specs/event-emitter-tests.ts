@@ -57,6 +57,37 @@ describe('the EventEmitter', function () {
     expect(allCallbackSpy).toHaveBeenCalledTimes(2);
   });
 
+  it('stops all-subscriber dispatch and bubbling when a lifecycle guard closes', function () {
+    class GuardedEmitter extends EventEmitter {
+      allowed = true;
+      readonly bubbled = vi.fn();
+
+      constructor() {
+        super();
+        Object.defineProperty(
+          this,
+          Symbol.for('strelit-ui-kit.event-dispatch-guard'),
+          { value: () => this.allowed },
+        );
+      }
+
+      override tryBubbleEvent(): void {
+        this.bubbled();
+      }
+    }
+    const emitter = new GuardedEmitter();
+    const laterAllSubscriber = vi.fn();
+    emitter.on(eventEmitterAllEventName, () => {
+      emitter.allowed = false;
+    });
+    emitter.on(eventEmitterAllEventName, laterAllSubscriber);
+
+    emitter.emit('titleChanged', 'new title');
+
+    expect(laterAllSubscriber).not.toHaveBeenCalled();
+    expect(emitter.bubbled).not.toHaveBeenCalled();
+  });
+
   it('unbinds events', function () {
     const myObject = new EmitterImplementor();
     const myListener: { titleCallback: () => void } = {

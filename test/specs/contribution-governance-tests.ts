@@ -89,6 +89,7 @@ async function runPullRequestMetadataPolicy(
   body: string,
   files: readonly PullRequestFile[],
   reviews: readonly PullRequestReview[] = [],
+  riskPolicyMissingAtBase = false,
 ): Promise<string[]> {
   const workflow = readFileSync(
     resolve('.github/workflows/contribution-governance.yml'),
@@ -142,9 +143,14 @@ async function runPullRequestMetadataPolicy(
       },
       pulls: { listFiles, listReviews },
       repos: {
-        getContent: async () => ({
-          data: { content: Buffer.from(riskPolicy).toString('base64') },
-        }),
+        getContent: async () => {
+          if (riskPolicyMissingAtBase) {
+            throw Object.assign(new Error('Not Found'), { status: 404 });
+          }
+          return {
+            data: { content: Buffer.from(riskPolicy).toString('base64') },
+          };
+        },
       },
     },
   };
@@ -527,6 +533,46 @@ describe('contribution governance workflow', () => {
     ).toContain(
       'Verification must confirm a successful npm run verify:pr with a checked box.',
     );
+
+    const paragraphBody = createPullRequestBody('Low', review).replace(
+      '- [x] `npm run verify:pr`',
+      '- [x] Documentation reviewed\n\nThe command `npm run verify:pr` was not run.',
+    );
+    expect(
+      await runPullRequestMetadataPolicy(paragraphBody, [
+        { filename: 'README.md', changes: 10 },
+      ]),
+    ).toContain(
+      'Verification must confirm a successful npm run verify:pr with a checked box.',
+    );
+  });
+
+  it('fails closed when the trusted base does not yet contain the risk policy', async () => {
+    const review = [
+      'Review mode: **Self-review**',
+      'Reviewer: Implementer Agent',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric: `docs/contributing/ai-change-quality-rubric.md`',
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 0; High 0; Medium 0; Low 0',
+      'Open Critical/High findings: **0**',
+      'Review artifact: Local review record',
+      'Finding dispositions: No findings recorded',
+      'Residual risks: No known residual risks',
+    ].join('\n');
+
+    const failures = await runPullRequestMetadataPolicy(
+      createPullRequestBody('Low', review),
+      [{ filename: 'README.md', changes: 10 }],
+      [],
+      true,
+    );
+
+    expect(failures).toContain(
+      'High-risk changes require Review mode: **Independent**.',
+    );
   });
 
   it('behaviorally blocks high-risk self-review and accepts independent evidence', async () => {
@@ -644,6 +690,35 @@ describe('contribution governance workflow', () => {
     expect(failures).toEqual([]);
   });
 
+  it('behaviorally defaults a mixed low and unmatched change to medium', async () => {
+    const review = [
+      'Review mode: **Self-review**',
+      'Reviewer: Implementer',
+      'Reviewed boundary: mixed working tree diff',
+      'Rubric: `docs/contributing/ai-change-quality-rubric.md`',
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 0; High 0; Medium 0; Low 0',
+      'Open Critical/High findings: **0**',
+      'Review artifact: Complete mixed-path self-review',
+      'Finding dispositions: No findings recorded',
+      'Residual risks: No executable behavior changed',
+    ].join('\n');
+
+    const failures = await runPullRequestMetadataPolicy(
+      createPullRequestBody('Low', review),
+      [
+        { filename: 'README.md', changes: 4 },
+        { filename: 'tools/release-notes.txt', changes: 3 },
+      ],
+    );
+
+    expect(failures).toContain(
+      'Declared risk low is below computed risk medium.',
+    );
+  });
+
   it('behaviorally retains high risk when a GitHub file is renamed to docs', async () => {
     const review = [
       'Review mode: **Self-review**',
@@ -711,6 +786,9 @@ describe('risk-based PR verification', () => {
     ['docs/architecture/product-evolution-policy.md', 'high'],
     ['docs/architecture/compatibility-audit-maintenance.md', 'high'],
     ['.github/workflows/CI.yml', 'high'],
+    ['.github/CODEOWNERS', 'high'],
+    ['.oxlintrc.json', 'high'],
+    ['tools/release-notes.txt', 'medium'],
   ] as const)('classifies %s as %s risk', (fileName, expectedRisk) => {
     expect(changeDiscipline.classifyFileRisk(fileName)).toBe(expectedRisk);
   });

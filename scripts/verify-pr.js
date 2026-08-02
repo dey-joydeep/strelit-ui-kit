@@ -11,6 +11,7 @@ const highRiskPatterns = riskPolicy.high.map((pattern) => new RegExp(pattern));
 const mediumRiskPatterns = riskPolicy.medium.map(
   (pattern) => new RegExp(pattern),
 );
+const lowRiskPatterns = riskPolicy.low.map((pattern) => new RegExp(pattern));
 
 function normalizeFileName(fileName) {
   return fileName.replaceAll('\\', '/');
@@ -27,7 +28,11 @@ function classifyFileRisk(fileName) {
     return 'medium';
   }
 
-  return 'low';
+  if (lowRiskPatterns.some((pattern) => pattern.test(normalized))) {
+    return 'low';
+  }
+
+  return 'medium';
 }
 
 function classifyChangeRisk(fileNames) {

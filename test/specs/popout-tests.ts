@@ -4,6 +4,7 @@ import {
   StrelitLayout,
   LayoutConfig,
   ComponentItem,
+  eventEmitterAllEventName,
   resolveLayoutConfig,
 } from '../../src';
 
@@ -668,6 +669,244 @@ describe('BrowserPopout functionality (item.popout())', function () {
     expect(layout.openPopouts).toHaveLength(1);
     expect(saved.openPopouts).toHaveLength(1);
     expect(saved.openPopouts[0].root?.id).toBe('blocked-configured-popout');
+  });
+
+  it('removes a blocked configured popout when all popouts are closed', function () {
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    layout.loadLayout({
+      settings: { blockedPopoutsThrowError: false },
+      openPopouts: [
+        {
+          root: {
+            type: 'component',
+            id: 'blocked-configured-popout',
+            componentType: 'testComponent',
+          },
+        },
+      ],
+    });
+
+    layout.closeAllOpenPopouts();
+
+    expect(layout.openPopouts).toHaveLength(0);
+    expect(layout.saveLayout().openPopouts).toHaveLength(0);
+  });
+
+  it('does not reconcile delayed popout closure after layout destruction', function () {
+    vi.useFakeTimers();
+    try {
+      let beforeUnload: (() => void) | undefined;
+      const childLayout = {
+        isInitialised: true,
+        on: vi.fn(),
+        saveLayout: () =>
+          resolveLayoutConfig({
+            root: {
+              type: 'component',
+              componentType: 'testComponent',
+            },
+          }),
+        closeWindow: vi.fn(),
+        width: 320,
+        height: 200,
+      };
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn((name: string, listener: () => void) => {
+          if (name === 'beforeunload') {
+            beforeUnload = listener;
+          }
+        }),
+        removeEventListener: vi.fn(),
+        __strelitInstance: childLayout,
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        openPopouts: [
+          {
+            root: {
+              type: 'component',
+              componentType: 'testComponent',
+            },
+          },
+        ],
+      });
+      const browserPopout = layout.openPopouts[0];
+      const initialised = vi.fn();
+      const closed = vi.fn();
+      browserPopout.on('initialised', initialised);
+      browserPopout.on('closed', closed);
+      const windowClosed = vi.fn();
+      const stateChanged = vi.fn();
+      layout.on('windowClosed', windowClosed);
+      layout.on('stateChanged', stateChanged);
+
+      layout.destroy();
+      windowClosed.mockClear();
+      stateChanged.mockClear();
+      (mockWindow as unknown as { closed: boolean }).closed = true;
+      beforeUnload?.();
+      vi.advanceTimersByTime(50);
+
+      expect(layout.openPopouts).toHaveLength(0);
+      expect(initialised).not.toHaveBeenCalled();
+      expect(closed).not.toHaveBeenCalled();
+      expect(windowClosed).not.toHaveBeenCalled();
+      expect(stateChanged).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not emit windowOpened when popout initialisation destroys the owner', function () {
+    vi.useFakeTimers();
+    try {
+      const childLayout = { isInitialised: true, on: vi.fn() };
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        __strelitInstance: childLayout,
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      const resolved = resolveLayoutConfig({
+        root: {
+          type: 'component',
+          componentType: 'testComponent',
+        },
+      });
+      const config = {
+        ...resolved,
+        window: { width: 320, height: 200, left: 0, top: 0 },
+        parentId: null,
+        indexInParent: null,
+      };
+      const windowOpened = vi.fn();
+      layout.on('windowOpened', windowOpened);
+
+      const browserPopout = (
+        layout as unknown as {
+          createBrowserPopout(
+            popoutConfig: typeof config,
+            beforeWindowOpened: () => void,
+          ): { on(eventName: 'initialised', listener: () => void): void };
+        }
+      ).createBrowserPopout(config, () => layout.destroy());
+      const directInitialised = vi.fn();
+      browserPopout.on('initialised', directInitialised);
+      vi.advanceTimersByTime(10);
+
+      expect(layout.isDestroyed).toBe(true);
+      expect(windowOpened).not.toHaveBeenCalled();
+      expect(directInitialised).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops closed dispatch when a layout listener destroys the owner', function () {
+    vi.useFakeTimers();
+    try {
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        openPopouts: [
+          {
+            root: {
+              type: 'component',
+              componentType: 'testComponent',
+            },
+          },
+        ],
+      });
+      const browserPopout = layout.openPopouts[0];
+      const directClosed = vi.fn();
+      layout.on('windowClosed', () => layout.destroy());
+      browserPopout.on('closed', directClosed);
+      (mockWindow as unknown as { closed: boolean }).closed = true;
+
+      (browserPopout as unknown as { _onClose(): void })._onClose();
+      vi.advanceTimersByTime(50);
+
+      expect(layout.isDestroyed).toBe(true);
+      expect(directClosed).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops all-subscriber dispatch when an all listener destroys the owner', function () {
+    vi.useFakeTimers();
+    try {
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        __strelitInstance: { isInitialised: true, on: vi.fn() },
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        openPopouts: [
+          {
+            root: {
+              type: 'component',
+              componentType: 'testComponent',
+            },
+          },
+        ],
+      });
+      const browserPopout = layout.openPopouts[0];
+      const laterAllSubscriber = vi.fn();
+      browserPopout.on(eventEmitterAllEventName, () => layout.destroy());
+      browserPopout.on(eventEmitterAllEventName, laterAllSubscriber);
+
+      vi.advanceTimersByTime(10);
+
+      expect(layout.isDestroyed).toBe(true);
+      expect(laterAllSubscriber).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('rolls back partially opened popouts before replacing the root', function () {

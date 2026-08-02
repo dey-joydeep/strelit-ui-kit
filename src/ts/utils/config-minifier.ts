@@ -8,6 +8,15 @@
 import { ConfigurationError } from '../errors/external-error';
 import { maximumConfigDepth, maximumConfigNodes } from './resource-limits';
 
+// Resolved layouts interleave semantic item, content-array, popout, and state
+// containers. Their representation can therefore be several times deeper than
+// the independently bounded semantic structures they contain.
+// A maximally nested resolved representation can combine three independent
+// semantic domains on one path: popout configs (object + array), layout items
+// (object + content array), and serializable component state (object). Keep a
+// small allowance for the resolved-config wrapper and leaf containers.
+const maximumTranslationDepth = maximumConfigDepth * 5 + 8;
+
 const configMinifierKeys: readonly string[] = [
   'settings',
   'constrainDragToContainer',
@@ -76,12 +85,14 @@ export function translateObject(
         from: Container;
         to: Container;
         depth: number;
+        representationDepth: number;
       }
     | {
         kind: 'iterate';
         from: Container;
         to: Container;
         depth: number;
+        representationDepth: number;
         index: number;
         valueCount: number;
         array: unknown[] | undefined;
@@ -90,7 +101,9 @@ export function translateObject(
     | { kind: 'exit'; from: Container };
 
   const to: Record<string, unknown> = {};
-  const stack: Frame[] = [{ kind: 'enter', from, to, depth: 0 }];
+  const stack: Frame[] = [
+    { kind: 'enter', from, to, depth: 0, representationDepth: 0 },
+  ];
   const ancestors = new WeakSet<object>();
   let nodes = 1;
 
@@ -104,7 +117,10 @@ export function translateObject(
       continue;
     }
     if (frame.kind === 'enter') {
-      if (frame.depth > maximumConfigDepth) {
+      if (
+        frame.depth > maximumConfigDepth ||
+        frame.representationDepth > maximumTranslationDepth
+      ) {
         throwTranslationLimitError();
       }
       if (ancestors.has(frame.from)) {
@@ -129,6 +145,7 @@ export function translateObject(
           from: frame.from,
           to: frame.to,
           depth: frame.depth,
+          representationDepth: frame.representationDepth,
           index: 0,
           valueCount,
           array,
@@ -148,8 +165,25 @@ export function translateObject(
 
       let translatedValue: unknown;
       if (typeof value === 'object' && value !== null) {
+        const childRepresentationDepth = frame.representationDepth + 1;
+        const semanticKey =
+          array === undefined
+            ? minify
+              ? (key as string)
+              : unminifyKey(key as string)
+            : undefined;
+        const startsIndependentSemanticDomain =
+          semanticKey === 'root' ||
+          semanticKey === 'componentState' ||
+          semanticKey === 'openPopouts';
+        const childDepth = startsIndependentSemanticDomain
+          ? 0
+          : Array.isArray(value)
+            ? frame.depth
+            : frame.depth + 1;
         if (
-          frame.depth + 1 > maximumConfigDepth ||
+          childDepth > maximumConfigDepth ||
+          childRepresentationDepth > maximumTranslationDepth ||
           (Array.isArray(value) && value.length > maximumConfigNodes - nodes)
         ) {
           throwTranslationLimitError();
@@ -162,7 +196,8 @@ export function translateObject(
           kind: 'enter',
           from: value as Container,
           to: childTo,
-          depth: frame.depth + 1,
+          depth: childDepth,
+          representationDepth: childRepresentationDepth,
         });
       } else {
         translatedValue = minify ? minifyValue(value) : unminifyValue(value);
@@ -189,7 +224,7 @@ export function translateObject(
 
 function throwTranslationLimitError(): never {
   throw new ConfigurationError(
-    `Configuration exceeds the supported translation limit (${maximumConfigDepth} levels and ${maximumConfigNodes} nodes)`,
+    `Configuration exceeds the supported translation limit (${maximumTranslationDepth} representation levels and ${maximumConfigNodes} nodes)`,
   );
 }
 

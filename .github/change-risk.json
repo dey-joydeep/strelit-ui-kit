@@ -4,9 +4,8 @@
     "^scripts/",
     "^etc/",
     "^\\.agents/skills/",
-    "^\\.github/workflows/",
-    "^\\.github/pull_request_template\\.md$",
-    "^\\.github/change-risk\\.json$",
+    "^\\.github/",
+    "^\\.(?:gitattributes|gitignore|npmrc|oxlintrc\\.json|prettierignore|prettierrc(?:\\..*)?)$",
     "(?:^|/)AGENTS\\.md$",
     "^docs/contributing/",
     "^docs/architecture/product-evolution-policy\\.md$",
@@ -16,5 +15,6 @@
     "^tsconfig.*\\.json$",
     "^(?:vite|vitest|tsup)\\..*config\\.[cm]?[jt]s$"
   ],
-  "medium": ["^test/", "^apitest/"]
+  "medium": ["^test/", "^apitest/"],
+  "low": ["^docs/", "^(?:README|CHANGELOG|CONTRIBUTING|LICENSING-PLAN)\\.md$"]
 }

@@ -469,13 +469,18 @@ export class ComponentContainer extends EventEmitter {
             this,
             previousConfig,
           );
-          this.updateElementPositionPropertyFromBoundComponent();
-          if (wasStackMaximised) {
-            this.enterStackMaximised();
-          }
         } catch (rollbackError) {
           this._boundComponent = { component: undefined, virtual: false };
           throw rollbackError;
+        }
+        this.updateElementPositionPropertyFromBoundComponent();
+        if (wasStackMaximised) {
+          try {
+            this.enterStackMaximised();
+          } catch {
+            // The restored binding remains owned and the replacement bind
+            // failure remains the authoritative error.
+          }
         }
         throw error;
       }
@@ -514,7 +519,11 @@ export class ComponentContainer extends EventEmitter {
             (this._boundComponent.component !== nextBoundComponent.component ||
               this._boundComponent.virtual !== nextBoundComponent.virtual)
           ) {
-            this.enterStackMaximised();
+            try {
+              this.enterStackMaximised();
+            } catch {
+              // Preserve the live rollback binding and original observer error.
+            }
           }
         }
         throw error;

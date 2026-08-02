@@ -15,7 +15,7 @@ Resolution performs these transformations:
 - `minSize` strings become numeric pixel values
 - omitted settings, dimensions, and header values receive Strelit defaults
 - component state and component types are copied rather than shared by reference
-- configuration resolution rejects cycles, nesting deeper than 128 items, and graphs containing more than 10,000 resolved nodes with `ConfigurationError`
+- configuration resolution rejects cycles, item trees deeper than 128 levels, open-popout graphs deeper than 128 levels, and graphs containing more than 10,000 resolved nodes with `ConfigurationError`
 - component-state copying uses the same depth and node limits and performs an iterative clone so hostile input cannot exhaust the JavaScript call stack
 - a layout and all nested open popouts share one resolution budget, so limits cannot be bypassed by distributing input across popout configurations
 

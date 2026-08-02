@@ -18,6 +18,13 @@ declared base commit. A new branch push uses the merge base with the fetched
 default branch when GitHub reports an all-zero previous SHA. Tag pushes force
 High verification even when the tag points directly at the default branch.
 
+Changed-file risk is fail-closed. High-risk policy and runtime patterns take
+precedence, explicitly listed documentation paths are Low, test/demo paths are
+Medium, and every unmatched path defaults to Medium. Repository and review
+policy under `.github/` is High. Pull-request metadata reads the policy from the
+trusted base commit; when a PR introduces the policy and no base copy exists,
+the complete PR is treated as High rather than trusting PR-controlled rules.
+
 Vitest bounds file-worker concurrency in `vitest.config.ts` because each jsdom worker has a substantial memory footprint. The default test timeout also accommodates migration tests that launch real Node and TypeScript processes; compile fixtures have a larger explicit bound. Raise either limit only with evidence from both constrained CI and representative developer machines.
 
 ## Browser Smoke

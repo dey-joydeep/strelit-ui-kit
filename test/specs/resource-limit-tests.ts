@@ -6,6 +6,7 @@ import {
   resolveLayoutConfig,
   StrelitLayout,
   type ComponentItemConfig,
+  type LayoutConfig,
   type ResolvedItemConfig,
   type ResolvedRowOrColumnItemConfig,
   type RowOrColumnItemConfig,
@@ -33,6 +34,16 @@ function createNestedLayout(depth: number): RowOrColumnItemConfig {
     root = { type: 'row', content: [root] };
   }
   return root as RowOrColumnItemConfig;
+}
+
+function createNestedPopoutLayout(depth: number): LayoutConfig {
+  let config: LayoutConfig = {};
+  for (let index = 0; index < depth; index++) {
+    config = {
+      openPopouts: [{ ...config, parentId: null, indexInParent: null }],
+    };
+  }
+  return config;
 }
 
 describe('configuration resource limits', () => {
@@ -186,6 +197,15 @@ describe('configuration resource limits', () => {
     expect(() => resolveLayoutConfig({ openPopouts })).toThrow(
       'Layout configuration exceeds resource limits',
     );
+  });
+
+  it('bounds nested popout depth independently of aggregate nodes', () => {
+    expect(() =>
+      resolveLayoutConfig(createNestedPopoutLayout(maximumDepth)),
+    ).not.toThrow();
+    expect(() =>
+      resolveLayoutConfig(createNestedPopoutLayout(maximumDepth + 1)),
+    ).toThrow('Layout configuration exceeds resource limits');
   });
 
   it('defensively rejects an over-depth already-resolved construction tree', () => {

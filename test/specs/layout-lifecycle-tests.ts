@@ -299,6 +299,51 @@ describe('layout lifecycle', () => {
     expect(workingRoot?.focused).toBe(true);
   });
 
+  it('preserves the load failure when silent focus restoration encounters a throwing listener', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        id: 'working-root',
+        componentType: 'panel',
+      },
+    });
+    const workingRoot = layout.findFirstComponentItemById('working-root');
+    workingRoot?.focus();
+    const focusObserver = vi.fn(() => {
+      throw new Error('focus observer failed');
+    });
+    workingRoot?.on('focus', focusObserver);
+    vi.spyOn(
+      layout as unknown as { adjustColumnsResponsive(): void },
+      'adjustColumnsResponsive',
+    ).mockImplementationOnce(() => {
+      throw new Error('responsive post-processing failed');
+    });
+
+    expect(() =>
+      layout.loadLayout({
+        root: {
+          type: 'stack',
+          maximised: true,
+          content: [
+            {
+              type: 'component',
+              id: 'replacement-root',
+              componentType: 'panel',
+            },
+          ],
+        },
+      }),
+    ).toThrow('responsive post-processing failed');
+
+    expect(focusObserver).not.toHaveBeenCalled();
+    expect(layout.focusedComponentItem).toBe(workingRoot);
+    expect(workingRoot?.focused).toBe(true);
+  });
+
   it('commits the replacement when an old child close request fails', () => {
     const layout = new StrelitLayout();
     layouts.push(layout);

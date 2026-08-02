@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ComponentContainer,
   ComponentItem,
@@ -332,13 +332,18 @@ describe('Component State Saving & Initial State', function () {
 
   it('restores maximised presentation when replacement metadata rollback also fails', function () {
     const roots: HTMLElement[] = [];
+    const oldComponents: object[] = [];
     for (const componentType of ['oldComponent', 'newComponent']) {
       layout.registerComponentFactoryFunction(
         componentType,
         () => {
           const rootHtmlElement = document.createElement('div');
           roots.push(rootHtmlElement);
-          return { rootHtmlElement };
+          const component = { rootHtmlElement };
+          if (componentType === 'oldComponent') {
+            oldComponents.push(component);
+          }
+          return component;
         },
         true,
       );
@@ -359,7 +364,19 @@ describe('Component State Saving & Initial State', function () {
     stack.maximise();
     const item = layout.getComponentItemsByType('oldComponent')[0];
     const maximisedZIndex = roots[0].style.zIndex;
+    let metadataObserverFailed = false;
+    vi.spyOn(
+      layout as unknown as {
+        handleContainerVirtualZIndexChangeRequiredEvent(): void;
+      },
+      'handleContainerVirtualZIndexChangeRequiredEvent',
+    ).mockImplementation(() => {
+      if (metadataObserverFailed) {
+        throw new Error('z-index restoration failed');
+      }
+    });
     item.on('titleChanged', () => {
+      metadataObserverFailed = true;
       throw new Error('metadata observer failed');
     });
 
@@ -373,6 +390,59 @@ describe('Component State Saving & Initial State', function () {
 
     expect(layout.maximisedStack).toBe(stack);
     expect(item.componentType).toBe('oldComponent');
-    expect(roots[2].style.zIndex).toBe(maximisedZIndex);
+    expect(item.container.component).toBe(oldComponents[1]);
+    expect(layout.getComponentItemsByType('oldComponent')).toEqual([item]);
+    expect(roots[2].style.zIndex).not.toBe(maximisedZIndex);
+    metadataObserverFailed = false;
+  });
+
+  it('keeps a successfully rebound component owned when maximised presentation restoration fails', function () {
+    const oldComponents: object[] = [];
+    let replacementBindFailed = false;
+    layout.registerComponentFactoryFunction(
+      'oldComponent',
+      () => {
+        const component = { rootHtmlElement: document.createElement('div') };
+        oldComponents.push(component);
+        return component;
+      },
+      true,
+    );
+    layout.registerComponentFactoryFunction('failingComponent', () => {
+      replacementBindFailed = true;
+      throw new Error('replacement bind failed');
+    });
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: [{ type: 'component', componentType: 'oldComponent' }],
+      },
+    });
+    const stack = layout.rootItem as Stack;
+    stack.maximise();
+    const item = layout.getComponentItemsByType('oldComponent')[0];
+    vi.spyOn(
+      layout as unknown as {
+        handleContainerVirtualZIndexChangeRequiredEvent(): void;
+      },
+      'handleContainerVirtualZIndexChangeRequiredEvent',
+    ).mockImplementation(() => {
+      if (replacementBindFailed) {
+        throw new Error('z-index restoration failed');
+      }
+    });
+
+    expect(() =>
+      item.container.replaceComponent({
+        type: 'component',
+        componentType: 'failingComponent',
+      }),
+    ).toThrow('replacement bind failed');
+
+    expect(oldComponents).toHaveLength(2);
+    expect(item.container.component).toBe(oldComponents[1]);
+    expect(item.componentType).toBe('oldComponent');
+    expect(layout.getComponentItemsByType('oldComponent')).toEqual([item]);
+    replacementBindFailed = false;
   });
 });
