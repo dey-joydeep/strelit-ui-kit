@@ -13,6 +13,11 @@
 
 The runner stops at the first failed stage and records later stages as skipped. `.verification/summary.json`, `.verification/latest.txt`, and numbered logs are disposable local artifacts and are never committed.
 
+CI checks out complete Git history so risk classification can compare the
+declared base commit. A new branch push uses the merge base with the fetched
+default branch when GitHub reports an all-zero previous SHA. Tag pushes force
+High verification even when the tag points directly at the default branch.
+
 Vitest bounds file-worker concurrency in `vitest.config.ts` because each jsdom worker has a substantial memory footprint. The default test timeout also accommodates migration tests that launch real Node and TypeScript processes; compile fixtures have a larger explicit bound. Raise either limit only with evidence from both constrained CI and representative developer machines.
 
 ## Browser Smoke

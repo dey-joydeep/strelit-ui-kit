@@ -5,6 +5,7 @@ import {
   resolveLayoutConfig,
   unminifyResolvedLayoutConfig,
 } from '../../src';
+import { translateObject } from '../../src/ts/utils/config-minifier';
 
 describe('resolved layout config minifier', function () {
   it('minifies and unminifies a resolved configuration object accurately', function () {
@@ -125,5 +126,67 @@ describe('resolved layout config minifier', function () {
     expect(state.__proto__).toEqual({ polluted: true });
     expect(Object.getPrototypeOf(state)).toBe(Object.prototype);
     expect(JSON.stringify(state)).toContain('"__proto__"');
+  });
+
+  it('allows shared non-cyclic objects while rejecting cyclic translation input', function () {
+    const shared = { value: 'shared' };
+
+    expect(() =>
+      translateObject({ first: shared, second: shared }, true),
+    ).not.toThrow();
+
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    expect(() => translateObject(cyclic, true)).toThrow(/cyclic/i);
+  });
+
+  it('preserves depth-first getter evaluation order without duplicate reads', function () {
+    const accessOrder: string[] = [];
+    const nested = Object.defineProperty({}, 'value', {
+      enumerable: true,
+      get: () => {
+        accessOrder.push('nested');
+        return true;
+      },
+    });
+    const config = Object.defineProperties(
+      {},
+      {
+        first: {
+          enumerable: true,
+          get: () => {
+            accessOrder.push('first');
+            return nested;
+          },
+        },
+        second: {
+          enumerable: true,
+          get: () => {
+            accessOrder.push('second');
+            return false;
+          },
+        },
+      },
+    ) as Record<string, unknown>;
+
+    translateObject(config, true);
+
+    expect(accessOrder).toEqual(['first', 'nested', 'second']);
+  });
+
+  it('enforces the translation node limit for wide primitive arrays', function () {
+    const withinLimit = { values: Array(9_998).fill(false) };
+    const overLimit = { values: Array(9_999).fill(false) };
+
+    expect(() => translateObject(withinLimit, true)).not.toThrow();
+    expect(() => translateObject(overLimit, true)).toThrow(/limit/i);
+    expect(() => unminifyResolvedLayoutConfig(overLimit as never)).toThrow(
+      /limit/i,
+    );
+
+    expect(() => translateObject({ values: Array(9_998) }, true)).not.toThrow();
+    expect(() => translateObject({ values: Array(9_999) }, true)).toThrow(
+      /limit/i,
+    );
   });
 });

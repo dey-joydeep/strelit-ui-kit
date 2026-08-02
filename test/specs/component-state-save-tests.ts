@@ -6,6 +6,7 @@ import {
   LayoutConfig,
   resolveLayoutConfig,
   SerializableValue,
+  Stack,
 } from '../../src';
 
 describe('Component State Saving & Initial State', function () {
@@ -293,5 +294,85 @@ describe('Component State Saving & Initial State', function () {
 
     expect(item.reorderEnabled).toBe(false);
     expect(item.tab.reorderEnabled).toBe(false);
+  });
+
+  it('preserves maximised virtual-component presentation during replacement', function () {
+    const roots: HTMLElement[] = [];
+    for (const componentType of ['oldComponent', 'newComponent']) {
+      layout.registerComponentFactoryFunction(
+        componentType,
+        () => {
+          const rootHtmlElement = document.createElement('div');
+          roots.push(rootHtmlElement);
+          return { rootHtmlElement };
+        },
+        true,
+      );
+    }
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: [{ type: 'component', componentType: 'oldComponent' }],
+      },
+    });
+    const stack = layout.rootItem as Stack;
+    stack.maximise();
+    const item = layout.getComponentItemsByType('oldComponent')[0];
+    const maximisedZIndex = roots[0].style.zIndex;
+
+    item.container.replaceComponent({
+      type: 'component',
+      componentType: 'newComponent',
+    });
+
+    expect(layout.maximisedStack).toBe(stack);
+    expect(roots[1].style.zIndex).toBe(maximisedZIndex);
+    expect(roots[1].style.zIndex).not.toBe('');
+  });
+
+  it('restores maximised presentation when replacement metadata rollback also fails', function () {
+    const roots: HTMLElement[] = [];
+    for (const componentType of ['oldComponent', 'newComponent']) {
+      layout.registerComponentFactoryFunction(
+        componentType,
+        () => {
+          const rootHtmlElement = document.createElement('div');
+          roots.push(rootHtmlElement);
+          return { rootHtmlElement };
+        },
+        true,
+      );
+    }
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: [
+          {
+            type: 'component',
+            componentType: 'oldComponent',
+            title: 'Old',
+          },
+        ],
+      },
+    });
+    const stack = layout.rootItem as Stack;
+    stack.maximise();
+    const item = layout.getComponentItemsByType('oldComponent')[0];
+    const maximisedZIndex = roots[0].style.zIndex;
+    item.on('titleChanged', () => {
+      throw new Error('metadata observer failed');
+    });
+
+    expect(() =>
+      item.container.replaceComponent({
+        type: 'component',
+        componentType: 'newComponent',
+        title: 'New',
+      }),
+    ).toThrow('metadata observer failed');
+
+    expect(layout.maximisedStack).toBe(stack);
+    expect(item.componentType).toBe('oldComponent');
+    expect(roots[2].style.zIndex).toBe(maximisedZIndex);
   });
 });

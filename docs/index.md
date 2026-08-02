@@ -71,6 +71,10 @@ Run `npm install` to remove the npm link.
 The following information sources are available which can be used to learn how to use the library:
 
 - **This document**
+- **[Contributor workflow](./contributing/workflow.md)**, including the
+  [AI change quality rubric](./contributing/ai-change-quality-rubric.md)
+- **[Product evolution policy](./architecture/product-evolution-policy.md)**,
+  defining the active compatibility phase and intentional transition process
 - **CodePen examples**
   - [**Adding items to a predefined layout**](https://codepen.io/pbklink/pen/dyWJNNm)\
     A basic example showing how Strelit Layout is set up and how to add a new item to a layout.

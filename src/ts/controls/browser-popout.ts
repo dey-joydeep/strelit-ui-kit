@@ -38,8 +38,12 @@ export class BrowserPopout extends EventEmitter {
   private _checkReadyInterval: ReturnType<typeof setTimeout> | undefined;
   /** @internal */
   private _isClosingOrPoppingIn = false;
+  /** Whether an explicit close, rather than pop-in, initiated reconciliation. */
+  private _closeRequested = false;
   /** @internal */
   private _closeEventScheduled = false;
+  /** Rolls back content inserted while child-window closure is unconfirmed. */
+  private _pendingPopInRollback: (() => void) | undefined;
   /** @internal */
   private _storageKey: string | undefined;
 
@@ -134,8 +138,16 @@ export class BrowserPopout extends EventEmitter {
     if (this._popoutWindow === null || this._isClosingOrPoppingIn) {
       return;
     }
+    this._closeRequested = true;
     this._isClosingOrPoppingIn = true;
-    const strelitInstance = this.tryGetStrelitInstance();
+    let strelitInstance: LayoutManager | undefined;
+    try {
+      strelitInstance = this.tryGetStrelitInstance();
+    } catch (error) {
+      this._closeRequested = false;
+      this._isClosingOrPoppingIn = false;
+      throw error;
+    }
     if (strelitInstance !== undefined) {
       try {
         strelitInstance.closeWindow();
@@ -153,6 +165,7 @@ export class BrowserPopout extends EventEmitter {
         //
       }
     }
+    this._onClose();
   }
 
   /**
@@ -163,28 +176,36 @@ export class BrowserPopout extends EventEmitter {
     if (this._isClosingOrPoppingIn) {
       return;
     }
+    this._closeRequested = false;
+    this.rollbackPendingPopIn();
     this._isClosingOrPoppingIn = true;
     try {
-      this.popInInternal();
+      this._pendingPopInRollback = this.popInInternal();
     } catch (error) {
       this._isClosingOrPoppingIn = false;
       throw error;
     }
-    if (this._popoutWindow !== null) {
-      const strelitInstance = this.tryGetStrelitInstance();
-      if (strelitInstance !== undefined) {
-        strelitInstance.closeWindow();
-      } else {
-        try {
-          this.getWindow().close();
-        } catch {
-          //
+    try {
+      if (this._popoutWindow !== null) {
+        const strelitInstance = this.tryGetStrelitInstance();
+        if (strelitInstance !== undefined) {
+          strelitInstance.closeWindow();
+        } else {
+          try {
+            this.getWindow().close();
+          } catch {
+            // Closure is confirmed below; a still-open window rolls back.
+          }
         }
       }
+    } finally {
+      // A close request can throw after scheduling or completing closure.
+      // Reconcile against Window.closed before committing or rolling back.
+      this._onClose();
     }
   }
 
-  private popInInternal(): void {
+  private popInInternal(): (() => void) | undefined {
     let parentItem: ContentItem | undefined;
     let index =
       this._config.indexInParent === null
@@ -192,7 +213,7 @@ export class BrowserPopout extends EventEmitter {
         : this._config.indexInParent;
 
     if (this._config.parentId === undefined) {
-      return;
+      return undefined;
     }
 
     const strelitInstance = this._popoutWindow?.__strelitInstance ?? undefined;
@@ -205,8 +226,7 @@ export class BrowserPopout extends EventEmitter {
     );
     const copiedRoot = copiedStrelitLayoutConfig.root;
     if (copiedRoot === undefined) {
-      this._onClose();
-      return;
+      return undefined;
     }
     const groundItem = this._layoutManager.groundItem;
     if (groundItem === undefined) {
@@ -217,8 +237,7 @@ export class BrowserPopout extends EventEmitter {
     }
     if (!this._isInitialised && parentItem !== undefined) {
       // A source-item popout remains attached until the child initializes.
-      this._onClose();
-      return;
+      return undefined;
     }
 
     /*
@@ -303,8 +322,18 @@ export class BrowserPopout extends EventEmitter {
         wrapperItem.destroy();
         throw error;
       }
-      this._onClose();
-      return;
+      return () => {
+        if (wrapperItem.contentItems.includes(rootItemToWrap)) {
+          wrapperItem.removeChild(rootItemToWrap, true);
+        }
+        if (groundItem.contentItems.includes(wrapperItem)) {
+          groundItem.removeChild(wrapperItem, true);
+        }
+        if (!groundItem.contentItems.includes(rootItemToWrap)) {
+          groundItem.addChild(rootItemToWrap);
+        }
+        wrapperItem.destroy();
+      };
     }
 
     try {
@@ -329,7 +358,11 @@ export class BrowserPopout extends EventEmitter {
       }
       throw error;
     }
-    this._onClose();
+    return () => {
+      if (parentItem.contentItems.includes(newContentItem)) {
+        parentItem.removeChild(newContentItem);
+      }
+    };
   }
 
   /**
@@ -404,19 +437,31 @@ export class BrowserPopout extends EventEmitter {
 
   /** @internal */
   private checkReady() {
-    if (this._popoutWindow === null) {
+    if (this._popoutWindow === null || this._layoutManager.isDestroyed) {
       this.clearCheckReadyInterval();
       return;
     } else {
       if (this._popoutWindow.closed) {
         this.clearCheckReadyInterval();
         this._onClose();
-      } else if (
-        this._popoutWindow.__strelitInstance &&
-        this._popoutWindow.__strelitInstance.isInitialised
-      ) {
-        this.onInitialised();
-        this.clearCheckReadyInterval();
+      } else if (this._pendingPopInRollback !== undefined) {
+        try {
+          this.rollbackPendingPopIn();
+        } catch {
+          // Keep the rollback handle and retry while the child remains open.
+        }
+      } else {
+        let strelitInstance: LayoutManager | undefined;
+        try {
+          strelitInstance = this._popoutWindow.__strelitInstance;
+        } catch {
+          // A navigated child can become cross-origin. Keep polling closure.
+          return;
+        }
+        if (!this._isInitialised && strelitInstance?.isInitialised) {
+          this.onInitialised();
+          this.clearCheckReadyInterval();
+        }
       }
     }
   }
@@ -515,7 +560,9 @@ export class BrowserPopout extends EventEmitter {
         this._popoutWindow === null || this._popoutWindow.closed;
       if (
         windowClosed &&
+        !this._layoutManager.isDestroyed &&
         !this._isClosingOrPoppingIn &&
+        !this._closeRequested &&
         this._layoutManager.layoutConfig.settings.popInOnClose
       ) {
         this._isClosingOrPoppingIn = true;
@@ -529,11 +576,20 @@ export class BrowserPopout extends EventEmitter {
       }
       this._closeEventScheduled = false;
       if (!windowClosed) {
+        try {
+          this.rollbackPendingPopIn();
+        } catch {
+          // Keep the rollback handle for the readiness interval to retry.
+        }
         // beforeunload also fires for reloads and navigation. Resume detection
         // when reconciliation confirms that the window is still open.
         this._isClosingOrPoppingIn = false;
-        this._checkReadyInterval = setInterval(() => this.checkReady(), 10);
+        if (!this._layoutManager.isDestroyed) {
+          this._checkReadyInterval = setInterval(() => this.checkReady(), 10);
+        }
       } else {
+        this._pendingPopInRollback = undefined;
+        this._closeRequested = false;
         this.emit('closed');
         if (this._storageKey !== undefined) {
           localStorage.removeItem(this._storageKey);
@@ -541,6 +597,14 @@ export class BrowserPopout extends EventEmitter {
         }
       }
     }, 50);
+  }
+
+  private rollbackPendingPopIn(): void {
+    const rollback = this._pendingPopInRollback;
+    if (rollback !== undefined) {
+      rollback();
+      this._pendingPopInRollback = undefined;
+    }
   }
 
   private tryGetStrelitInstance(): LayoutManager | undefined {

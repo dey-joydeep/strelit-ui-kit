@@ -33,4 +33,26 @@ describe('virtual layout popout bootstrap', () => {
     expect(parameters.subWindowLayoutConfig?.root?.type).toBe('component');
     expect(localStorage.getItem(storageKey)).not.toBeNull();
   });
+
+  it('rejects over-depth stored popout data before recursively unminifying it', async () => {
+    const storageKey = 'strelit-window-config-depth-test';
+    const storedConfig: Record<string, unknown> = {};
+    let cursor = storedConfig;
+    for (let depth = 0; depth < 130; depth++) {
+      const child: Record<string, unknown> = {};
+      cursor.content = child;
+      cursor = child;
+    }
+    localStorage.setItem(storageKey, JSON.stringify(storedConfig));
+    history.replaceState({}, '', `/?strelit-window=${storageKey}`);
+    vi.resetModules();
+    const { createVirtualLayoutManagerConstructorParameters } =
+      await import('../../src/ts/virtual-layout');
+
+    expect(() =>
+      createVirtualLayoutManagerConstructorParameters(
+        document.createElement('div'),
+      ),
+    ).toThrow(/limit/i);
+  });
 });

@@ -8,6 +8,10 @@ on:
       - synchronize
       - reopened
       - ready_for_review
+  pull_request_review:
+    types:
+      - submitted
+      - dismissed
 
 permissions:
   contents: read
@@ -26,6 +30,57 @@ jobs:
 
             const title = (pr.title ?? '').trim();
             const body = pr.body ?? '';
+            const placeholderOnly = /^(?:n\/a|none|pending|todo|tbd|not applicable)\.?$/i;
+            const renderedBodyResponse = await github.rest.markdown.render({
+              text: body,
+              mode: 'gfm',
+              context: `${context.repo.owner}/${context.repo.repo}`
+            });
+            const renderedBody = renderedBodyResponse.data;
+
+            function htmlText(html) {
+              return html
+                .replace(/<\/?(?:blockquote|br|div|h[1-6]|li|ol|p|pre|table|td|th|tr|ul)\b[^>]*>/gi, '\n')
+                .replace(/<[^>]*>/g, '')
+                .replace(/&nbsp;|&#160;/gi, ' ')
+                .replace(/&amp;/gi, '&')
+                .replace(/&lt;/gi, '<')
+                .replace(/&gt;/gi, '>')
+                .replace(/&quot;|&#34;/gi, '"')
+                .replace(/&#39;|&apos;/gi, "'")
+                .replace(/\r/g, '')
+                .replace(/[ \t]+\n/g, '\n')
+                .replace(/\n{3,}/g, '\n\n')
+                .trim();
+            }
+
+            const sectionHeadings = [
+              ...renderedBody.matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/gi)
+            ].map((heading) => ({
+              html: heading[0],
+              index: heading.index,
+              name: htmlText(heading[1])
+            }));
+
+            function getSectionHtml(section) {
+              const name = section.replace(/^##\s+/, '');
+              const matches = sectionHeadings.filter(
+                (heading) => heading.name === name
+              );
+              if (matches.length !== 1) {
+                return null;
+              }
+              const heading = matches[0];
+              const headingIndex = sectionHeadings.indexOf(heading);
+              const contentStart = heading.index + heading.html.length;
+              const nextSection = sectionHeadings[headingIndex + 1]?.index;
+              return renderedBody.slice(contentStart, nextSection ?? renderedBody.length);
+            }
+
+            function getSectionBody(section) {
+              const sectionHtml = getSectionHtml(section);
+              return sectionHtml === null ? null : htmlText(sectionHtml);
+            }
 
             if (title.length < 12) {
               errors.push('PR title is too short. Use a descriptive title.');
@@ -35,12 +90,296 @@ jobs:
               '## Summary',
               '## What Changed',
               '## Why',
+              '## Behavioral Contract',
+              '## Risk Classification',
+              '## Failure and Boundary Cases',
+              '## Test Evidence',
+              '## Test Exception',
+              '## Review-Finding Expansion',
+              '## Out of Scope',
+              '## Scope Justification',
+              '## Independent Quality Review',
               '## Verification'
             ];
 
+            let previousSectionIndex = -1;
             for (const section of requiredSections) {
-              if (!body.includes(section)) {
+              const name = section.replace(/^##\s+/, '');
+              const headings = sectionHeadings.filter(
+                (heading) => heading.name === name
+              );
+              const sectionBody = getSectionBody(section);
+              if (headings.length === 0) {
                 errors.push(`PR body must include section: ${section}`);
+              } else if (headings.length > 1) {
+                errors.push(`PR body must include section exactly once: ${section}`);
+              } else if (headings[0].index <= previousSectionIndex) {
+                errors.push(`PR body sections are out of order at: ${section}`);
+              } else if (
+                sectionBody.length < 20 ||
+                placeholderOnly.test(sectionBody)
+              ) {
+                errors.push(
+                  `${section} must contain substantive evidence, not a placeholder.`
+                );
+              }
+              if (headings.length === 1) {
+                previousSectionIndex = headings[0].index;
+              }
+            }
+
+            const { owner, repo } = context.repo;
+            const pull_number = pr.number;
+            const files = await github.paginate(
+              github.rest.pulls.listFiles,
+              { owner, repo, pull_number, per_page: 100 }
+            );
+            const fileNames = [
+              ...new Set(
+                files.flatMap((file) =>
+                  file.status === 'renamed' && file.previous_filename
+                    ? [file.previous_filename, file.filename]
+                    : [file.filename]
+                )
+              )
+            ];
+            const riskPolicyResponse = await github.rest.repos.getContent({
+              owner,
+              repo,
+              path: '.github/change-risk.json',
+              ref: pr.base.sha
+            });
+            if (Array.isArray(riskPolicyResponse.data)) {
+              throw new Error('.github/change-risk.json must be a file.');
+            }
+            const riskPolicy = JSON.parse(
+              Buffer.from(riskPolicyResponse.data.content, 'base64').toString(
+                'utf8'
+              )
+            );
+            const highRiskPatterns = riskPolicy.high.map(
+              (pattern) => new RegExp(pattern)
+            );
+            const mediumRiskPatterns = riskPolicy.medium.map(
+              (pattern) => new RegExp(pattern)
+            );
+            const hasMatch = (patterns) =>
+              fileNames.some((fileName) =>
+                patterns.some((pattern) => pattern.test(fileName))
+              );
+            const computedRisk = hasMatch(highRiskPatterns)
+              ? 'high'
+              : hasMatch(mediumRiskPatterns)
+                ? 'medium'
+                : 'low';
+            const riskClassification =
+              getSectionBody('## Risk Classification') ?? '';
+            const declaredRiskMatch = riskClassification.match(
+              /Risk:\s*(Low|Medium|High)/i
+            );
+            const riskRank = { low: 0, medium: 1, high: 2 };
+
+            if (declaredRiskMatch === null) {
+              errors.push(
+                'Risk Classification must contain Risk: **Low**, **Medium**, or **High**.'
+              );
+            } else {
+              const declaredRisk = declaredRiskMatch[1].toLowerCase();
+              if (riskRank[declaredRisk] < riskRank[computedRisk]) {
+                errors.push(
+                  `Declared risk ${declaredRisk} is below computed risk ${computedRisk}.`
+                );
+              }
+            }
+
+            const executableBehaviorChanged = fileNames.some((fileName) =>
+              /^(?:src|scripts)\//.test(fileName)
+            );
+            const testsChanged = fileNames.some((fileName) =>
+              /^(?:test|apitest)\//.test(fileName)
+            );
+            const testException = getSectionBody('## Test Exception') ?? '';
+
+            if (
+              executableBehaviorChanged &&
+              !testsChanged &&
+              /not applicable|tests were added/i.test(testException)
+            ) {
+              errors.push(
+                'Executable behavior changed without tests. Provide a substantive Test Exception.'
+              );
+            }
+
+            const nonGeneratedChanges = files
+              .filter(
+                (file) =>
+                  file.filename !== 'package-lock.json' &&
+                  !/^etc\/.*\.api\.md$/.test(file.filename) &&
+                  !/^docs\/architecture\/generated\//.test(file.filename)
+              )
+              .reduce((total, file) => total + file.changes, 0);
+            const scopeJustification =
+              getSectionBody('## Scope Justification') ?? '';
+
+            if (
+              nonGeneratedChanges > 1000 &&
+              /below the threshold|not applicable|none/i.test(
+                scopeJustification
+              )
+            ) {
+              errors.push(
+                `PR has ${nonGeneratedChanges} non-generated changed lines. Explain why it cannot be split.`
+              );
+            }
+
+            const verificationHtml = getSectionHtml('## Verification') ?? '';
+            const hasCheckedVerification =
+              /<input\b(?=[^>]*\btype=["']checkbox["'])(?=[^>]*\bchecked(?:=["'][^"']*["'])?)[^>]*>(?:(?!<input\b)[\s\S])*?npm run verify:pr/i.test(
+                verificationHtml
+              );
+            if (!hasCheckedVerification) {
+              errors.push(
+                'Verification must confirm a successful npm run verify:pr with a checked box.'
+              );
+            }
+
+            const independentReview =
+              getSectionBody('## Independent Quality Review') ?? '';
+            const reviewModeMatch = independentReview.match(
+              /Review mode:[ \t]*(Independent|Self-review)/i
+            );
+            const reviewMode = reviewModeMatch?.[1].toLowerCase();
+            if (reviewMode === undefined) {
+              errors.push(
+                'Review mode must be **Independent** or **Self-review**; Pending is not complete.'
+              );
+            }
+
+            if (computedRisk === 'high' && reviewMode !== 'independent') {
+              errors.push(
+                'High-risk changes require Review mode: **Independent**.'
+              );
+            }
+
+            if (reviewMode !== undefined) {
+              const reviewerMatch = independentReview.match(
+                /^Reviewer:[ \t]*(.+)$/im
+              );
+              const reviewer = reviewerMatch?.[1].trim() ?? '';
+              if (reviewer.length < 4 || placeholderOnly.test(reviewer)) {
+                errors.push(
+                  'A completed quality review requires an identified reviewer or agent task.'
+                );
+              }
+
+              if (
+                computedRisk === 'high' &&
+                /^(?:self|implementer|author|same context)$/i.test(reviewer)
+              ) {
+                errors.push(
+                  'High-risk changes require an identified independent reviewer or agent task.'
+                );
+              }
+
+              const boundary =
+                independentReview.match(/^Reviewed boundary:[ \t]*(.+)$/im)?.[1].trim() ?? '';
+              if (boundary.length < 4 || placeholderOnly.test(boundary)) {
+                errors.push(
+                  'Quality review must identify the reviewed commit or diff boundary.'
+                );
+              }
+
+              if (computedRisk === 'high' && boundary !== pr.head.sha) {
+                errors.push(
+                  'High-risk review boundary must equal the current PR head SHA.'
+                );
+              }
+
+              if (!/Rubric result:[ \t]*Pass/i.test(independentReview)) {
+                errors.push(
+                  'A completed quality review requires Rubric result: **Pass**.'
+                );
+              }
+
+              if (!/Dimensions below 2:[ \t]*0/i.test(independentReview)) {
+                errors.push(
+                  'A completed quality review cannot have rubric dimensions below 2.'
+                );
+              }
+
+              if (
+                !/Findings:[ \t]*Critical \d+; High \d+; Medium \d+; Low \d+/i.test(
+                  independentReview
+                )
+              ) {
+                errors.push(
+                  'A completed quality review must report finding counts by severity.'
+                );
+              }
+
+              if (!/Verdict:[ \t]*Pass/i.test(independentReview)) {
+                errors.push(
+                  'A completed quality review requires Verdict: **Pass**.'
+                );
+              }
+
+              if (!/Open Critical\/High findings:[ \t]*0/i.test(independentReview)) {
+                errors.push(
+                  'High-risk changes cannot have open Critical or High review findings.'
+                );
+              }
+
+              const evidenceFields = [
+                'Review artifact',
+                'Finding dispositions',
+                'Residual risks'
+              ];
+              for (const label of evidenceFields) {
+                const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const value =
+                  independentReview
+                    .match(new RegExp(`^${escapedLabel}:[ \\t]*(.+)$`, 'im'))?.[1]
+                    .trim() ?? '';
+                if (value.length < 4 || placeholderOnly.test(value)) {
+                  errors.push(
+                    `Quality review must provide substantive ${label.toLowerCase()}.`
+                  );
+                }
+              }
+
+              if (computedRisk === 'high') {
+                const reviews = await github.paginate(
+                  github.rest.pulls.listReviews,
+                  { owner, repo, pull_number, per_page: 100 }
+                );
+                const declaredReviewer = reviewer
+                  .replace(/^@/, '')
+                  .toLowerCase();
+                const author = pr.user.login.toLowerCase();
+                const decisiveReviews = reviews.filter(
+                  (review) =>
+                    review.commit_id === pr.head.sha &&
+                    review.user?.login !== undefined &&
+                    review.user.login.toLowerCase() !== author &&
+                    review.user.login.toLowerCase() === declaredReviewer &&
+                    ['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(
+                      review.state
+                    )
+                );
+                const latestDecisiveReview = decisiveReviews.at(-1);
+                const hasCurrentIndependentApproval =
+                  latestDecisiveReview?.state === 'APPROVED';
+                if (!hasCurrentIndependentApproval) {
+                  errors.push(
+                    'High-risk changes require approval on the current head from the declared reviewer, using a GitHub identity different from the PR author.'
+                  );
+                }
+              }
+            } else {
+              if (reviewModeMatch === null) {
+                errors.push(
+                  'Every change requires a completed self-review or independent review.'
+                );
               }
             }
 

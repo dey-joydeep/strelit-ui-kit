@@ -12,7 +12,25 @@ When making changes to Strelit UI Kit (`strelit-ui-kit`), use this skill to run 
 - **Shell**: Always execute terminal commands using PowerShell 7 (`pwsh`).
 - **Line Endings**: Windows git checkouts must preserve `LF` line endings for repository files (`.gitattributes` enforces `* text=auto eol=lf`).
 
-## 2. Targeted vs. Full Verification
+## 2. Risk-Based PR Verification
+
+Before finalizing a change, run:
+
+```powershell
+npm run verify:pr
+```
+
+This classifies changed files against the PR base and runs the checks required
+by `AGENTS.md`. Do not downgrade the computed risk to avoid verification.
+
+Verification does not replace the independent quality review required for
+high-risk changes. Apply `docs/contributing/ai-change-quality-rubric.md` and
+record its evidence separately.
+
+Use `--base <ref>` when the intended base cannot be detected. Use
+`--classify-only` only to inspect the planned checks, not as completion evidence.
+
+## 3. Targeted vs. Full Verification
 
 ### Targeted Verification (During Iterative Development)
 
@@ -26,22 +44,19 @@ npm run test
 npm run lint
 ```
 
-### Complete Verification Pipeline (`verify:ordered`)
+### Complete High-Risk Pipeline (`verify:ordered`)
 
-Before finalizing any pull request or commit, run the ordered verification sequence:
+High-risk changes run the ordered verification sequence:
 
 ```powershell
 npm run verify:ordered
 ```
 
-This runs:
+This runs typecheck, build and API validation, tests, compatibility audit, lint,
+and formatting in order. `verify:pr` also runs the API demo build for high-risk
+changes.
 
-1. Clean previous build artifacts (`dist`, `temp`)
-2. Compile TypeScript modules & bundles
-3. Run Vitest test runner (41+ tests across layout, tab, popout specs)
-4. Execute `api-extractor` public surface validation
-
-## 3. Handling API Extractor Snapshots
+## 4. Handling API Extractor Snapshots
 
 If your changes export new public interfaces, classes, or types from `src/ts/index.ts`:
 

@@ -264,6 +264,41 @@ describe('layout lifecycle', () => {
     ).toBe(workingComponent);
   });
 
+  it('restores component focus when layout replacement rolls back', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        id: 'working-root',
+        componentType: 'panel',
+      },
+    });
+    const workingRoot = layout.findFirstComponentItemById('working-root');
+    workingRoot?.focus();
+    vi.spyOn(
+      layout as unknown as { adjustColumnsResponsive(): void },
+      'adjustColumnsResponsive',
+    ).mockImplementationOnce(() => {
+      layout.findFirstComponentItemById('replacement-root')?.focus();
+      throw new Error('responsive post-processing failed');
+    });
+
+    expect(() =>
+      layout.loadLayout({
+        root: {
+          type: 'component',
+          id: 'replacement-root',
+          componentType: 'panel',
+        },
+      }),
+    ).toThrow('responsive post-processing failed');
+
+    expect(layout.focusedComponentItem).toBe(workingRoot);
+    expect(workingRoot?.focused).toBe(true);
+  });
+
   it('commits the replacement when an old child close request fails', () => {
     const layout = new StrelitLayout();
     layouts.push(layout);
@@ -556,6 +591,71 @@ describe('layout lifecycle', () => {
     expect(cancelAnimationFrame).toHaveBeenCalledWith(74);
     scheduledCallbacks[0](0);
     expect(stateChanged).not.toHaveBeenCalled();
+  });
+
+  it('continues teardown after a destroy step fails and preserves the first error', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    const groundItem = layout.groundItem;
+    if (groundItem === undefined) {
+      throw new Error('Expected a ground item');
+    }
+    const firstError = new Error('ground teardown failed');
+    vi.spyOn(groundItem, 'destroy').mockImplementationOnce(() => {
+      throw firstError;
+    });
+    const internals = layout as unknown as {
+      _resizeObserver: ResizeObserver;
+      _eventHub: { destroy(): void };
+      restoreBodyContainerStyles(): void;
+    };
+    const disconnect = vi.spyOn(internals._resizeObserver, 'disconnect');
+    const destroyEventHub = vi.spyOn(internals._eventHub, 'destroy');
+    const restoreStyles = vi.spyOn(internals, 'restoreBodyContainerStyles');
+
+    expect(() => layout.destroy()).toThrow(firstError);
+
+    expect(layout.isDestroyed).toBe(true);
+    expect(layout.isInitialised).toBe(false);
+    expect(disconnect).toHaveBeenCalledOnce();
+    expect(destroyEventHub).toHaveBeenCalledOnce();
+    expect(restoreStyles).toHaveBeenCalledOnce();
+  });
+
+  it('attempts every open popout close when one close fails', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    let firstAttempts = 0;
+    const firstPopout = {
+      close: vi.fn(() => {
+        if (++firstAttempts === 1) {
+          throw new Error('first close failed');
+        }
+      }),
+      getWindow: () => ({ closed: true }),
+    };
+    const secondPopout = {
+      close: vi.fn(),
+      getWindow: () => ({ closed: true }),
+    };
+    const internals = layout as unknown as {
+      _openPopouts: {
+        close(): void;
+        getWindow(): { closed: boolean };
+      }[];
+    };
+    internals._openPopouts.push(firstPopout, secondPopout);
+
+    expect(() => layout.closeAllOpenPopouts()).toThrow('first close failed');
+
+    expect(firstPopout.close).toHaveBeenCalledOnce();
+    expect(secondPopout.close).toHaveBeenCalledOnce();
+    expect(layout.openPopouts).toEqual([firstPopout]);
+
+    expect(() => layout.closeAllOpenPopouts()).not.toThrow();
+
+    expect(firstPopout.close).toHaveBeenCalledTimes(2);
+    expect(layout.openPopouts).toHaveLength(0);
   });
 
   it('destroys partial layout state when initialization fails', () => {

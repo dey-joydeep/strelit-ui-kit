@@ -1,0 +1,20 @@
+{
+  "high": [
+    "^src/",
+    "^scripts/",
+    "^etc/",
+    "^\\.agents/skills/",
+    "^\\.github/workflows/",
+    "^\\.github/pull_request_template\\.md$",
+    "^\\.github/change-risk\\.json$",
+    "(?:^|/)AGENTS\\.md$",
+    "^docs/contributing/",
+    "^docs/architecture/product-evolution-policy\\.md$",
+    "^docs/architecture/compatibility-audit-maintenance\\.md$",
+    "^package(?:-lock)?\\.json$",
+    "^api-extractor.*\\.json$",
+    "^tsconfig.*\\.json$",
+    "^(?:vite|vitest|tsup)\\..*config\\.[cm]?[jt]s$"
+  ],
+  "medium": ["^test/", "^apitest/"]
+}

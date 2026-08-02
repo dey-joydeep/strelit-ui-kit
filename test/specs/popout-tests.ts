@@ -107,6 +107,363 @@ describe('BrowserPopout functionality (item.popout())', function () {
     );
   });
 
+  it('retains a real popout for retry when its child becomes inaccessible', function () {
+    let childAccessThrows = false;
+    const nativeClose = vi.fn(() => {
+      (mockWindow as unknown as { closed: boolean }).closed = true;
+    });
+    const mockWindow = {
+      closed: false,
+      close: nativeClose,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      document: {
+        createElement: () => document.createElement('div'),
+        body: document.createElement('body'),
+        head: document.createElement('head'),
+        write: vi.fn(),
+        close: vi.fn(),
+      },
+      location: { href: '' },
+    } as unknown as Window;
+    Object.defineProperty(mockWindow, '__strelitInstance', {
+      configurable: true,
+      get: () => {
+        if (childAccessThrows) {
+          throw new Error('cross-origin child access denied');
+        }
+        return undefined;
+      },
+    });
+    vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+    layout.loadLayout({
+      openPopouts: [
+        {
+          root: {
+            type: 'component',
+            componentType: 'testComponent',
+          },
+        },
+      ],
+    });
+    childAccessThrows = true;
+
+    expect(() => layout.closeAllOpenPopouts()).toThrow(
+      'cross-origin child access denied',
+    );
+    expect(layout.openPopouts).toHaveLength(1);
+
+    childAccessThrows = false;
+    expect(() => layout.closeAllOpenPopouts()).not.toThrow();
+    expect(nativeClose).toHaveBeenCalledOnce();
+    expect(layout.openPopouts).toHaveLength(0);
+  });
+
+  it('retries a close request that silently leaves the child open', function () {
+    vi.useFakeTimers();
+    try {
+      let closeAttempts = 0;
+      const nativeClose = vi.fn(() => {
+        if (++closeAttempts === 2) {
+          (mockWindow as unknown as { closed: boolean }).closed = true;
+        }
+      });
+      const mockWindow = {
+        closed: false,
+        close: nativeClose,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        openPopouts: [
+          {
+            root: {
+              type: 'component',
+              componentType: 'testComponent',
+            },
+          },
+        ],
+      });
+
+      layout.closeAllOpenPopouts();
+      expect(nativeClose).toHaveBeenCalledOnce();
+      expect(layout.openPopouts).toHaveLength(1);
+      vi.advanceTimersByTime(50);
+
+      layout.closeAllOpenPopouts();
+      expect(nativeClose).toHaveBeenCalledTimes(2);
+      expect(layout.openPopouts).toHaveLength(0);
+      vi.advanceTimersByTime(50);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps polling closure when an uninitialised child becomes inaccessible', function () {
+    vi.useFakeTimers();
+    try {
+      let childAccessThrows = false;
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      Object.defineProperty(mockWindow, '__strelitInstance', {
+        configurable: true,
+        get: () => {
+          if (childAccessThrows) {
+            throw new Error('cross-origin child access denied');
+          }
+          return undefined;
+        },
+      });
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        openPopouts: [
+          {
+            root: {
+              type: 'component',
+              componentType: 'testComponent',
+            },
+          },
+        ],
+      });
+      childAccessThrows = true;
+
+      expect(() => vi.advanceTimersByTime(30)).not.toThrow();
+      expect(layout.openPopouts).toHaveLength(1);
+
+      (mockWindow as unknown as { closed: boolean }).closed = true;
+      expect(() => vi.advanceTimersByTime(60)).not.toThrow();
+      expect(layout.openPopouts).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([false, true])(
+    'stops inaccessible-child polling after destroy when closePopoutsOnUnload is %s',
+    (closePopoutsOnUnload) => {
+      vi.useFakeTimers();
+      try {
+        let childAccessThrows = false;
+        const mockWindow = {
+          closed: false,
+          close: vi.fn(),
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          document: {
+            createElement: () => document.createElement('div'),
+            body: document.createElement('body'),
+            head: document.createElement('head'),
+            write: vi.fn(),
+            close: vi.fn(),
+          },
+          location: { href: '' },
+        } as unknown as Window;
+        Object.defineProperty(mockWindow, '__strelitInstance', {
+          configurable: true,
+          get: () => {
+            if (childAccessThrows) {
+              throw new Error('cross-origin child access denied');
+            }
+            return undefined;
+          },
+        });
+        vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+        layout.loadLayout({
+          settings: { closePopoutsOnUnload },
+          openPopouts: [
+            {
+              root: {
+                type: 'component',
+                componentType: 'testComponent',
+              },
+            },
+          ],
+        });
+        const popout = layout.openPopouts[0] as unknown as {
+          _checkReadyInterval: ReturnType<typeof setInterval> | undefined;
+        };
+        childAccessThrows = true;
+
+        if (closePopoutsOnUnload) {
+          expect(() => layout.destroy()).toThrow(
+            'cross-origin child access denied',
+          );
+        } else {
+          expect(() => layout.destroy()).not.toThrow();
+        }
+        vi.advanceTimersByTime(10);
+
+        expect(popout._checkReadyInterval).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it.each([false, true])(
+    'does not reconcile a scheduled pop-in after destroy when closePopoutsOnUnload is %s',
+    (closePopoutsOnUnload) => {
+      vi.useFakeTimers();
+      try {
+        let beforeUnload: (() => void) | undefined;
+        let childAccessThrows = false;
+        const mockWindow = {
+          closed: false,
+          close: vi.fn(),
+          addEventListener: vi.fn((name: string, listener: () => void) => {
+            if (name === 'beforeunload') {
+              beforeUnload = listener;
+            }
+          }),
+          removeEventListener: vi.fn(),
+          document: {
+            createElement: () => document.createElement('div'),
+            body: document.createElement('body'),
+            head: document.createElement('head'),
+            write: vi.fn(),
+            close: vi.fn(),
+          },
+          location: { href: '' },
+        } as unknown as Window;
+        Object.defineProperty(mockWindow, '__strelitInstance', {
+          configurable: true,
+          get: () => {
+            if (childAccessThrows) {
+              throw new Error('cross-origin child access denied');
+            }
+            return undefined;
+          },
+        });
+        vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+        layout.loadLayout({
+          settings: { closePopoutsOnUnload, popInOnClose: true },
+          root: {
+            type: 'component',
+            id: 'destroyed-reconciliation-host',
+            componentType: 'testComponent',
+          },
+          openPopouts: [
+            {
+              root: {
+                type: 'component',
+                id: 'must-not-enter-destroyed-layout',
+                componentType: 'testComponent',
+              },
+              parentId: null,
+            },
+          ],
+        });
+
+        (mockWindow as unknown as { closed: boolean }).closed = true;
+        beforeUnload?.();
+        childAccessThrows = true;
+        if (closePopoutsOnUnload) {
+          expect(() => layout.destroy()).toThrow(
+            'cross-origin child access denied',
+          );
+        } else {
+          expect(() => layout.destroy()).not.toThrow();
+        }
+
+        expect(() => vi.advanceTimersByTime(50)).not.toThrow();
+        expect(layout.groundItem).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it('does not pop in after a delayed explicit close and reconciles duplicate signals once', function () {
+    vi.useFakeTimers();
+    try {
+      let beforeUnload: (() => void) | undefined;
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn((name: string, listener: () => void) => {
+          if (name === 'beforeunload') {
+            beforeUnload = listener;
+          }
+        }),
+        removeEventListener: vi.fn(),
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        settings: { popInOnClose: true },
+        root: {
+          type: 'component',
+          id: 'delayed-close-host',
+          componentType: 'testComponent',
+        },
+        openPopouts: [
+          {
+            root: {
+              type: 'component',
+              id: 'must-not-pop-in-after-explicit-close',
+              componentType: 'testComponent',
+            },
+            parentId: null,
+          },
+        ],
+      });
+      const popout = layout.openPopouts[0] as unknown as {
+        _checkReadyInterval: ReturnType<typeof setInterval> | undefined;
+        on(name: 'closed', listener: () => void): void;
+      };
+      const closed = vi.fn();
+      popout.on('closed', closed);
+
+      layout.closeAllOpenPopouts();
+      vi.advanceTimersByTime(50);
+      expect(layout.openPopouts).toHaveLength(1);
+
+      (mockWindow as unknown as { closed: boolean }).closed = true;
+      beforeUnload?.();
+      beforeUnload?.();
+      vi.advanceTimersByTime(50);
+
+      expect(closed).toHaveBeenCalledOnce();
+      expect(layout.openPopouts).toHaveLength(0);
+      expect(
+        layout.findFirstComponentItemById(
+          'must-not-pop-in-after-explicit-close',
+        ),
+      ).toBeUndefined();
+      expect(popout._checkReadyInterval).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('preserves a pending popout loaded from configuration', function () {
     const mockWindow = {
       closed: false,
@@ -747,6 +1104,305 @@ describe('BrowserPopout functionality (item.popout())', function () {
     expect(attempts).toBe(2);
     expect(layout.findFirstComponentItemById('retry-return')).toBeDefined();
     expect(childLayout.closeWindow).toHaveBeenCalledOnce();
+  });
+
+  it('rolls back inserted content when closing the child throws and allows retry', function () {
+    vi.useFakeTimers();
+    try {
+      let closeAttempts = 0;
+      const childLayout = {
+        isInitialised: true,
+        on: vi.fn(),
+        saveLayout: () =>
+          resolveLayoutConfig({
+            root: {
+              type: 'component',
+              id: 'returned-after-close-error',
+              componentType: 'testComponent',
+            },
+          }),
+        closeWindow: vi.fn(() => {
+          if (++closeAttempts === 1) {
+            throw new Error('child close failed');
+          }
+          (mockWindow as unknown as { closed: boolean }).closed = true;
+        }),
+      };
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        __strelitInstance: childLayout,
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        root: {
+          type: 'component',
+          id: 'host-after-close-error',
+          componentType: 'testComponent',
+        },
+        openPopouts: [
+          {
+            root: {
+              type: 'component',
+              id: 'returned-after-close-error',
+              componentType: 'testComponent',
+            },
+            parentId: null,
+          },
+        ],
+      });
+      const popout = layout.openPopouts[0] as unknown as {
+        _isInitialised: boolean;
+        popIn(): void;
+      };
+      popout._isInitialised = true;
+
+      expect(() => popout.popIn()).toThrow('child close failed');
+      expect(
+        layout.findFirstComponentItemById('returned-after-close-error'),
+      ).toBeDefined();
+      vi.advanceTimersByTime(50);
+      expect(
+        layout.findFirstComponentItemById('returned-after-close-error'),
+      ).toBeUndefined();
+
+      expect(() => popout.popIn()).not.toThrow();
+      expect(
+        layout.findFirstComponentItemById('returned-after-close-error'),
+      ).toBeDefined();
+      vi.advanceTimersByTime(50);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('commits inserted content when child closure completes before throwing', function () {
+    vi.useFakeTimers();
+    try {
+      const childLayout = {
+        isInitialised: true,
+        on: vi.fn(),
+        saveLayout: () =>
+          resolveLayoutConfig({
+            root: {
+              type: 'component',
+              id: 'returned-after-close-and-throw',
+              componentType: 'testComponent',
+            },
+          }),
+        closeWindow: vi.fn(() => {
+          (mockWindow as unknown as { closed: boolean }).closed = true;
+          throw new Error('close reported late failure');
+        }),
+      };
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        __strelitInstance: childLayout,
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        root: {
+          type: 'component',
+          id: 'host-after-close-and-throw',
+          componentType: 'testComponent',
+        },
+        openPopouts: [
+          {
+            root: {
+              type: 'component',
+              id: 'returned-after-close-and-throw',
+              componentType: 'testComponent',
+            },
+            parentId: null,
+          },
+        ],
+      });
+      const popout = layout.openPopouts[0] as unknown as {
+        _isInitialised: boolean;
+        popIn(): void;
+      };
+      popout._isInitialised = true;
+
+      expect(() => popout.popIn()).toThrow('close reported late failure');
+      vi.advanceTimersByTime(50);
+
+      expect(
+        layout.findFirstComponentItemById('returned-after-close-and-throw'),
+      ).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rolls back inserted content when the child remains open', function () {
+    vi.useFakeTimers();
+    try {
+      const childLayout = {
+        isInitialised: true,
+        on: vi.fn(),
+        saveLayout: () =>
+          resolveLayoutConfig({
+            root: {
+              type: 'component',
+              id: 'returned-from-still-open-child',
+              componentType: 'testComponent',
+            },
+          }),
+        closeWindow: vi.fn(),
+      };
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        __strelitInstance: childLayout,
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        root: {
+          type: 'component',
+          id: 'host-for-still-open-child',
+          componentType: 'testComponent',
+        },
+        openPopouts: [
+          {
+            root: {
+              type: 'component',
+              id: 'returned-from-still-open-child',
+              componentType: 'testComponent',
+            },
+            parentId: null,
+          },
+        ],
+      });
+      const popout = layout.openPopouts[0] as unknown as {
+        _isInitialised: boolean;
+        popIn(): void;
+      };
+      popout._isInitialised = true;
+
+      popout.popIn();
+      expect(
+        layout.findFirstComponentItemById('returned-from-still-open-child'),
+      ).toBeDefined();
+      vi.advanceTimersByTime(50);
+
+      expect(
+        layout.findFirstComponentItemById('returned-from-still-open-child'),
+      ).toBeUndefined();
+      expect(layout.openPopouts).toHaveLength(1);
+      vi.advanceTimersByTime(10);
+      expect(childLayout.on).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retries an asynchronous pop-in rollback that fails transiently', function () {
+    vi.useFakeTimers();
+    try {
+      const childLayout = {
+        isInitialised: true,
+        on: vi.fn(),
+        saveLayout: () =>
+          resolveLayoutConfig({
+            root: {
+              type: 'component',
+              id: 'returned-after-rollback-retry',
+              componentType: 'testComponent',
+            },
+          }),
+        closeWindow: vi.fn(),
+      };
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        __strelitInstance: childLayout,
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        root: {
+          type: 'component',
+          id: 'rollback-retry-host',
+          componentType: 'testComponent',
+        },
+        openPopouts: [
+          {
+            root: {
+              type: 'component',
+              id: 'returned-after-rollback-retry',
+              componentType: 'testComponent',
+            },
+            parentId: null,
+          },
+        ],
+      });
+      const popout = layout.openPopouts[0] as unknown as {
+        _isInitialised: boolean;
+        popIn(): void;
+      };
+      popout._isInitialised = true;
+      const parent = layout.rootItem;
+      if (parent === undefined) {
+        throw new Error('Expected a pop-in parent');
+      }
+      vi.spyOn(parent, 'removeChild').mockImplementationOnce(() => {
+        throw new Error('transient rollback failure');
+      });
+
+      popout.popIn();
+      vi.advanceTimersByTime(50);
+      expect(
+        layout.findFirstComponentItemById('returned-after-rollback-retry'),
+      ).toBeDefined();
+
+      vi.advanceTimersByTime(10);
+      expect(
+        layout.findFirstComponentItemById('returned-after-rollback-retry'),
+      ).toBeUndefined();
+      expect(childLayout.on).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('wraps a stack root before restoring another stack without its parent', function () {

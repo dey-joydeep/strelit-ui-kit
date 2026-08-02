@@ -429,6 +429,7 @@ export class ComponentContainer extends EventEmitter {
       const previousState = this._state;
       const previousComponentType = this._componentType;
       const previousIsClosable = this._isClosable;
+      const wasStackMaximised = this._stackMaximised;
       const previousStateRequestEvent = this.stateRequestEvent;
       const previousLiveState = deepCloneValue(
         previousStateRequestEvent === undefined
@@ -468,6 +469,10 @@ export class ComponentContainer extends EventEmitter {
             this,
             previousConfig,
           );
+          this.updateElementPositionPropertyFromBoundComponent();
+          if (wasStackMaximised) {
+            this.enterStackMaximised();
+          }
         } catch (rollbackError) {
           this._boundComponent = { component: undefined, virtual: false };
           throw rollbackError;
@@ -503,23 +508,38 @@ export class ComponentContainer extends EventEmitter {
             throw rollbackError;
           }
           // The previous binding is live; preserve the original observer error.
+        } finally {
+          if (
+            wasStackMaximised &&
+            (this._boundComponent.component !== nextBoundComponent.component ||
+              this._boundComponent.virtual !== nextBoundComponent.virtual)
+          ) {
+            this.enterStackMaximised();
+          }
         }
         throw error;
       }
 
-      if (this._boundComponent.virtual) {
-        if (this.virtualVisibilityChangeRequiredEvent !== undefined) {
-          this.virtualVisibilityChangeRequiredEvent(this, this._visible);
-        }
-        if (this.virtualRectingRequiredEvent !== undefined) {
-          this._layoutManager.fireBeforeVirtualRectingEvent(1, [this]);
-          try {
-            this.virtualRectingRequiredEvent(this, this._width, this._height);
-          } finally {
-            this._layoutManager.fireAfterVirtualRectingEvent();
+      try {
+        if (this._boundComponent.virtual) {
+          if (this.virtualVisibilityChangeRequiredEvent !== undefined) {
+            this.virtualVisibilityChangeRequiredEvent(this, this._visible);
+          }
+          if (this.virtualRectingRequiredEvent !== undefined) {
+            this._layoutManager.fireBeforeVirtualRectingEvent(1, [this]);
+            try {
+              this.virtualRectingRequiredEvent(this, this._width, this._height);
+            } finally {
+              this._layoutManager.fireAfterVirtualRectingEvent();
+            }
           }
         }
-        this.setBaseLogicalZIndex();
+      } finally {
+        if (wasStackMaximised) {
+          this.enterStackMaximised();
+        } else {
+          this.setBaseLogicalZIndex();
+        }
       }
 
       this.emit('stateChanged');

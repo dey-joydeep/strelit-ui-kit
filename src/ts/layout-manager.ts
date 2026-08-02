@@ -496,45 +496,69 @@ export abstract class LayoutManager extends EventEmitter {
     }
     this._isDestroyed = true;
 
+    let firstError: unknown;
+    let hasError = false;
+    const attempt = (operation: () => void) => {
+      try {
+        operation();
+      } catch (error) {
+        if (!hasError) {
+          firstError = error;
+          hasError = true;
+        }
+      }
+    };
+
     if (this._windowBeforeUnloadListening) {
-      globalThis.removeEventListener(
-        'beforeunload',
-        this._windowBeforeUnloadListener,
-      );
       this._windowBeforeUnloadListening = false;
+      attempt(() =>
+        globalThis.removeEventListener(
+          'beforeunload',
+          this._windowBeforeUnloadListener,
+        ),
+      );
     }
 
     if (this.layoutConfig !== undefined) {
       if (this.layoutConfig.settings.closePopoutsOnUnload) {
-        this.closeAllOpenPopouts();
+        attempt(() => this.closeAllOpenPopouts());
       }
     }
 
-    this.checkClearResizeTimeout();
+    attempt(() => this.checkClearResizeTimeout());
 
     if (this._groundItem !== undefined) {
-      this._groundItem.destroy();
+      const groundItem = this._groundItem;
+      attempt(() => groundItem.destroy());
+      this._groundItem = undefined;
     }
-    this._tabDropPlaceholder.remove();
+    attempt(() => this._tabDropPlaceholder.remove());
     if (this._dropTargetIndicator !== null) {
-      this._dropTargetIndicator.destroy();
+      const dropTargetIndicator = this._dropTargetIndicator;
       this._dropTargetIndicator = null;
+      attempt(() => dropTargetIndicator.destroy());
     }
     if (this._transitionIndicator !== null) {
-      this._transitionIndicator.destroy();
+      const transitionIndicator = this._transitionIndicator;
       this._transitionIndicator = null;
+      attempt(() => transitionIndicator.destroy());
     }
-    for (const dragSource of this._dragSources) {
-      dragSource.destroy();
-    }
+    const dragSources = this._dragSources;
     this._dragSources = [];
+    for (const dragSource of dragSources) {
+      attempt(() => dragSource.destroy());
+    }
 
-    this._maximisePlaceholder.remove();
     this._isInitialised = false;
+    attempt(() => this._maximisePlaceholder.remove());
 
-    this._resizeObserver.disconnect();
-    this._eventHub.destroy();
-    this.restoreBodyContainerStyles();
+    attempt(() => this._resizeObserver.disconnect());
+    attempt(() => this._eventHub.destroy());
+    attempt(() => this.restoreBodyContainerStyles());
+
+    if (hasError) {
+      throw firstError;
+    }
   }
 
   /** @internal */
@@ -625,6 +649,7 @@ export abstract class LayoutManager extends EventEmitter {
       const previousLayoutConfig = this.layoutConfig;
       const previousOpenPopouts = [...this._openPopouts];
       const previousMaximisedStack = this._maximisedStack;
+      const previousFocusedComponentItem = this._focusedComponentItem;
       this.layoutConfig = resolveLayoutConfig(layoutConfig);
       try {
         this.createSubWindows();
@@ -667,6 +692,7 @@ export abstract class LayoutManager extends EventEmitter {
         } else if (this._maximisedStack !== previousMaximisedStack) {
           previousMaximisedStack.maximise();
         }
+        this.setFocusedComponentItem(previousFocusedComponentItem);
         throw error;
       }
     }
@@ -1438,18 +1464,50 @@ export abstract class LayoutManager extends EventEmitter {
    */
 
   closeAllOpenPopouts() {
-    for (const element of this._openPopouts) {
-      element.close();
+    const openPopouts = [...this._openPopouts];
+    const failedPopouts: BrowserPopout[] = [];
+
+    let firstError: unknown;
+    let hasError = false;
+    for (const element of openPopouts) {
+      try {
+        element.close();
+      } catch (error) {
+        failedPopouts.push(element);
+        if (!hasError) {
+          firstError = error;
+          hasError = true;
+        }
+        continue;
+      }
+      try {
+        if (!element.getWindow().closed) {
+          failedPopouts.push(element);
+        }
+      } catch {
+        // Keep blocked or inaccessible windows owned until closure is known.
+        failedPopouts.push(element);
+      }
+    }
+    this._openPopouts = failedPopouts;
+
+    if (failedPopouts.length === 0 && this._windowBeforeUnloadListening) {
+      this._windowBeforeUnloadListening = false;
+      try {
+        globalThis.removeEventListener(
+          'beforeunload',
+          this._windowBeforeUnloadListener,
+        );
+      } catch (error) {
+        if (!hasError) {
+          firstError = error;
+          hasError = true;
+        }
+      }
     }
 
-    this._openPopouts.length = 0;
-
-    if (this._windowBeforeUnloadListening) {
-      globalThis.removeEventListener(
-        'beforeunload',
-        this._windowBeforeUnloadListener,
-      );
-      this._windowBeforeUnloadListening = false;
+    if (hasError) {
+      throw firstError;
     }
   }
 
