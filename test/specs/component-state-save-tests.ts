@@ -50,6 +50,80 @@ describe('Component State Saving & Initial State', function () {
     });
   });
 
+  it('releases registered virtual ownership when its root was moved', function () {
+    const externalHost = document.createElement('div');
+    document.body.appendChild(externalHost);
+    const rootHtmlElement = document.createElement('div');
+    layout.registerComponentFactoryFunction(
+      'virtualComponent',
+      () => ({ rootHtmlElement }),
+      true,
+    );
+    layout.loadLayout({
+      root: { type: 'component', componentType: 'virtualComponent' },
+    });
+    const item = layout.getComponentItemsByType('virtualComponent')[0];
+    externalHost.appendChild(rootHtmlElement);
+
+    expect(() => item.remove()).not.toThrow();
+
+    const internals = layout as unknown as {
+      _registeredComponentMap: Map<ComponentContainer, unknown>;
+      _virtualComponentMap: Map<ComponentContainer, unknown>;
+    };
+    expect(rootHtmlElement.isConnected).toBe(false);
+    expect(internals._registeredComponentMap.has(item.container)).toBe(false);
+    expect(internals._virtualComponentMap.has(item.container)).toBe(false);
+    expect(item.container.virtualRectingRequiredEvent).toBeUndefined();
+    expect(item.container.virtualVisibilityChangeRequiredEvent).toBeUndefined();
+    expect(item.container.virtualZIndexChangeRequiredEvent).toBeUndefined();
+    externalHost.remove();
+  });
+
+  it('does not repeat component release when item cleanup is retried', function () {
+    layout.registerComponentFactoryFunction('component', () => undefined);
+    layout.loadLayout({
+      root: { type: 'component', componentType: 'component' },
+    });
+    const item = layout.getComponentItemsByType('component')[0];
+    const unbindComponent = vi.spyOn(layout, 'unbindComponent');
+    const failingReleaseObserver = vi.fn(() => {
+      throw new Error('release observer failed');
+    });
+    const laterReleaseObserver = vi.fn();
+    item.container.on('beforeComponentRelease', failingReleaseObserver);
+    item.container.on('beforeComponentRelease', laterReleaseObserver);
+
+    expect(() => item.destroy()).toThrow('release observer failed');
+    expect(() => item.destroy()).not.toThrow();
+
+    expect(failingReleaseObserver).toHaveBeenCalledOnce();
+    expect(laterReleaseObserver).toHaveBeenCalledOnce();
+    expect(unbindComponent).toHaveBeenCalledOnce();
+  });
+
+  it('emits container destroy only after a failed unbind is retried', function () {
+    layout.registerComponentFactoryFunction('component', () => undefined);
+    layout.loadLayout({
+      root: { type: 'component', componentType: 'component' },
+    });
+    const item = layout.getComponentItemsByType('component')[0];
+    const unbindComponent = vi
+      .spyOn(layout, 'unbindComponent')
+      .mockImplementationOnce(() => {
+        throw new Error('unbind failed');
+      });
+    const destroyObserver = vi.fn();
+    item.container.on('destroy', destroyObserver);
+
+    expect(() => item.destroy()).toThrow('unbind failed');
+    expect(destroyObserver).not.toHaveBeenCalled();
+
+    expect(() => item.destroy()).not.toThrow();
+    expect(unbindComponent).toHaveBeenCalledTimes(2);
+    expect(destroyObserver).toHaveBeenCalledOnce();
+  });
+
   it('returns a detached component-state snapshot', function () {
     const state = { nested: { value: 'saved' } };
     layout.registerComponentFactoryFunction('stateComponent', (container) => {
@@ -62,7 +136,9 @@ describe('Component State Saving & Initial State', function () {
     const saved = layout.saveLayout();
     state.nested.value = 'mutated';
 
-    expect(saved.root?.content[0].componentState).toEqual({
+    const savedComponent = saved.root?.content[0] as
+      { componentState: SerializableValue | undefined } | undefined;
+    expect(savedComponent?.componentState).toEqual({
       nested: { value: 'saved' },
     });
   });
@@ -166,7 +242,9 @@ describe('Component State Saving & Initial State', function () {
       { source: 'live-state' },
     ]);
     expect(stateRequestCount).toBe(1);
-    expect(layout.saveLayout().root?.content[0].componentState).toEqual({
+    const savedComponent = layout.saveLayout().root?.content[0] as
+      { componentState: SerializableValue | undefined } | undefined;
+    expect(savedComponent?.componentState).toEqual({
       source: 'live-state',
     });
   });
@@ -239,9 +317,14 @@ describe('Component State Saving & Initial State', function () {
       componentState: { source: 'new-initial' },
     });
 
-    const savedRoot = layout.saveLayout().root;
-    expect(savedRoot?.content[0].componentType).toBe('newComponent');
-    expect(savedRoot?.content[0].componentState).toEqual({
+    const savedComponent = layout.saveLayout().root?.content[0] as
+      | {
+          componentType: unknown;
+          componentState: SerializableValue | undefined;
+        }
+      | undefined;
+    expect(savedComponent?.componentType).toBe('newComponent');
+    expect(savedComponent?.componentState).toEqual({
       source: 'new-initial',
     });
   });

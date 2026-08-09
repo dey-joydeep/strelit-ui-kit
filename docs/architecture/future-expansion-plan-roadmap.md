@@ -243,10 +243,10 @@ npm install strelit-ui-kit
 ```html
 <link
   rel="stylesheet"
-  href="https://cdn.jsdelivr.net/npm/strelit-ui-kit@latest/dist/css/strelit-ui-kit.css"
+  href="https://cdn.jsdelivr.net/npm/strelit-ui-kit@latest/dist/css/strelit-base.css"
 />
 <script type="module">
-  import { StrelitLayout } from 'https://cdn.jsdelivr.net/npm/strelit-ui-kit@latest/dist/esm/index.js';
+  import { StrelitLayout } from 'https://cdn.jsdelivr.net/npm/strelit-ui-kit@latest/dist/esm/index.mjs';
 </script>
 ```
 

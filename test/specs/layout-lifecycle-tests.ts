@@ -3,11 +3,13 @@ import {
   type ComponentContainer,
   type ComponentContainerBindableComponent,
   type ComponentContainerComponent,
+  ComponentItem,
   type LayoutConfig,
   LayoutManager,
   resolveLayoutConfig,
   type ResolvedComponentItemConfig,
   StrelitLayout,
+  Stack,
   VirtualLayout,
 } from '../../src';
 import { eventHubChildEventName } from '../../src/ts/utils/event-hub';
@@ -113,11 +115,14 @@ describe('layout lifecycle', () => {
       componentType: 'panel',
     });
     const root = layout.rootItem;
-    expect(root?.isComponent).toBe(true);
+    if (root === undefined || !root.isComponent) {
+      throw new Error('Expected a component root');
+    }
+    const componentRoot = root as ComponentItem;
 
-    root?.focus();
+    componentRoot.focus();
 
-    expect(layout.focusedComponentItem).toBe(root);
+    expect(layout.focusedComponentItem).toBe(componentRoot);
     expect(layout.focusedComponentItem?.focused).toBe(true);
   });
 
@@ -349,8 +354,11 @@ describe('layout lifecycle', () => {
     layouts.push(layout);
     layout.registerComponentFactoryFunction('working', () => undefined);
     const nativeClose = vi.fn();
+    const mockWindowState = { closed: false };
     const mockWindow = {
-      closed: false,
+      get closed() {
+        return mockWindowState.closed;
+      },
       close: nativeClose,
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
@@ -377,6 +385,9 @@ describe('layout lifecycle', () => {
       },
       location: { href: '' },
     } as unknown as Window;
+    nativeClose.mockImplementation(() => {
+      mockWindowState.closed = true;
+    });
     vi.spyOn(globalThis, 'open').mockReturnValue(mockWindow);
     layout.loadLayout({
       root: {
@@ -445,6 +456,124 @@ describe('layout lifecycle', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it('keeps a failed old popout after committing the replacement layout', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        id: 'working-root',
+        componentType: 'panel',
+      },
+    });
+    let closeAttempts = 0;
+    const failedPopout = {
+      close: vi.fn(() => {
+        if (++closeAttempts === 1) {
+          throw new Error('old popout close failed');
+        }
+      }),
+      getWindow: () => ({ closed: closeAttempts > 1 }),
+    };
+    const internals = layout as unknown as {
+      _openPopouts: (typeof failedPopout)[];
+    };
+    internals._openPopouts.push(failedPopout);
+    const reportError = vi.fn();
+    vi.stubGlobal('reportError', reportError);
+
+    try {
+      expect(() =>
+        layout.loadLayout({
+          root: {
+            type: 'component',
+            id: 'replacement-root',
+            componentType: 'panel',
+          },
+        }),
+      ).not.toThrow();
+
+      expect(layout.rootItem?.id).toBe('replacement-root');
+      expect(failedPopout.close).toHaveBeenCalledOnce();
+      expect(layout.openPopouts).toEqual([failedPopout]);
+      expect(reportError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'old popout close failed' }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('retains an old popout whose close is not confirmed', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadLayout({
+      root: { type: 'component', componentType: 'panel' },
+    });
+    let closed = false;
+    const popout = {
+      close: vi.fn(),
+      getWindow: () => ({ closed }),
+    };
+    (
+      layout as unknown as { _openPopouts: (typeof popout)[] }
+    )._openPopouts.push(popout);
+
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        id: 'replacement-root',
+        componentType: 'panel',
+      },
+    });
+
+    expect(layout.rootItem?.id).toBe('replacement-root');
+    expect(layout.openPopouts).toEqual([popout]);
+    closed = true;
+  });
+
+  it('retries stack cleanup without repeating destruction events', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: [{ type: 'component', componentType: 'panel' }],
+      },
+    });
+    const root = layout.rootItem;
+    if (root === undefined || !root.isStack) {
+      throw new Error('Expected a stack root');
+    }
+    const stack = root as Stack;
+    const beforeItemDestroyed = vi.fn();
+    const itemDestroyed = vi.fn();
+    const headerDestroy = vi.fn(() => {
+      throw new Error('header observer failed');
+    });
+    const laterHeaderDestroy = vi.fn();
+    stack.on('beforeItemDestroyed', beforeItemDestroyed);
+    stack.on('itemDestroyed', itemDestroyed);
+    stack.header.on('destroy', headerDestroy);
+    stack.header.on('destroy', laterHeaderDestroy);
+
+    expect(() => stack.destroy()).toThrow('header observer failed');
+    const beforeEventCount = beforeItemDestroyed.mock.calls.length;
+    const destroyedEventCount = itemDestroyed.mock.calls.length;
+    expect(() => stack.destroy()).not.toThrow();
+
+    expect(beforeEventCount).toBeGreaterThan(0);
+    expect(destroyedEventCount).toBeGreaterThan(0);
+    expect(beforeItemDestroyed).toHaveBeenCalledTimes(beforeEventCount);
+    expect(itemDestroyed).toHaveBeenCalledTimes(destroyedEventCount);
+    expect(headerDestroy).toHaveBeenCalledOnce();
+    expect(laterHeaderDestroy).toHaveBeenCalledOnce();
+    expect(stack.header.element.isConnected).toBe(false);
   });
 
   it.each([1, 2])(
@@ -638,7 +767,7 @@ describe('layout lifecycle', () => {
       id: 'focused-root',
       componentType: 'panel',
     });
-    layout.rootItem?.focus();
+    (layout.rootItem as ComponentItem | undefined)?.focus();
 
     layout.loadLayout({});
 
@@ -667,7 +796,7 @@ describe('layout lifecycle', () => {
     const stateChanged = vi.fn();
     layout.on('stateChanged', stateChanged);
 
-    layout.rootItem?.setTitle('updated');
+    (layout.rootItem as ComponentItem | undefined)?.setTitle('updated');
     expect(scheduledCallbacks).toHaveLength(1);
     layout.destroy();
 
@@ -860,6 +989,59 @@ describe('layout lifecycle', () => {
     expect(layout.isDestroyed).toBe(true);
     expect(layout.isInitialised).toBe(false);
     expect(layout.container.childElementCount).toBe(0);
+  });
+
+  it('preserves initialization failure when cleanup also fails', () => {
+    const layout = new SubwindowTestLayout(
+      { root: { type: 'component', componentType: 'panel' } },
+      true,
+    );
+    const destroy = vi.spyOn(layout, 'destroy').mockImplementationOnce(() => {
+      throw new Error('cleanup failed');
+    });
+    const reportError = vi.fn();
+    vi.stubGlobal('reportError', reportError);
+
+    try {
+      expect(() => layout.init()).toThrow('component factory failed');
+      expect(reportError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'cleanup failed' }),
+      );
+    } finally {
+      destroy.mockRestore();
+      vi.unstubAllGlobals();
+      layout.destroy();
+    }
+  });
+
+  it('preserves direct-root initialization failure when cleanup also fails', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', (container) => {
+      container.on('open', () => {
+        throw new Error('root open failed');
+      });
+      container.on('beforeComponentRelease', () => {
+        throw new Error('root cleanup failed');
+      });
+      return undefined;
+    });
+    const reportError = vi.fn();
+    vi.stubGlobal('reportError', reportError);
+
+    try {
+      expect(() =>
+        layout.loadComponentAsRoot({
+          type: 'component',
+          componentType: 'panel',
+        }),
+      ).toThrow('root open failed');
+      expect(reportError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'root cleanup failed' }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('restores body and document inline styles on destroy', () => {

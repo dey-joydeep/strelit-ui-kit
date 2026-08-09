@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   ComponentContainer,
+  ComponentItem,
   createLayoutConfigFromResolved,
   LayoutConfig,
   SerializableValue,
@@ -61,7 +62,8 @@ describe('migrated layout behavior', () => {
 
     expect(initialState).toEqual({ text: 'hello' });
     expect(layout.rootItem?.isStack).toBe(true);
-    expect(layout.rootItem?.contentItems[0].title).toBe('Editor');
+    const editorItem = layout.rootItem?.contentItems[0];
+    expect((editorItem as ComponentItem | undefined)?.title).toBe('Editor');
     expect(layout.rootItem?.contentItems[0].id).toBe('editor-pane');
     expect(layout.maximisedStack).toBe(layout.rootItem);
 

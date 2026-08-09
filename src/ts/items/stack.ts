@@ -113,6 +113,10 @@ export class Stack extends ComponentParentableItem {
   private readonly _initialWantMaximise: boolean;
   /** @internal */
   private readonly _initialActiveItemIndex: number;
+  private _resizeListenerDetached = false;
+  private _maximisedListenerDetached = false;
+  private _minimisedListenerDetached = false;
+  private _headerDestroyed = false;
 
   /** @internal */
   private readonly _resizeListener = () => this.handleResize();
@@ -574,13 +578,44 @@ export class Stack extends ComponentParentableItem {
     if (this._activeComponentItem?.focused) {
       this._activeComponentItem.blur();
     }
-    super.destroy();
-    this.off('resize', this._resizeListener);
-    if (this._maximisedEnabled) {
-      this.off('maximised', this._maximisedListener);
-      this.off('minimised', this._minimisedListener);
+    let firstError: unknown;
+    const attempt = (action: () => void) => {
+      try {
+        action();
+      } catch (error) {
+        firstError ??= error;
+      }
+    };
+    attempt(() => super.destroy());
+    if (!this._resizeListenerDetached) {
+      attempt(() => {
+        this.off('resize', this._resizeListener);
+        this._resizeListenerDetached = true;
+      });
     }
-    this._header.destroy();
+    if (this._maximisedEnabled && !this._maximisedListenerDetached) {
+      attempt(() => {
+        this.off('maximised', this._maximisedListener);
+        this._maximisedListenerDetached = true;
+      });
+    }
+    if (this._maximisedEnabled && !this._minimisedListenerDetached) {
+      attempt(() => {
+        this.off('minimised', this._minimisedListener);
+        this._minimisedListenerDetached = true;
+      });
+    }
+    if (!this._headerDestroyed) {
+      attempt(() => {
+        this._header.destroy();
+        this._headerDestroyed = true;
+      });
+    }
+    if (firstError !== undefined) {
+      this._destroyCleanupFailed = true;
+      throw firstError;
+    }
+    this._destroyCleanupFailed = false;
   }
 
   /** Performs the to config operation. */

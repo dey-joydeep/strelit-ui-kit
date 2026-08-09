@@ -2,10 +2,12 @@ import { afterAll, describe, expect, it } from 'vitest';
 import {
   StrelitLayout,
   LayoutConfig,
-  resolveItemConfig,
+  resolveStackItemConfig,
   type ContentItem,
-  type GroundItem,
+  type ComponentItemConfig,
+  type StackItemConfig,
 } from '../../src';
+import type { GroundItem } from '../../src/ts/items/ground-item';
 import TestTools from './test-tools';
 
 describe('ground item', function () {
@@ -50,15 +52,15 @@ describe('ground item', function () {
     });
     const ground = emptyLayout.groundItem as GroundItem;
     const stack = emptyLayout.createAndInitContentItem(
-      resolveItemConfig({
+      resolveStackItemConfig({
         type: 'stack',
         content: [
           {
             type: 'component',
             componentType: TestTools.TEST_COMPONENT_NAME,
-          },
+          } satisfies ComponentItemConfig,
         ],
-      }),
+      } satisfies StackItemConfig),
       ground,
     );
 
@@ -70,6 +72,7 @@ describe('ground item', function () {
         x2: 100,
         y1: 0,
         y2: 100,
+        surface: 10_000,
       }),
     ).not.toThrow();
     expect(emptyLayout.rootItem?.contentItems).toEqual([stack]);

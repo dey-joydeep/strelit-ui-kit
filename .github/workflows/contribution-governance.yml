@@ -99,6 +99,8 @@ jobs:
               '## Out of Scope',
               '## Scope Justification',
               '## Independent Quality Review',
+              '## Review Coverage Manifest',
+              '## Domain Discovery Reports',
               '## Verification'
             ];
 
@@ -212,8 +214,10 @@ jobs:
               }
             }
 
-            const executableBehaviorChanged = fileNames.some((fileName) =>
-              /^(?:src|scripts)\//.test(fileName)
+            const executableBehaviorChanged = fileNames.some(
+              (fileName) =>
+                /^scripts\//.test(fileName) ||
+                (/^src\//.test(fileName) && !/^src\/.*\.md$/i.test(fileName))
             );
             const testsChanged = fileNames.some((fileName) =>
               /^(?:test|apitest)\//.test(fileName)
@@ -240,6 +244,48 @@ jobs:
               .reduce((total, file) => total + file.changes, 0);
             const scopeJustification =
               getSectionBody('## Scope Justification') ?? '';
+            const canonicalDomains = new Set([
+              'Runtime behavior, lifecycle, and ownership',
+              'Migration, configuration, and persistence',
+              'Public API, compatibility, and packaging',
+              'Tooling, CI, and verification',
+              'Tests and documentation'
+            ]);
+            const domainsForPath = (fileName) => {
+              const domains = new Set();
+              const sourceDocumentation = /^src\/.*\.md$/i.test(fileName);
+              if (/^src\//.test(fileName) && !sourceDocumentation) {
+                domains.add('Runtime behavior, lifecycle, and ownership');
+                domains.add('Public API, compatibility, and packaging');
+              }
+              if (/^(?:src\/ts\/config\/|scripts\/migrate-|test\/.*(?:migration|create-config))/.test(fileName)) {
+                domains.add('Migration, configuration, and persistence');
+              }
+              if (/^(?:src\/index\.ts|src\/ts\/(?:config\/|utils\/types\.ts)|etc\/|package(?:-lock)?\.json)/.test(fileName)) {
+                domains.add('Public API, compatibility, and packaging');
+              }
+              if (sourceDocumentation || /^(?:\.github\/|scripts\/|tsconfig|vite|vitest|typedoc|api-extractor|oxlint|package(?:-lock)?\.json)/.test(fileName)) {
+                domains.add('Tooling, CI, and verification');
+              }
+              if (sourceDocumentation || /^(?:test\/|apitest\/|docs\/|README|AGENTS\.md|\.code-review\/)/.test(fileName)) {
+                domains.add('Tests and documentation');
+              }
+              if (domains.size === 0) {
+                domains.add('Tooling, CI, and verification');
+              }
+              return domains;
+            };
+            const applicableDomains = new Set();
+            for (const fileName of fileNames) {
+              for (const domain of domainsForPath(fileName)) {
+                applicableDomains.add(domain);
+              }
+            }
+            const largeHighRisk =
+              computedRisk === 'high' &&
+              (fileNames.length > 50 ||
+                nonGeneratedChanges > 1000 ||
+                applicableDomains.size >= 3);
 
             if (
               nonGeneratedChanges > 1000 &&
@@ -332,6 +378,242 @@ jobs:
                 );
               }
 
+              if (computedRisk === 'high') {
+                const coverageManifest =
+                  getSectionBody('## Review Coverage Manifest') ?? '';
+                const manifestEntries = coverageManifest
+                  .split('\n')
+                  .map((line) => line.trim())
+                  .filter((line) => line.startsWith('Path: '))
+                  .map((line) => {
+                    const fields = Object.fromEntries(
+                      line.split('|').map((field) => {
+                        const separator = field.indexOf(':');
+                        return [
+                          field.slice(0, separator).trim(),
+                          field.slice(separator + 1).trim()
+                        ];
+                      })
+                    );
+                    return fields;
+                  });
+                const entriesByPath = new Map();
+                const assignmentsByReviewer = new Map();
+                for (const entry of manifestEntries) {
+                  if (entriesByPath.has(entry.Path)) {
+                    errors.push(`Coverage manifest repeats path: ${entry.Path}`);
+                  } else {
+                    entriesByPath.set(entry.Path, entry);
+                  }
+                  for (const field of [
+                    'Path',
+                    'Contract',
+                    'Domains',
+                    'Assignments',
+                    'Adjacent',
+                    'Tests'
+                  ]) {
+                    if (!entry[field] || placeholderOnly.test(entry[field])) {
+                      errors.push(`Coverage manifest path ${entry.Path || '(missing)'} requires ${field}.`);
+                    }
+                  }
+                  const domains = (entry.Domains ?? '')
+                    .split(';')
+                    .map((value) => value.trim())
+                    .filter(Boolean);
+                  const expectedDomains = domainsForPath(entry.Path ?? '');
+                  if (
+                    domains.length !== expectedDomains.size ||
+                    domains.some((domain) => !expectedDomains.has(domain))
+                  ) {
+                    errors.push(`Coverage manifest path ${entry.Path} must declare exactly these domains: ${[...expectedDomains].join('; ')}`);
+                  }
+                  const assignments = new Map(
+                    (entry.Assignments ?? '')
+                      .split(';')
+                      .map((value) => value.trim())
+                      .filter(Boolean)
+                      .map((value) => {
+                        const parts = value.split(/\s*=>\s*/);
+                        return [parts[0], parts[1]];
+                      })
+                  );
+                  for (const domain of domains) {
+                    if (!canonicalDomains.has(domain)) {
+                      errors.push(`Coverage manifest path ${entry.Path} has invalid domain: ${domain}`);
+                    }
+                    const assignment = assignments.get(domain) ?? '';
+                    const validAssignment = /^@[A-Za-z0-9-]+$/.test(assignment);
+                    if (!validAssignment) {
+                      errors.push(`Coverage manifest path ${entry.Path} lacks an independent assignment for ${domain}.`);
+                    }
+                    const assignedReviewer = assignment
+                      .replace(/^@/, '')
+                      .toLowerCase();
+                    if (assignedReviewer === pr.user.login.toLowerCase()) {
+                      errors.push(`Coverage manifest path ${entry.Path} assigns review to the PR author.`);
+                    }
+                    if (
+                      validAssignment &&
+                      assignedReviewer !== pr.user.login.toLowerCase()
+                    ) {
+                      const assignedScope = assignmentsByReviewer.get(assignedReviewer) ?? {
+                        paths: new Set(),
+                        domains: new Set(),
+                        pairs: new Set()
+                      };
+                      assignedScope.paths.add(entry.Path);
+                      assignedScope.domains.add(domain);
+                      assignedScope.pairs.add(`${entry.Path}\u0000${domain}`);
+                      assignmentsByReviewer.set(assignedReviewer, assignedScope);
+                    }
+                    if (
+                      !largeHighRisk &&
+                      assignedReviewer !== reviewer.replace(/^@/, '').toLowerCase()
+                    ) {
+                      errors.push(`Non-large high-risk coverage for ${entry.Path} must be assigned to the declared reviewer.`);
+                    }
+                  }
+                  if (assignments.size !== domains.length) {
+                    errors.push(`Coverage manifest path ${entry.Path} has assignments that do not match its domains.`);
+                  }
+                }
+                for (const fileName of fileNames) {
+                  if (!entriesByPath.has(fileName)) {
+                    errors.push(`Coverage manifest is missing changed path: ${fileName}`);
+                  }
+                }
+                for (const path of entriesByPath.keys()) {
+                  if (!fileNames.includes(path)) {
+                    errors.push(`Coverage manifest contains unchanged path: ${path}`);
+                  }
+                }
+
+                const coverageGaps = Number(
+                  independentReview.match(/^Coverage gaps:[ \t]*(\d+)$/im)?.[1]
+                );
+                if (coverageGaps !== 0) {
+                  errors.push('High-risk review requires Coverage gaps: **0**.');
+                }
+
+                if (largeHighRisk) {
+                  const reports = (getSectionBody('## Domain Discovery Reports') ?? '')
+                    .split('\n')
+                    .map((line) => line.trim())
+                    .filter((line) => line.startsWith('Reviewer: '))
+                    .map((line) =>
+                      Object.fromEntries(
+                        line.split('|').map((field) => {
+                          const separator = field.indexOf(':');
+                          return [
+                            field.slice(0, separator).trim(),
+                            field.slice(separator + 1).trim()
+                          ];
+                        })
+                      )
+                    );
+                  const reportReviewers = new Set(
+                    reports.map((report) => report.Reviewer?.replace(/^@/, '').toLowerCase())
+                  );
+                  if (reportReviewers.size !== reports.length) {
+                    errors.push('Large high-risk PRs require exactly one domain discovery report per reviewer.');
+                  }
+                  if (assignmentsByReviewer.size < 2) {
+                    errors.push('Large high-risk PRs require assignments to at least two independent domain discovery reviewers.');
+                  }
+                  for (const report of reports) {
+                    if (report.Base !== pr.base.sha || report.Head !== pr.head.sha) {
+                      errors.push(`Domain discovery report for ${report.Reviewer} must target the exact base and head SHAs.`);
+                    }
+                    for (const field of ['Paths', 'Domains', 'Coverage', 'Adjacent', 'Commands', 'Findings', 'Uninspected']) {
+                      if (!report[field] || placeholderOnly.test(report[field])) {
+                        errors.push(`Domain discovery report for ${report.Reviewer} requires ${field}.`);
+                      }
+                    }
+                    const reportReviewer = (report.Reviewer ?? '')
+                      .replace(/^@/, '')
+                      .toLowerCase();
+                    const assignedScope = assignmentsByReviewer.get(reportReviewer);
+                    if (assignedScope === undefined) {
+                      errors.push(`Domain discovery report for ${report.Reviewer} has no non-author coverage assignment.`);
+                      continue;
+                    }
+                    const reportedPaths = new Set(
+                      (report.Paths ?? '')
+                        .split(';')
+                        .map((value) => value.trim())
+                        .filter(Boolean)
+                    );
+                    const reportedDomains = new Set(
+                      (report.Domains ?? '')
+                        .split(';')
+                        .map((value) => value.trim())
+                        .filter(Boolean)
+                    );
+                    const coverageValues = (report.Coverage ?? '')
+                      .split(';')
+                      .map((value) => value.trim())
+                      .filter(Boolean);
+                    const reportedPairs = new Set();
+                    let validCoverage = coverageValues.length > 0;
+                    for (const value of coverageValues) {
+                      const separator = value.indexOf('=>');
+                      const path = value.slice(0, separator).trim();
+                      const domain = value.slice(separator + 2).trim();
+                      if (
+                        separator < 1 ||
+                        path.length === 0 ||
+                        !canonicalDomains.has(domain)
+                      ) {
+                        validCoverage = false;
+                      } else {
+                        reportedPairs.add(`${path}\u0000${domain}`);
+                      }
+                    }
+                    if (!validCoverage) {
+                      errors.push(`Domain discovery report for ${report.Reviewer} Coverage must use path => domain pairs.`);
+                    }
+                    const exactPaths =
+                      reportedPaths.size === assignedScope.paths.size &&
+                      [...assignedScope.paths].every((path) => reportedPaths.has(path));
+                    const exactDomains =
+                      reportedDomains.size === assignedScope.domains.size &&
+                      [...assignedScope.domains].every((domain) => reportedDomains.has(domain));
+                    const exactPairs =
+                      reportedPairs.size === assignedScope.pairs.size &&
+                      [...assignedScope.pairs].every((pair) => reportedPairs.has(pair));
+                    if (!exactPaths || !exactDomains || !exactPairs) {
+                      errors.push(`Domain discovery report for ${report.Reviewer} must exactly match its assigned paths, domains, and coverage pairs.`);
+                    }
+                  }
+                  for (const assignedReviewer of assignmentsByReviewer.keys()) {
+                    if (!reportReviewers.has(assignedReviewer)) {
+                      errors.push(`Coverage assignment @${assignedReviewer} has no domain discovery report.`);
+                    }
+                  }
+                  const reportedDomainUnion = new Set(
+                    reports.flatMap((report) =>
+                      (report.Domains ?? '').split(';').map((value) => value.trim())
+                    )
+                  );
+                  for (const domain of applicableDomains) {
+                    if (!reportedDomainUnion.has(domain)) {
+                      errors.push(`Large high-risk review is missing domain coverage: ${domain}`);
+                    }
+                  }
+                  const synthesisReviewer =
+                    independentReview.match(/^Synthesis reviewer:[ \t]*@?([A-Za-z0-9-]+)$/im)?.[1].toLowerCase() ?? '';
+                  const declaredReviewer = reviewer.replace(/^@/, '').toLowerCase();
+                  if (
+                    synthesisReviewer.length === 0 ||
+                    synthesisReviewer !== declaredReviewer ||
+                    reportReviewers.has(synthesisReviewer)
+                  ) {
+                    errors.push('Large high-risk PRs require an unused synthesis reviewer who is also the declared final reviewer.');
+                  }
+                }
+              }
+
               if (!/Rubric result:[ \t]*Pass/i.test(independentReview)) {
                 errors.push(
                   'A completed quality review requires Rubric result: **Pass**.'
@@ -344,11 +626,10 @@ jobs:
                 );
               }
 
-              if (
-                !/Findings:[ \t]*Critical \d+; High \d+; Medium \d+; Low \d+/i.test(
-                  independentReview
-                )
-              ) {
+              const findingsMatch = independentReview.match(
+                /Findings:[ \t]*Critical (\d+); High (\d+); Medium (\d+); Low (\d+)/i
+              );
+              if (findingsMatch === null) {
                 errors.push(
                   'A completed quality review must report finding counts by severity.'
                 );
@@ -364,6 +645,48 @@ jobs:
                 errors.push(
                   'High-risk changes cannot have open Critical or High review findings.'
                 );
+              }
+
+              if (computedRisk === 'high' && findingsMatch !== null) {
+                const totalMedium = Number(findingsMatch[3]);
+                const openMedium = Number(
+                  independentReview.match(/^Open Medium findings:[ \t]*(\d+)$/im)?.[1]
+                );
+                const closedMedium = Number(
+                  independentReview.match(/^Closed Medium findings:[ \t]*(\d+)$/im)?.[1]
+                );
+                const acceptedMedium = Number(
+                  independentReview.match(/^Accepted Medium findings:[ \t]*(\d+)$/im)?.[1]
+                );
+                if (
+                  !Number.isInteger(openMedium) ||
+                  !Number.isInteger(closedMedium) ||
+                  !Number.isInteger(acceptedMedium) ||
+                  openMedium + closedMedium + acceptedMedium !== totalMedium
+                ) {
+                  errors.push('Medium finding counts must be numeric and reconcile with the total Medium findings.');
+                }
+                if (openMedium !== 0) {
+                  errors.push('High-risk changes cannot have open Medium findings.');
+                }
+                if (acceptedMedium > 0) {
+                  const acceptanceEvidence =
+                    independentReview.match(/^Medium acceptance evidence:[ \t]*(.+)$/im)?.[1].trim() ?? '';
+                  const comments = await github.paginate(
+                    github.rest.issues.listComments,
+                    { owner, repo, issue_number: pull_number, per_page: 100 }
+                  );
+                  const acceptedByAuthor = comments.some(
+                    (comment) =>
+                      comment.user?.login?.toLowerCase() === pr.user.login.toLowerCase() &&
+                      comment.html_url === acceptanceEvidence &&
+                      new RegExp(`Accepted Medium findings:[ \\t]*${acceptedMedium}(?:\\D|$)`, 'i').test(comment.body ?? '') &&
+                      /Rationale:[ \t]*\S+/i.test(comment.body ?? '')
+                  );
+                  if (!acceptedByAuthor) {
+                    errors.push('Accepted Medium findings require linked acceptance evidence from the PR author with the matching count and rationale.');
+                  }
+                }
               }
 
               const evidenceFields = [
@@ -443,7 +766,9 @@ jobs:
               '6e934e6f1af4b8c0ace9c199cb5008b16a16f592',
               'f23a006a99634a5aa9920b935ce5e35a880d9b9e',
               '17a5c0821aefcef62e9aa703b9fcb52bfb9d8d5d',
-              'ce374cc1b27507057c8122fd25050f9e629b0480'
+              'ce374cc1b27507057c8122fd25050f9e629b0480',
+              '5ec1bc7259e6700197bd2d877df1fa9ba139b94e',
+              '44c1b34246cd8db9c3e0bacafda27b6ae26b49da'
             ]);
             const invalid = commits
               .filter((commit) => !grandfatheredCommits.has(commit.sha))

@@ -86,7 +86,7 @@ export interface Rect {
   height: number;
 }
 
-/** @internal */
+/** Defines the edges of a rectangular layout area. @public */
 export interface AreaLinkedRect {
   /** The left edge. */
   x1: number;

@@ -129,11 +129,12 @@ Pending coverage manifest.
 
 <!--
 Large high-risk PRs require exactly one line per declared domain reviewer:
-Reviewer: @reviewer-or-agent-id | Base: full-base-SHA | Head: full-head-SHA | Paths: path/one; path/two | Domains: Domain one; Domain two | Adjacent: inspected call paths | Commands: commands and inspections run | Findings: finding report or explicit none | Uninspected: explicit omissions or none
+Reviewer: @reviewer-or-agent-id | Base: full-base-SHA | Head: full-head-SHA | Paths: path/one; path/two | Domains: Domain one; Domain two | Coverage: path/one => Domain one; path/two => Domain two | Adjacent: inspected call paths | Commands: commands and inspections run | Findings: finding report or explicit none | Uninspected: explicit omissions or none
 
-The Paths, Domains, and Adjacent values must exactly summarize that reviewer's
-assignments and inspection evidence in the coverage manifest. Low, Medium, and
-non-large High PRs may state why domain reports are not required.
+The Paths and Domains sets and every Coverage path-domain pair must exactly
+match that reviewer's assignments in the coverage manifest. Adjacent must
+summarize the inspection evidence. Low, Medium, and non-large High PRs may state
+why domain reports are not required.
 -->
 
 Pending domain discovery reports.

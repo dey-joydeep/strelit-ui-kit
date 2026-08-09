@@ -49,6 +49,7 @@ import { checkConfigMinifierInitialise } from './utils/config-minifier';
 import { DomConstants } from './utils/dom-constants';
 import { DragListener } from './utils/drag-listener';
 import { EventEmitter, EventEmitterBubblingEvent } from './utils/event-emitter';
+import { reportSecondaryCleanupError } from './utils/error-reporting';
 import { EventHub } from './utils/event-hub';
 import {
   checkI18nStringsInitialise,
@@ -347,6 +348,7 @@ export abstract class LayoutManager extends EventEmitter {
     createLayoutManagerTabDropPlaceholderElement(document);
   /** @internal */
   private _dragSources: DragSource[] = [];
+  private _activeDragProxy: DragProxy | undefined;
   /** @internal */
   private _updatingColumnsResponsive = false;
   /** @internal */
@@ -546,6 +548,11 @@ export abstract class LayoutManager extends EventEmitter {
 
     attempt(() => this.checkClearResizeTimeout());
 
+    if (this._activeDragProxy !== undefined) {
+      const activeDragProxy = this._activeDragProxy;
+      attempt(() => activeDragProxy.cancel());
+    }
+
     if (this._groundItem !== undefined) {
       const groundItem = this._groundItem;
       let destroyed = false;
@@ -677,7 +684,11 @@ export abstract class LayoutManager extends EventEmitter {
       this.adjustColumnsResponsive();
       this.emit('initialised');
     } catch (error) {
-      this.destroy();
+      try {
+        this.destroy();
+      } catch (cleanupError) {
+        reportSecondaryCleanupError('layout initialization', cleanupError);
+      }
       throw error;
     }
   }
@@ -698,28 +709,15 @@ export abstract class LayoutManager extends EventEmitter {
       const previousMaximisedStack = this._maximisedStack;
       const previousFocusedComponentItem = this._focusedComponentItem;
       this.layoutConfig = resolveLayoutConfig(layoutConfig);
+      let incomingOpenPopouts: BrowserPopout[];
       try {
         this.createSubWindows();
-        const incomingOpenPopouts = this._openPopouts.slice(
+        incomingOpenPopouts = this._openPopouts.slice(
           previousOpenPopouts.length,
         );
         this._groundItem.loadRoot(this.layoutConfig.root, () => {
           this.checkLoadedLayoutMaximiseItem();
           this.adjustColumnsResponsive();
-          for (const popout of previousOpenPopouts) {
-            popout.close();
-          }
-          this._openPopouts = incomingOpenPopouts;
-          if (
-            incomingOpenPopouts.length === 0 &&
-            this._windowBeforeUnloadListening
-          ) {
-            globalThis.removeEventListener(
-              'beforeunload',
-              this._windowBeforeUnloadListener,
-            );
-            this._windowBeforeUnloadListening = false;
-          }
         });
       } catch (error) {
         const incomingOpenPopouts = this._openPopouts.slice(
@@ -741,6 +739,49 @@ export abstract class LayoutManager extends EventEmitter {
         }
         this.setFocusedComponentItem(previousFocusedComponentItem, true);
         throw error;
+      }
+
+      const failedPreviousPopouts: BrowserPopout[] = [];
+      const reportCleanupError = (error: unknown) => {
+        try {
+          if (typeof globalThis.reportError === 'function') {
+            globalThis.reportError(error);
+          } else {
+            console.error('Failed to close a previous layout popout', error);
+          }
+        } catch {
+          // Host diagnostics must not invalidate the committed replacement.
+        }
+      };
+      for (const popout of previousOpenPopouts) {
+        try {
+          popout.close();
+          try {
+            if (!popout.getWindow().closed) {
+              failedPreviousPopouts.push(popout);
+            }
+          } catch (error) {
+            if (!(error instanceof UnexpectedNullError)) {
+              failedPreviousPopouts.push(popout);
+              reportCleanupError(error);
+            }
+          }
+        } catch (error) {
+          failedPreviousPopouts.push(popout);
+          reportCleanupError(error);
+        }
+      }
+      this._openPopouts = [...failedPreviousPopouts, ...incomingOpenPopouts];
+      if (this._openPopouts.length === 0 && this._windowBeforeUnloadListening) {
+        try {
+          globalThis.removeEventListener(
+            'beforeunload',
+            this._windowBeforeUnloadListener,
+          );
+          this._windowBeforeUnloadListening = false;
+        } catch (error) {
+          reportCleanupError(error);
+        }
       }
     }
   }
@@ -1162,7 +1203,14 @@ export abstract class LayoutManager extends EventEmitter {
     try {
       newItem.init();
     } catch (error) {
-      newItem.destroy();
+      try {
+        newItem.destroy();
+      } catch (cleanupError) {
+        reportSecondaryCleanupError(
+          'content-item initialization',
+          cleanupError,
+        );
+      }
       throw error;
     }
     return newItem;
@@ -1611,9 +1659,26 @@ export abstract class LayoutManager extends EventEmitter {
     y: number,
     dragListener: DragListener,
     componentItem: ComponentItem,
-    stack: Stack,
-  ): void {
-    new DragProxy(x, y, dragListener, this, componentItem, stack);
+    originalParent: ContentItem,
+  ): HTMLElement {
+    if (this._activeDragProxy !== undefined) {
+      throw new Error('A drag proxy is already active');
+    }
+    const dragProxy = new DragProxy(
+      x,
+      y,
+      dragListener,
+      this,
+      componentItem,
+      originalParent,
+      (finishedDragProxy) => {
+        if (this._activeDragProxy === finishedDragProxy) {
+          this._activeDragProxy = undefined;
+        }
+      },
+    );
+    this._activeDragProxy = dragProxy;
+    return dragProxy.element;
   }
 
   /**

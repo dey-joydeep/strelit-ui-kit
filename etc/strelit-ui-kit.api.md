@@ -10,9 +10,7 @@ export class ApiError extends ExternalError {
     constructor(message: string);
 }
 
-// Warning: (ae-internal-missing-underscore) The name "AreaLinkedRect" should be prefixed with an underscore because the declaration is marked as @internal
-//
-// @internal (undocumented)
+// @public
 export interface AreaLinkedRect {
     x1: number;
     x2: number;
@@ -520,6 +518,8 @@ export interface EventEmitterEventParamsMap {
     blur: EventEmitterBubblingEventParam;
     close: EventEmitterNoParams;
     closed: EventEmitterNoParams;
+    columnCreated: EventEmitterBubblingEventParam;
+    componentCreated: EventEmitterBubblingEventParam;
     destroy: EventEmitterNoParams;
     drag: EventEmitterDragParams;
     dragStart: EventEmitterDragStartParams;
@@ -535,7 +535,9 @@ export interface EventEmitterEventParamsMap {
     open: EventEmitterNoParams;
     popIn: EventEmitterNoParams;
     resize: EventEmitterNoParams;
+    rowCreated: EventEmitterBubblingEventParam;
     show: EventEmitterNoParams;
+    stackCreated: EventEmitterBubblingEventParam;
     stackHeaderClick: EventEmitterClickBubblingEventParam;
     stackHeaderTouchStart: EventEmitterTouchStartBubblingEventParam;
     stateChanged: EventEmitterNoParams;
@@ -943,7 +945,7 @@ export abstract class LayoutManager extends EventEmitter {
     // Warning: (ae-forgotten-export) The symbol "DragListener" needs to be exported by the entry point index.d.ts
     //
     // @internal (undocumented)
-    startComponentDrag(x: number, y: number, dragListener: DragListener, componentItem: ComponentItem, stack: Stack): void;
+    startComponentDrag(x: number, y: number, dragListener: DragListener, componentItem: ComponentItem, originalParent: ContentItem): HTMLElement;
     // @internal (undocumented)
     protected _subWindowLayoutConfig: LayoutConfig | undefined;
     // @internal (undocumented)
@@ -1054,9 +1056,9 @@ export class PopoutBlockedError extends ExternalError {
 
 // @public
 export interface PopoutLayoutConfig extends LayoutConfig {
-    indexInParent: number | null | undefined;
-    parentId: string | null | undefined;
-    window: PopoutLayoutConfigWindow | undefined;
+    indexInParent?: number | null;
+    parentId?: string | null;
+    window?: PopoutLayoutConfigWindow;
 }
 
 // @public
@@ -1509,7 +1511,7 @@ export class StrelitLayout extends VirtualLayout {
 export type StrelitLayoutComponentConstructor<TState extends SerializableValue = SerializableValue, TComponent extends ComponentContainerComponent = ComponentContainerComponent> = new (container: ComponentContainer, state: TState | undefined, virtual: boolean) => TComponent;
 
 // @public
-export type StrelitLayoutComponentFactoryFunction<TState extends SerializableValue = SerializableValue, TComponent extends ComponentContainerComponent = ComponentContainerComponent> = (container: ComponentContainer, state: TState | undefined, virtual: boolean) => TComponent | undefined;
+export type StrelitLayoutComponentFactoryFunction<TState extends SerializableValue = SerializableValue, TComponent extends ComponentContainerComponent = ComponentContainerComponent> = (container: ComponentContainer, state: TState | undefined, virtual: boolean) => TComponent | undefined | void;
 
 // @public
 export interface StrelitLayoutComponentInstantiator<TState extends SerializableValue = SerializableValue, TComponent extends ComponentContainerComponent = ComponentContainerComponent> {

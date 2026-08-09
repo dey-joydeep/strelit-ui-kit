@@ -164,10 +164,12 @@ the risk domains above. A single general-purpose reviewer cannot satisfy the
 discovery requirement for a large high-risk pull request. Assign every
 applicable domain across at least two unused independent reviewer contexts.
 Each reviewer MUST report the exact base and head SHAs, paths and domains
-inspected, adjacent call paths inspected, commands run, findings, and anything
-not inspected, using the machine-readable `Domain Discovery Reports` section in
-the pull request template. A reviewer MUST NOT issue `Pass` when a changed path
-or applicable domain is absent from the coverage record.
+inspected, every assigned path-domain pair, adjacent call paths inspected,
+commands run, findings, and anything not inspected, using the machine-readable
+`Domain Discovery Reports` section in the pull request template. Reported path,
+domain, and path-domain pair sets MUST exactly match the reviewer's manifest
+assignments. A reviewer MUST NOT issue `Pass` when a changed path or applicable
+domain is absent from the coverage record.
 
 Domain discovery reviewers MUST work independently and MUST NOT receive another
 reviewer's findings or intended conclusion. After domain findings are validated

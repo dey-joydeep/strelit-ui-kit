@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ComponentContainer,
+  ComponentItem,
   StrelitLayout,
   LayoutConfig,
   LayoutManagerLocationSelectorTypeId,
@@ -271,13 +272,14 @@ describe('Runtime layout tree manipulation', function () {
 
     expect(stack.contentItems).toHaveLength(2);
     expect(stack.header.tabs).toHaveLength(2);
-    const createdTab = stack.contentItems[1].tab;
+    const createdComponent = stack.contentItems[1] as ComponentItem;
+    const createdTab = createdComponent.tab;
     expect(stack.header.tabs).toContain(createdTab);
     expect(notifiedTab).toBe(createdTab);
     expect(createdTab.element.isConnected).toBe(true);
     expect(createdTab.isActive).toBe(true);
-    expect(stack.getActiveComponentItem()).toBe(stack.contentItems[1]);
-    expect(stack.contentItems[1].element.style.display).not.toBe('none');
+    expect(stack.getActiveComponentItem()).toBe(createdComponent);
+    expect(createdComponent.element.style.display).not.toBe('none');
   });
 
   it('initializes the complete stack before notifying tabCreated listeners', function () {

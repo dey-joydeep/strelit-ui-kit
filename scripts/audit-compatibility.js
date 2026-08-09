@@ -1,4 +1,5 @@
 const { execFileSync } = require('node:child_process');
+const { createHash } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const ts = require('typescript');
@@ -28,6 +29,25 @@ const baselineCommit = 'f442a2d';
 const apiOutputPath = path.join(outputDirectory, 'v2-api-disposition.json');
 const v1OutputPath = path.join(outputDirectory, 'v1-api-disposition.json');
 const testOutputPath = path.join(outputDirectory, 'v2-test-disposition.json');
+const v2ApiInventorySha256 =
+  '49f581b214f1affd1140a45f54cf057fba75905ed69722a75f6942fbf84c9d0e';
+const v2TestInventorySha256 =
+  '6521b1f0e9f304a3a590e9e164208fcef9e2b361f3d8da418a7a03af26c08f55';
+const v1BaselineSymbols = [
+  'GoldenLayout.createContentItem',
+  'GoldenLayout.createDragSource',
+  'GoldenLayout.createPopout',
+  'GoldenLayout.destroy',
+  'GoldenLayout.getComponent',
+  'GoldenLayout.init',
+  'GoldenLayout.registerComponent',
+  'GoldenLayout.selectItem',
+  'GoldenLayout.toConfig',
+  'GoldenLayout.updateSize',
+  'GoldenLayout.__lm',
+  "type: 'react-component'",
+  'nested stack content',
+];
 
 const topLevelRenames = new Map([
   ['GoldenLayout', 'StrelitLayout'],
@@ -613,6 +633,40 @@ function validatePreservedApiTargets(entries, currentApi) {
   }
 }
 
+function validateExactInventory(
+  label,
+  actualEntries,
+  expectedEntries,
+  identity = (entry) => entry.symbol,
+) {
+  const actual = new Set(actualEntries.map(identity));
+  const expected = new Set(expectedEntries.map(identity));
+  const missing = [...expected].filter((symbol) => !actual.has(symbol));
+  const unexpected = [...actual].filter((symbol) => !expected.has(symbol));
+  if (missing.length > 0 || unexpected.length > 0) {
+    throw new Error(
+      `${label} inventory differs from its baseline: missing ${missing.join(', ') || 'none'}; unexpected ${unexpected.join(', ') || 'none'}`,
+    );
+  }
+}
+
+function validateInventoryDigest(
+  label,
+  entries,
+  expectedDigest,
+  identity = (entry) => entry.symbol,
+) {
+  const identities = entries.map(identity).sort();
+  const actualDigest = createHash('sha256')
+    .update(JSON.stringify(identities))
+    .digest('hex');
+  if (actualDigest !== expectedDigest) {
+    throw new Error(
+      `${label} inventory differs from its canonical baseline digest: expected ${expectedDigest}; actual ${actualDigest}`,
+    );
+  }
+}
+
 /** Validates committed inventory provenance, completeness, and current targets. */
 function validateSnapshots() {
   const apiSnapshot = readSnapshot(apiOutputPath);
@@ -623,6 +677,18 @@ function validateSnapshots() {
       path.join(repoRoot, 'etc', 'strelit-ui-kit.api.md'),
       'utf8',
     ),
+  );
+  validateInventoryDigest('v2 API', apiSnapshot.entries, v2ApiInventorySha256);
+  validateExactInventory(
+    'v1 API',
+    v1Snapshot.entries,
+    v1BaselineSymbols.map((symbol) => ({ symbol })),
+  );
+  validateInventoryDigest(
+    'v2 test',
+    testSnapshot.entries,
+    v2TestInventorySha256,
+    (entry) => `${entry.source}\0${entry.title}`,
   );
   const allowedApiDispositions = new Set([
     'preserved-or-renamed',
@@ -753,4 +819,8 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { validatePreservedApiTargets };
+module.exports = {
+  validateExactInventory,
+  validateInventoryDigest,
+  validatePreservedApiTargets,
+};

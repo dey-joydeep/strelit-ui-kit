@@ -149,6 +149,13 @@ function resolveItemConfigWithBudget(
       'Layout configuration exceeds resource limits',
     );
   }
+  if (
+    itemConfig === null ||
+    typeof itemConfig !== 'object' ||
+    Array.isArray(itemConfig)
+  ) {
+    throw new ConfigurationError('Layout item configuration must be an object');
+  }
   if (budget.active.has(itemConfig)) {
     throw new ConfigurationError('Layout configuration contains a cycle');
   }
@@ -186,7 +193,9 @@ function resolveItemConfigWithBudget(
         );
 
       default:
-        throw new UnreachableCaseError('UCUICR55499', itemConfig.type);
+        throw new ConfigurationError(
+          `Unknown layout item type: ${String(itemConfig.type)}`,
+        );
     }
   } finally {
     budget.active.delete(itemConfig);
@@ -432,6 +441,19 @@ function resolveStackItemConfigWithBudget(
     depth + 1,
     componentReorderEnabledDefault,
   );
+  const configuredActiveItemIndex = itemConfig.activeItemIndex;
+  if (
+    content.length > 0 &&
+    configuredActiveItemIndex !== undefined &&
+    (!Number.isInteger(configuredActiveItemIndex) ||
+      configuredActiveItemIndex < 0 ||
+      configuredActiveItemIndex >= content.length)
+  ) {
+    throw new ConfigurationError(
+      'StackItemConfig.activeItemIndex must be an in-range integer',
+      JSON.stringify(configuredActiveItemIndex),
+    );
+  }
   const result: ResolvedStackItemConfig = {
     type: ItemType.stack,
     content,
@@ -598,7 +620,9 @@ function resolveComponentItemConfigWithDefault(
 ): ResolvedComponentItemConfig {
   const componentType = itemConfig.componentType;
   if (componentType === undefined) {
-    throw new Error('ComponentItemConfig.componentType is undefined');
+    throw new ConfigurationError(
+      'ComponentItemConfig.componentType is undefined',
+    );
   } else {
     const { id, maximised } =
       resolveHeaderedItemConfigIdAndMaximised(itemConfig);
@@ -821,16 +845,6 @@ function resolveRowOrColumnItemConfigContentWithBudget(
         'Layout configuration exceeds resource limits',
       );
     }
-    for (let i = 0; i < count; i++) {
-      const childItemConfig = content[i];
-      if (!isRowOrColumnItemConfigChild(childItemConfig)) {
-        throw new ConfigurationError(
-          'ItemConfig is not Row, Column or Stack',
-          childItemConfig,
-        );
-      }
-    }
-
     const result = Array<ResolvedRowOrColumnItemConfigChildItemConfig>(count);
     for (let i = 0; i < count; i++) {
       const childItemConfig = content[i];
@@ -1216,27 +1230,51 @@ export function resolveLayoutConfigDimensions(
   const { size: defaultMinItemWidth, sizeUnit: defaultMinItemWidthUnit } =
     resolveDefaultMinItemWidth(dimensions);
   const result: ResolvedLayoutConfigDimensions = {
-    borderWidth:
-      dimensions?.borderWidth ??
+    borderWidth: resolvePixelDimension(
+      'borderWidth',
+      dimensions?.borderWidth,
       resolvedLayoutConfigDimensionsDefaults.borderWidth,
-    borderGrabWidth:
-      dimensions?.borderGrabWidth ??
+    ),
+    borderGrabWidth: resolvePixelDimension(
+      'borderGrabWidth',
+      dimensions?.borderGrabWidth,
       resolvedLayoutConfigDimensionsDefaults.borderGrabWidth,
+    ),
     defaultMinItemHeight,
     defaultMinItemHeightUnit,
     defaultMinItemWidth,
     defaultMinItemWidthUnit,
-    headerHeight:
-      dimensions?.headerHeight ??
+    headerHeight: resolvePixelDimension(
+      'headerHeight',
+      dimensions?.headerHeight,
       resolvedLayoutConfigDimensionsDefaults.headerHeight,
-    dragProxyWidth:
-      dimensions?.dragProxyWidth ??
+    ),
+    dragProxyWidth: resolvePixelDimension(
+      'dragProxyWidth',
+      dimensions?.dragProxyWidth,
       resolvedLayoutConfigDimensionsDefaults.dragProxyWidth,
-    dragProxyHeight:
-      dimensions?.dragProxyHeight ??
+    ),
+    dragProxyHeight: resolvePixelDimension(
+      'dragProxyHeight',
+      dimensions?.dragProxyHeight,
       resolvedLayoutConfigDimensionsDefaults.dragProxyHeight,
+    ),
   };
   return result;
+}
+
+function resolvePixelDimension(
+  name: keyof LayoutConfigDimensions,
+  value: number | undefined,
+  defaultValue: number,
+): number {
+  const resolved = value ?? defaultValue;
+  if (!Number.isFinite(resolved) || resolved < 0) {
+    throw new ConfigurationError(
+      `Layout dimension ${name} must be finite and nonnegative`,
+    );
+  }
+  return resolved;
 }
 
 /**
@@ -1350,6 +1388,13 @@ function resolveLayoutConfigWithBudget(
     throw new ConfigurationError(
       'Layout configuration exceeds resource limits',
     );
+  }
+  if (
+    layoutConfig === null ||
+    typeof layoutConfig !== 'object' ||
+    Array.isArray(layoutConfig)
+  ) {
+    throw new ConfigurationError('Layout configuration must be an object');
   }
   if (budget.active.has(layoutConfig)) {
     throw new ConfigurationError('Layout configuration contains a cycle');
@@ -1485,13 +1530,13 @@ export interface PopoutLayoutConfig extends LayoutConfig {
   /** The id of the element the item will be appended to on popIn
    * If null, append to topmost layout element
    */
-  parentId: string | null | undefined;
+  parentId?: string | null;
   /** The position of this element within its parent
    * If null, position is last
    */
-  indexInParent: number | null | undefined;
+  indexInParent?: number | null;
   /** The window. */
-  window: PopoutLayoutConfigWindow | undefined;
+  window?: PopoutLayoutConfigWindow;
 }
 
 /**

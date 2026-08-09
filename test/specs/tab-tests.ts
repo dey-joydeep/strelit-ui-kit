@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   ComponentContainer,
+  ComponentItem,
   StrelitLayout,
   LayoutConfig,
   Stack,
@@ -75,7 +76,12 @@ describe('Tabs configuration and behavior', function () {
     const stack = layout.rootItem as Stack;
     expect(stack.header.tabs[0].reorderEnabled).toBe(false);
     expect(stack.header.tabs[1].reorderEnabled).toBe(true);
-    expect(layout.saveLayout().root?.content[0].reorderEnabled).toBe(false);
+    expect(
+      (
+        layout.saveLayout().root?.content[0] as
+          { reorderEnabled?: boolean } | undefined
+      )?.reorderEnabled,
+    ).toBe(false);
   });
 
   it('uses the layout reorder setting for components added at runtime', function () {
@@ -92,7 +98,12 @@ describe('Tabs configuration and behavior', function () {
     const stack = layout.rootItem as Stack;
     expect(stack.header.tabs).toHaveLength(2);
     expect(stack.header.tabs[1].reorderEnabled).toBe(false);
-    expect(layout.saveLayout().root?.content[1].reorderEnabled).toBe(false);
+    expect(
+      (
+        layout.saveLayout().root?.content[1] as
+          { reorderEnabled?: boolean } | undefined
+      )?.reorderEnabled,
+    ).toBe(false);
   });
 
   it('applies the bottom header class when header.show is bottom', function () {
@@ -171,10 +182,11 @@ describe('Tabs configuration and behavior', function () {
       }
     )._tabsContainer;
     tabsContainer._lastVisibleTabIndex = 0;
-    const thirdComponent = stack.contentItems[2];
-    if (thirdComponent.type !== 'component') {
+    const thirdContentItem = stack.contentItems[2];
+    if (thirdContentItem.type !== 'component') {
       throw new Error('Expected a component item');
     }
+    const thirdComponent = thirdContentItem as ComponentItem;
 
     stack.setActiveComponentItem(thirdComponent, false);
 

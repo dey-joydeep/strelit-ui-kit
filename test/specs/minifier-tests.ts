@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   type LayoutConfig,
+  type SerializableObject,
   minifyResolvedLayoutConfig,
   resolveLayoutConfig,
   unminifyResolvedLayoutConfig,
@@ -14,7 +15,7 @@ describe('resolved layout config minifier', function () {
   });
 
   it('round-trips the maximum supported semantic layout depth', function () {
-    let componentState: Record<string, unknown> = { leaf: true };
+    let componentState: SerializableObject = { leaf: true };
     for (let depth = 0; depth < 128; depth++) {
       componentState = { next: componentState };
     }
@@ -34,7 +35,7 @@ describe('resolved layout config minifier', function () {
   });
 
   it('round-trips combined maximum popout, layout, and state depth', function () {
-    let componentState: Record<string, unknown> = { leaf: true };
+    let componentState: SerializableObject = { leaf: true };
     for (let depth = 0; depth < 128; depth++) {
       componentState = { next: componentState };
     }
@@ -170,7 +171,7 @@ describe('resolved layout config minifier', function () {
   it('round-trips own __proto__ component-state properties', function () {
     const componentState = JSON.parse(
       '{"__proto__":{"polluted":true},"safe":"value"}',
-    ) as Record<string, unknown>;
+    ) as SerializableObject;
     const resolved = resolveLayoutConfig({
       root: {
         type: 'component',

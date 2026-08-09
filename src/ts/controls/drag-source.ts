@@ -11,7 +11,6 @@ import { ComponentItem } from '../items/component-item';
 import { GroundItem } from '../items/ground-item';
 import { LayoutManager } from '../layout-manager';
 import { DragListener } from '../utils/drag-listener';
-import { DragProxy } from './drag-proxy';
 
 /**
  * Allows for any DOM item to create a component on drag
@@ -25,6 +24,8 @@ export class DragSource {
   private _dummyGroundContainer: HTMLElement;
   /** @internal */
   private _dummyGroundContentItem: GroundItem;
+  /** @internal */
+  private _isDestroying = false;
 
   /** @internal */
   constructor(
@@ -56,6 +57,7 @@ export class DragSource {
    * @internal
    */
   destroy(): void {
+    this._isDestroying = true;
     this.removeDragListener();
     this._dummyGroundContentItem.destroy();
   }
@@ -106,11 +108,10 @@ export class DragSource {
     if (this._dragListener === null) {
       throw new UnexpectedNullError('DSODSD66746');
     } else {
-      const dragProxy = new DragProxy(
+      const dragProxyElement = this._layoutManager.startComponentDrag(
         x,
         y,
         this._dragListener,
-        this._layoutManager,
         componentItem,
         this._dummyGroundContentItem,
       );
@@ -119,10 +120,7 @@ export class DragSource {
       if (transitionIndicator === null) {
         throw new UnexpectedNullError('DSODST66746');
       } else {
-        transitionIndicator.transitionElements(
-          this._element,
-          dragProxy.element,
-        );
+        transitionIndicator.transitionElements(this._element, dragProxyElement);
       }
     }
   }
@@ -135,7 +133,9 @@ export class DragSource {
     //     this._dummyGroundContentItem._$destroy
     //     this._dummyGroundContentItem = undefined;
     // }
-    this.createDragListener();
+    if (!this._isDestroying) {
+      this.createDragListener();
+    }
   }
 
   /**

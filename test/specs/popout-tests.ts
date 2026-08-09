@@ -2080,7 +2080,9 @@ describe('BrowserPopout functionality (item.popout())', function () {
       }
       expect(layout.saveLayout().openPopouts[0].root?.id).toBe('reload-popout');
 
-      mockWindow.__strelitInstance = undefined;
+      (
+        mockWindow as unknown as { __strelitInstance: unknown }
+      ).__strelitInstance = undefined;
       beforeUnload?.();
       vi.advanceTimersByTime(50);
       expect(popout.toConfig().root?.id).toBe('reload-popout');
@@ -2154,7 +2156,9 @@ describe('BrowserPopout functionality (item.popout())', function () {
 
       beforeUnload?.();
       vi.advanceTimersByTime(50);
-      mockWindow.__strelitInstance = secondChild;
+      (
+        mockWindow as unknown as { __strelitInstance: unknown }
+      ).__strelitInstance = secondChild;
       vi.advanceTimersByTime(20);
 
       expect(firstChild.on).toHaveBeenCalledOnce();

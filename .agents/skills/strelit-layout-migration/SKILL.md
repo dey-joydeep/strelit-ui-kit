@@ -27,6 +27,6 @@ Treat every reported manual-review finding as blocking. The tool deliberately do
 
 ## 2. Configuration Differences (v1 to Strelit UI)
 
-- **ResolvedLayoutConfig**: Strelit UI uses strict TypeScript configuration schemas (`LayoutConfig.fromResolved()`).
-- **Fractional Sizes**: Sizes are normalized; use numeric string percentages or explicit `size: number` properties on items.
-- **Popouts**: Multi-window popouts use `createPopoutFromItemConfig()`. Always verify popout suppression fallback behavior when browser pop-up blockers prevent `window.open`.
+- **ResolvedLayoutConfig**: Strelit UI uses strict TypeScript configuration schemas. Use the public `resolveLayoutConfig()` function to resolve an input config and `createLayoutConfigFromResolved()` to convert a resolved config back to the serializable input shape.
+- **Fractional Sizes**: Sizes are normalized; use string values such as `size: '33.3%'` or `size: '1fr'` on items.
+- **Popouts**: Use the public `LayoutManager.createPopout()` method with a `ContentItem` or `ResolvedRootItemConfig`; do not call internal popout helpers. Always verify popout suppression fallback behavior when browser pop-up blockers prevent `window.open`.

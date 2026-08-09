@@ -3,7 +3,7 @@
 The Strelit UI project adopts the following community policy to assist maintainers with keeping the product reliable and well-maintained:
 
 - Reliability is the highest priority.
-- Only latest releases of major browsers are targeted.
+- Browser support follows the `browserslist` in [`package.json`](./package.json): the latest Chrome and Firefox releases, the latest two major Edge, Safari, and iOS releases, and Firefox ESR.
 - Releases and incorporation of PRs will be done in a planned fashion to ensure reliability can be maintained and application developers can upgrade their applications to new releases in a controlled fashion.
 - Major releases can have breaking changes. While these will be documented, it will probably be as dot points. Examination of source code may be necessary for application developers.
 - Developers should discuss PRs with maintainers before submitting. This will reduce the review effort because PRs will be developed in line with maintainer expectations.

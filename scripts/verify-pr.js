@@ -149,7 +149,14 @@ function verificationScriptsForRisk(risk) {
     case 'high':
       return ['verify:ordered', 'apitest:build', 'apitest:smoke'];
     case 'medium':
-      return ['typecheck', 'test', 'lint', 'format:check'];
+      return [
+        'typecheck',
+        'typecheck:bundle:prepare',
+        'typecheck:bundle',
+        'test',
+        'lint',
+        'format:check',
+      ];
     case 'low':
       return ['lint:docs', 'format:check'];
     default:

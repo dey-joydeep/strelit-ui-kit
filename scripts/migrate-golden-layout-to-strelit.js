@@ -1953,6 +1953,33 @@ function transformSourceContent(content, filePath) {
         `${receiverKind}.${methodName}`,
       );
       if (replacement !== undefined) {
+        if (
+          receiverKind === 'layout' &&
+          methodName === 'updateSize' &&
+          (node.arguments.length !== 2 ||
+            node.arguments.some((argument) => {
+              let expression = argument;
+              while (
+                ts.isParenthesizedExpression(expression) ||
+                ts.isAsExpression(expression) ||
+                ts.isTypeAssertionExpression(expression) ||
+                ts.isNonNullExpression(expression) ||
+                ts.isSatisfiesExpression(expression)
+              ) {
+                expression = expression.expression;
+              }
+              return (
+                expression.kind === ts.SyntaxKind.NullKeyword ||
+                ts.isVoidExpression(expression) ||
+                (ts.isIdentifier(expression) && expression.text === 'undefined')
+              );
+            }))
+        ) {
+          sourceManualReviews.add(
+            `${node.expression.getText(sourceFile)}() requires exactly two explicit dimensions before migration to setSize()`,
+          );
+          return;
+        }
         if (replacement.property === true) {
           addEdit(
             node,
@@ -2368,6 +2395,24 @@ function collectBlockingLayoutConfigAmbiguities(
   configPath,
   manualReviews,
 ) {
+  if (isRecord(layoutConfig.dimensions)) {
+    for (const [legacyName, modernName] of [
+      ['minItemHeight', 'defaultMinItemHeight'],
+      ['minItemWidth', 'defaultMinItemWidth'],
+    ]) {
+      const legacyValue = layoutConfig.dimensions[legacyName];
+      if (
+        legacyValue !== undefined &&
+        (!Number.isFinite(legacyValue) ||
+          legacyValue < 0 ||
+          layoutConfig.dimensions[modernName] !== undefined)
+      ) {
+        manualReviews.add(
+          `${configPath}.dimensions.${legacyName} could not be converted safely and was preserved`,
+        );
+      }
+    }
+  }
   if (Array.isArray(layoutConfig.content)) {
     if (layoutConfig.root !== undefined && layoutConfig.content.length > 0) {
       manualReviews.add(
@@ -2493,20 +2538,28 @@ function transformLayoutConfig(
   }
 
   if (isRecord(layoutConfig.dimensions)) {
-    if (
-      layoutConfig.dimensions.defaultMinItemHeight === undefined &&
-      typeof layoutConfig.dimensions.minItemHeight === 'number'
-    ) {
-      layoutConfig.dimensions.defaultMinItemHeight = `${layoutConfig.dimensions.minItemHeight}px`;
+    for (const [legacyName, modernName] of [
+      ['minItemHeight', 'defaultMinItemHeight'],
+      ['minItemWidth', 'defaultMinItemWidth'],
+    ]) {
+      const legacyValue = layoutConfig.dimensions[legacyName];
+      if (legacyValue === undefined) {
+        continue;
+      }
+      if (
+        typeof legacyValue === 'number' &&
+        Number.isFinite(legacyValue) &&
+        legacyValue >= 0 &&
+        layoutConfig.dimensions[modernName] === undefined
+      ) {
+        layoutConfig.dimensions[modernName] = `${legacyValue}px`;
+        delete layoutConfig.dimensions[legacyName];
+      } else {
+        manualReviews.add(
+          `${configPath}.dimensions.${legacyName} could not be converted safely and was preserved`,
+        );
+      }
     }
-    if (
-      layoutConfig.dimensions.defaultMinItemWidth === undefined &&
-      typeof layoutConfig.dimensions.minItemWidth === 'number'
-    ) {
-      layoutConfig.dimensions.defaultMinItemWidth = `${layoutConfig.dimensions.minItemWidth}px`;
-    }
-    delete layoutConfig.dimensions.minItemHeight;
-    delete layoutConfig.dimensions.minItemWidth;
   }
 
   migrateHeader(layoutConfig, configPath, manualReviews);
@@ -2582,6 +2635,13 @@ function transformJsonContent(content, sourceVersion = 'auto') {
     transformLayoutItem(parsed, '$', manualReviews, sourceVersion);
   } else {
     transformLayoutConfig(parsed, '$', manualReviews, sourceVersion);
+  }
+  if (manualReviews.size > 0) {
+    return {
+      transformed: content,
+      applied: [],
+      manualReviews: [...manualReviews],
+    };
   }
   const indentation = /^([ \t]+)"/m.exec(content)?.[1] ?? '  ';
   return {

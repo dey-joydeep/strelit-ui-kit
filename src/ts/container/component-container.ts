@@ -124,6 +124,10 @@ export class ComponentContainer extends EventEmitter {
   private _stackMaximised = false;
   /** @internal */
   private _logicalZIndex!: LogicalZIndex;
+  private _destroyBeforeReleaseEmitted = false;
+  private _destroyComponentUnbound = false;
+  private _destroyEventEmitted = false;
+  private _destroyed = false;
 
   /** The state request event. */
   stateRequestEvent: ComponentContainerStateRequestEventHandler | undefined;
@@ -235,12 +239,51 @@ export class ComponentContainer extends EventEmitter {
 
   /** @internal */
   destroy(): void {
-    this.releaseComponent();
+    if (this._destroyed) {
+      return;
+    }
+    let firstError: unknown;
+    const attempt = (action: () => void) => {
+      try {
+        action();
+      } catch (error) {
+        firstError ??= error;
+      }
+    };
+    if (this._stackMaximised) {
+      attempt(() => this.exitStackMaximised());
+    }
+    if (!this._destroyBeforeReleaseEmitted) {
+      this._destroyBeforeReleaseEmitted = true;
+      attempt(() =>
+        this.emit('beforeComponentRelease', this._boundComponent.component),
+      );
+    }
+    if (!this._destroyComponentUnbound) {
+      attempt(() => {
+        this.layoutManager.unbindComponent(
+          this,
+          this._boundComponent.virtual,
+          this._boundComponent.component,
+        );
+        this._destroyComponentUnbound = true;
+      });
+    }
     this.stateRequestEvent = undefined;
     this.virtualRectingRequiredEvent = undefined;
     this.virtualVisibilityChangeRequiredEvent = undefined;
     this.virtualZIndexChangeRequiredEvent = undefined;
-    this.emit('destroy');
+    if (!this._destroyComponentUnbound) {
+      throw firstError;
+    }
+    if (!this._destroyEventEmitted) {
+      this._destroyEventEmitted = true;
+      attempt(() => this.emit('destroy'));
+    }
+    this._destroyed = true;
+    if (firstError !== undefined) {
+      throw firstError;
+    }
   }
 
   /**

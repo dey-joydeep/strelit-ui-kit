@@ -19,6 +19,7 @@ import {
 import { AssertError, UnexpectedNullError } from '../errors/internal-error';
 import { LayoutManager } from '../layout-manager';
 import { DomConstants } from '../utils/dom-constants';
+import { reportSecondaryCleanupError } from '../utils/error-reporting';
 import { AreaLinkedRect, ItemType, SizeUnit } from '../utils/types';
 import {
   getElementWidthAndHeight,
@@ -354,7 +355,14 @@ export class GroundItem extends ComponentParentableItem {
       try {
         rootContentItem.init();
       } catch (error) {
-        rootContentItem.destroy();
+        try {
+          rootContentItem.destroy();
+        } catch (cleanupError) {
+          reportSecondaryCleanupError(
+            'root-component initialization',
+            cleanupError,
+          );
+        }
         throw error;
       }
       this.replaceRoot(rootContentItem);

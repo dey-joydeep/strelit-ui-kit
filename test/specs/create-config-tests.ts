@@ -43,13 +43,20 @@ describe('Layout configuration resolution and defaults', function () {
     });
     const defaultStack = createResolvedStackItemConfigDefault();
 
-    expect(resolved.root?.type).toBe('stack');
-    expect(resolved.root?.activeItemIndex).toBeUndefined();
+    if (resolved.root?.type !== 'stack') {
+      throw new Error('Expected a stack root');
+    }
+    expect(resolved.root.activeItemIndex).toBeUndefined();
     expect(defaultStack.content).toEqual([]);
     expect(defaultStack.activeItemIndex).toBeUndefined();
+    const roundTrippedRoot = resolveLayoutConfig(
+      createLayoutConfigFromResolved(resolved),
+    ).root;
+    expect(roundTrippedRoot?.type).toBe('stack');
     expect(
-      resolveLayoutConfig(createLayoutConfigFromResolved(resolved)).root
-        ?.activeItemIndex,
+      roundTrippedRoot?.type === 'stack'
+        ? roundTrippedRoot.activeItemIndex
+        : undefined,
     ).toBeUndefined();
   });
 
@@ -99,12 +106,35 @@ describe('Layout configuration resolution and defaults', function () {
 
     const resolved = resolveLayoutConfig(config);
     const root = resolved.root;
-    expect(root?.id).toBe('pane-a');
-    expect(root?.maximised).toBe(true);
-    expect(root?.componentType).toBe('strelitComponent');
-    expect(root?.componentState).toBeNull();
+    if (root?.type !== 'component') {
+      throw new Error('Expected a component root');
+    }
+    expect(root.id).toBe('pane-a');
+    expect(root.maximised).toBe(true);
+    expect(root.componentType).toBe('strelitComponent');
+    expect(root.componentState).toBeNull();
     expect(resolved.dimensions.defaultMinItemHeight).toBe(25);
     expect(resolved.dimensions.defaultMinItemWidth).toBe(35);
+  });
+
+  it.each([
+    'borderWidth',
+    'borderGrabWidth',
+    'headerHeight',
+    'dragProxyWidth',
+    'dragProxyHeight',
+  ] as const)('rejects invalid numeric %s dimensions', (dimension) => {
+    for (const value of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() =>
+        resolveLayoutConfig({ dimensions: { [dimension]: value } }),
+      ).toThrow(ConfigurationError);
+    }
+
+    expect(
+      resolveLayoutConfig({ dimensions: { [dimension]: 0 } }).dimensions[
+        dimension
+      ],
+    ).toBe(0);
   });
 
   it('preserves fractional size strings during resolution', function () {
@@ -204,9 +234,17 @@ describe('Layout configuration resolution and defaults', function () {
     const copied = createResolvedLayoutConfigCopy(resolved);
     const publicConfig = createLayoutConfigFromResolved(copied);
 
-    expect(resolved.root?.header?.dock).toBe('Dock this stack');
-    expect(copied.root?.header?.dock).toBe('Dock this stack');
-    expect(publicConfig.root?.header?.dock).toBe('Dock this stack');
+    if (
+      resolved.root?.type !== 'stack' ||
+      copied.root?.type !== 'stack' ||
+      publicConfig.root?.type !== 'stack'
+    ) {
+      throw new Error('Expected stack roots');
+    }
+
+    expect(resolved.root.header?.dock).toBe('Dock this stack');
+    expect(copied.root.header?.dock).toBe('Dock this stack');
+    expect(publicConfig.root.header?.dock).toBe('Dock this stack');
   });
 
   it('round-trips public popin labels for nested popouts', () => {
@@ -276,6 +314,32 @@ describe('Layout configuration resolution and defaults', function () {
           },
         },
       } as unknown as LayoutConfig),
+    ).toThrow(ConfigurationError);
+  });
+
+  it.each([
+    null,
+    { root: null },
+    { root: { type: 'row', content: [null] } },
+    { root: { type: 'unknown' } },
+    { root: { type: 'component' } },
+    {
+      root: {
+        type: 'stack',
+        activeItemIndex: 0.5,
+        content: [{ type: 'component', componentType: 'panel' }],
+      },
+    },
+    {
+      root: {
+        type: 'stack',
+        activeItemIndex: 1,
+        content: [{ type: 'component', componentType: 'panel' }],
+      },
+    },
+  ])('rejects malformed persisted item configuration %#', (config) => {
+    expect(() =>
+      resolveLayoutConfig(config as unknown as LayoutConfig),
     ).toThrow(ConfigurationError);
   });
 });

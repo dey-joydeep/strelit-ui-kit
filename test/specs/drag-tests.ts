@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { StrelitLayout, LayoutConfig } from '../../src';
+import { ComponentItem, StrelitLayout, LayoutConfig } from '../../src';
 import { DragProxy } from '../../src/ts/controls/drag-proxy';
+import { DragListener } from '../../src/ts/utils/drag-listener';
 import TestTools from './test-tools';
 
 describe('drag source', function () {
@@ -78,6 +79,42 @@ describe('drag source', function () {
     expect(destroySpy).toHaveBeenCalledOnce();
   });
 
+  it('does not recreate an external drag listener during layout destruction', function () {
+    dragSourceElement = document.createElement('div');
+    document.body.appendChild(dragSourceElement);
+    const dragSource = layout.newDragSource(dragSourceElement, () => ({
+      type: 'component',
+      componentType: TestTools.TEST_COMPONENT_NAME,
+    }));
+    const internals = dragSource as unknown as {
+      _dragListener: DragListener | null;
+    };
+
+    dragSourceElement.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        isPrimary: true,
+        pointerId: 31,
+        pointerType: 'touch',
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        clientX: 20,
+        clientY: 20,
+        pointerId: 31,
+        pointerType: 'touch',
+      }),
+    );
+    expect(TestTools.getDragProxy()).not.toBeNull();
+
+    layout.destroy();
+
+    expect(TestTools.getDragProxy()).toBeNull();
+    expect(internals._dragListener).toBeNull();
+  });
+
   it('uses document scroll offsets for constrained drag bounds', function () {
     const element = document.createElement('div');
     vi.spyOn(element, 'getBoundingClientRect').mockReturnValue(
@@ -106,6 +143,193 @@ describe('drag source', function () {
       _maxX: 350,
       _maxY: 280,
     });
+  });
+
+  it('restores a focused component when drag construction blur fails', function () {
+    const contentItem = layout.rootItem?.contentItems[0];
+    if (
+      contentItem === undefined ||
+      !contentItem.isComponent ||
+      contentItem.parent === null
+    ) {
+      throw new Error('Expected a component item');
+    }
+    const item = contentItem as ComponentItem;
+    item.focus();
+    const originalParent = item.parent;
+    if (originalParent === null) {
+      throw new Error('Expected a component parent');
+    }
+    const originalElementParent = item.element.parentElement;
+    const listenerElement = document.createElement('div');
+    const dragListener = new DragListener(listenerElement, []);
+    const blurObserver = () => {
+      throw new Error('blur observer failed');
+    };
+    item.on('blur', blurObserver);
+
+    try {
+      expect(
+        () => new DragProxy(0, 0, dragListener, layout, item, originalParent),
+      ).toThrow('blur observer failed');
+
+      expect(item.parent).toBe(originalParent);
+      expect(originalParent.contentItems).toContain(item);
+      expect(item.element.parentElement).toBe(originalElementParent);
+      expect(item.focused).toBe(true);
+      expect(TestTools.getDragProxy()).toBeNull();
+    } finally {
+      item.off('blur', blurObserver);
+      dragListener.destroy();
+    }
+  });
+
+  it.each(['drop target', 'exit drag mode'] as const)(
+    'restores a dragged component when %s fails before commit',
+    (failureStage) => {
+      const contentItem = layout.rootItem?.contentItems[0];
+      if (
+        contentItem === undefined ||
+        !contentItem.isComponent ||
+        contentItem.parent === null
+      ) {
+        throw new Error('Expected a component item');
+      }
+      const item = contentItem as ComponentItem;
+      item.focus();
+      const source = item.parent;
+      if (source === null) {
+        throw new Error('Expected a component parent');
+      }
+      const dragListener = new DragListener(document.createElement('div'), []);
+      const proxy = new DragProxy(0, 0, dragListener, layout, item, source);
+      const itemDropped = vi.fn();
+      layout.on('itemDropped', itemDropped);
+      if (failureStage === 'exit drag mode') {
+        vi.spyOn(item, 'exitDragMode').mockImplementationOnce(() => {
+          throw new Error('exit drag mode failed');
+        });
+      } else {
+        const area = {
+          x1: 0,
+          y1: 0,
+          x2: 1,
+          y2: 1,
+          surface: 1,
+          contentItem: {
+            onDrop: () => {
+              throw new Error('drop target failed');
+            },
+          },
+        };
+        (proxy as unknown as { _area: typeof area })._area = area;
+      }
+
+      try {
+        expect(() =>
+          (proxy as unknown as { onDrop(cancelled?: boolean): void }).onDrop(
+            false,
+          ),
+        ).toThrow(
+          failureStage === 'exit drag mode'
+            ? 'exit drag mode failed'
+            : 'drop target failed',
+        );
+
+        expect(item.parent).toBe(source);
+        expect(source.contentItems).toContain(item);
+        expect(item.focused).toBe(true);
+        expect(TestTools.getDragProxy()).toBeNull();
+        expect(itemDropped).not.toHaveBeenCalled();
+      } finally {
+        dragListener.destroy();
+      }
+    },
+  );
+
+  it('finishes committed-drop cleanup when the drop target throws', function () {
+    layout.destroy();
+    layout = TestTools.createLayout({
+      root: {
+        type: 'row',
+        content: [
+          {
+            type: 'stack',
+            id: 'source-stack',
+            content: [
+              {
+                type: 'component',
+                id: 'dragged-item',
+                componentType: TestTools.TEST_COMPONENT_NAME,
+              },
+            ],
+          },
+          {
+            type: 'stack',
+            id: 'target-stack',
+            content: [
+              {
+                type: 'component',
+                id: 'target-item',
+                componentType: TestTools.TEST_COMPONENT_NAME,
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const item = layout.findFirstComponentItemById('dragged-item');
+    const source = layout.rootItem?.contentItems.find(
+      (contentItem) => contentItem.id === 'source-stack',
+    );
+    const target = layout.rootItem?.contentItems.find(
+      (contentItem) => contentItem.id === 'target-stack',
+    );
+    if (
+      item === undefined ||
+      source === undefined ||
+      target === undefined ||
+      !source.isStack ||
+      !target.isStack
+    ) {
+      throw new Error('Expected drag source and target items');
+    }
+    item.focus();
+    const dragListener = new DragListener(document.createElement('div'), []);
+    const proxy = new DragProxy(0, 0, dragListener, layout, item, source);
+    const itemDropped = vi.fn();
+    layout.on('itemDropped', itemDropped);
+    const area = {
+      x1: 0,
+      y1: 0,
+      x2: 1,
+      y2: 1,
+      surface: 1,
+      contentItem: {
+        onDrop: () => {
+          target.addChild(item);
+          throw new Error('drop observer failed');
+        },
+      },
+    };
+    (proxy as unknown as { _area: typeof area })._area = area;
+
+    try {
+      expect(() =>
+        (proxy as unknown as { onDrop(cancelled?: boolean): void }).onDrop(
+          false,
+        ),
+      ).toThrow('drop observer failed');
+
+      expect(item.parent).toBe(target);
+      expect(item.focused).toBe(true);
+      expect(TestTools.getDragProxy()).toBeNull();
+      expect(itemDropped).toHaveBeenCalledWith(item);
+      expect(source.element.isConnected).toBe(false);
+      expect(layout.rootItem).toBe(target);
+    } finally {
+      dragListener.destroy();
+    }
   });
 
   it('restores an internal drag without dropping when the pointer is cancelled', function () {
@@ -164,6 +388,51 @@ describe('drag source', function () {
     expect(layout.rootItem).toBe(originalRoot);
     expect(layout.rootItem?.isStack).toBe(true);
     expect(itemDropped).not.toHaveBeenCalled();
+  });
+
+  it('cancels and owns an active drag during layout destruction', function () {
+    layout.destroy();
+    layout = TestTools.createLayout({
+      root: {
+        type: 'stack',
+        content: [
+          {
+            type: 'component',
+            id: 'destroyed-drag',
+            componentType: TestTools.TEST_COMPONENT_NAME,
+          },
+        ],
+      },
+    });
+    const item = layout.findFirstComponentItemById('destroyed-drag');
+    if (item === undefined) {
+      throw new Error('Expected a component item');
+    }
+    item.tab.element.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        isPrimary: true,
+        pointerId: 21,
+        pointerType: 'touch',
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        clientX: 20,
+        clientY: 20,
+        pointerId: 21,
+        pointerType: 'touch',
+      }),
+    );
+    expect(TestTools.getDragProxy()).not.toBeNull();
+
+    expect(() => layout.destroy()).not.toThrow();
+
+    expect(TestTools.getDragProxy()).toBeNull();
+    expect((item as unknown as { _isDestroyed: boolean })._isDestroyed).toBe(
+      true,
+    );
   });
 
   it('restores a cancelled tab to its original index', function () {
@@ -236,11 +505,14 @@ describe('drag source', function () {
     dragProxy = TestTools.getDragProxy();
     expect(dragProxy).toBeNull();
 
-    const componentItem = TestTools.verifyPath('row.1.stack.0', layout);
+    const componentItem = TestTools.verifyPath(
+      'row.1.stack.0',
+      layout,
+    ) as ComponentItem;
     expect(
       componentItem.element.querySelectorAll(`.${createdFromDragSourceClass}`)
         .length,
-    ).toBe(1, 'number of .dragged elements inside dropped element');
+    ).toBe(1);
     expect(componentItem.tab.reorderEnabled).toBe(false);
   }
 

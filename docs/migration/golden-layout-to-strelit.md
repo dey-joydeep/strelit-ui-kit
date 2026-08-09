@@ -48,7 +48,7 @@ The migrator is tested by launching the real command-line process, not by callin
 
 The Golden Layout v2.6 API demo was also migrated from a fresh sibling-repository copy. Its deterministic source transformations complete without sizing warnings. A representative `v2-api-demo.ts` fixture, including the original demo's numeric item and dimension sizing forms, is retained in the automated compile suite to prevent regression.
 
-The current `apitest/` application was modernized manually beyond API migration: its webpack harness became Vite, formatting was updated, package-internal imports were changed to the Strelit source entry point, and local variables and visible copy were rebranded. Those build-system and presentation changes are intentionally outside the consumer migration tool.
+The current `apitest/` application was modernized manually beyond API migration: its webpack harness became Vite, formatting was updated, package-internal imports were changed to the Strelit source entry point, internal layout identifiers were renamed, and the page title was rebranded. Those build-system and presentation changes are intentionally outside the consumer migration tool.
 
 Maintainers can reproduce its production-build browser check with `npm run apitest:smoke`. Changes to the codemod must follow the [migration tool maintenance contract](./migration-tool-maintenance.md).
 

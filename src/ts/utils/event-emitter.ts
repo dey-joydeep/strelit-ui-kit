@@ -251,6 +251,14 @@ export interface EventEmitterEventParamsMap {
   beforeItemDestroyed: EventEmitterBubblingEventParam;
   /** Defines the parameters emitted for the itemCreated event. */
   itemCreated: EventEmitterBubblingEventParam;
+  /** Defines the parameters emitted when a stack is created. */
+  stackCreated: EventEmitterBubblingEventParam;
+  /** Defines the parameters emitted when a row is created. */
+  rowCreated: EventEmitterBubblingEventParam;
+  /** Defines the parameters emitted when a column is created. */
+  columnCreated: EventEmitterBubblingEventParam;
+  /** Defines the parameters emitted when a component is created. */
+  componentCreated: EventEmitterBubblingEventParam;
   /** Defines the parameters emitted for the itemDestroyed event. */
   itemDestroyed: EventEmitterBubblingEventParam;
   /** Defines the parameters emitted for the focus event. */
@@ -303,51 +311,78 @@ export class EventEmitter {
     eventName: K,
     ...args: EventEmitterEventParamsMap[K]
   ): void {
+    let firstError: unknown;
     let subscriptions = this._subscriptionsMap.get(eventName);
 
     if (subscriptions !== undefined) {
       subscriptions = subscriptions.slice();
       for (let i = 0; i < subscriptions.length; i++) {
         if (!this.isEventDispatchAllowed(eventName)) {
-          return;
+          break;
         }
-        const subscription = subscriptions[i];
-        subscription(...args);
+        try {
+          subscriptions[i](...args);
+        } catch (error) {
+          firstError ??= error;
+        }
       }
     }
 
-    if (!this.isEventDispatchAllowed(eventName)) {
-      return;
+    if (this.isEventDispatchAllowed(eventName)) {
+      try {
+        this.emitAllEvent(eventName, args);
+      } catch (error) {
+        firstError ??= error;
+      }
     }
-    this.emitAllEvent(eventName, args);
-    if (!this.isEventDispatchAllowed(eventName)) {
-      return;
+    if (this.isEventDispatchAllowed(eventName)) {
+      try {
+        this.tryBubbleEvent(eventName, args);
+      } catch (error) {
+        firstError ??= error;
+      }
     }
-    this.tryBubbleEvent(eventName, args);
+    if (firstError !== undefined) {
+      throw firstError;
+    }
   }
 
   /** @internal */
   emitUnknown(eventName: string, ...args: EventEmitterUnknownParams): void {
+    let firstError: unknown;
     let subs = this._subscriptionsMap.get(eventName);
 
     if (subs !== undefined) {
       subs = subs.slice();
       for (let i = 0; i < subs.length; i++) {
         if (!this.isEventDispatchAllowed(eventName)) {
-          return;
+          break;
         }
-        subs[i](...args);
+        try {
+          subs[i](...args);
+        } catch (error) {
+          firstError ??= error;
+        }
       }
     }
 
-    if (!this.isEventDispatchAllowed(eventName)) {
-      return;
+    if (this.isEventDispatchAllowed(eventName)) {
+      try {
+        this.emitAllEvent(eventName, args);
+      } catch (error) {
+        firstError ??= error;
+      }
     }
-    this.emitAllEvent(eventName, args);
-    if (!this.isEventDispatchAllowed(eventName)) {
-      return;
+    if (this.isEventDispatchAllowed(eventName)) {
+      try {
+        this.tryBubbleEvent(eventName, args);
+      } catch (error) {
+        firstError ??= error;
+      }
     }
-    this.tryBubbleEvent(eventName, args);
+    if (firstError !== undefined) {
+      throw firstError;
+    }
   }
 
   /* @internal **/
@@ -478,6 +513,7 @@ export class EventEmitter {
   /** @internal */
   private emitAllEvent(eventName: string, args: unknown[]) {
     const allEventSubscriptionsCount = this._allEventSubscriptions.length;
+    let firstError: unknown;
     if (allEventSubscriptionsCount > 0) {
       const unknownArgs = args.slice() as EventEmitterUnknownParams;
       unknownArgs.unshift(eventName);
@@ -486,9 +522,16 @@ export class EventEmitter {
 
       for (let i = 0; i < allEventSubscriptionsCount; i++) {
         if (!this.isEventDispatchAllowed(eventName)) {
-          return;
+          break;
         }
-        allEventSubcriptions[i](...unknownArgs);
+        try {
+          allEventSubcriptions[i](...unknownArgs);
+        } catch (error) {
+          firstError ??= error;
+        }
+      }
+      if (firstError !== undefined) {
+        throw firstError;
       }
     }
   }

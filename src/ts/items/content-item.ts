@@ -134,6 +134,8 @@ export abstract class ContentItem extends EventEmitter {
   protected _isDestroyed = false;
   /** @internal */
   protected _destroyCleanupFailed = false;
+  private _beforeItemDestroyedEmitted = false;
+  private _itemDestroyedEmitted = false;
 
   /** @internal */
   size: number;
@@ -530,9 +532,15 @@ export abstract class ContentItem extends EventEmitter {
     }
     this._contentItems = remainingContentItems;
 
-    attempt(() => this.emitBaseBubblingEvent('beforeItemDestroyed'));
+    if (!this._beforeItemDestroyedEmitted) {
+      this._beforeItemDestroyedEmitted = true;
+      attempt(() => this.emitBaseBubblingEvent('beforeItemDestroyed'));
+    }
     attempt(() => this._element.remove());
-    attempt(() => this.emitBaseBubblingEvent('itemDestroyed'));
+    if (!this._itemDestroyedEmitted) {
+      this._itemDestroyedEmitted = true;
+      attempt(() => this.emitBaseBubblingEvent('itemDestroyed'));
+    }
     if (firstError !== undefined) {
       this._destroyCleanupFailed = true;
       throw firstError;

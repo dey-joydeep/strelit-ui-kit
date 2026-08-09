@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ConfigurationError,
   createComponentItemConfigFromResolved,
+  resolveComponentItemConfig,
   resolveItemConfig,
   resolveLayoutConfig,
   StrelitLayout,
@@ -133,7 +134,7 @@ describe('configuration resource limits', () => {
 
   it('enforces the state budget through config copying and component binding', () => {
     const componentState = createNestedState(maximumDepth + 1);
-    const resolved = resolveItemConfig({
+    const resolved = resolveComponentItemConfig({
       type: 'component',
       componentType: 'panel',
       componentState,
@@ -209,14 +210,22 @@ describe('configuration resource limits', () => {
   });
 
   it('defensively rejects an over-depth already-resolved construction tree', () => {
-    const resolvedComponent = resolveItemConfig({
+    const resolvedComponent = resolveComponentItemConfig({
       type: 'component',
       componentType: 'panel',
     });
-    const rowTemplate = resolveItemConfig({
+    const rowTemplateConfig: RowOrColumnItemConfig = {
       type: 'row',
-      content: [{ type: 'component', componentType: 'panel' }],
-    }) as ResolvedRowOrColumnItemConfig;
+      content: [
+        {
+          type: 'component',
+          componentType: 'panel',
+        } satisfies ComponentItemConfig,
+      ],
+    };
+    const rowTemplate = resolveItemConfig(
+      rowTemplateConfig,
+    ) as ResolvedRowOrColumnItemConfig;
     let resolvedRoot: ResolvedItemConfig = resolvedComponent;
     for (let index = 0; index <= maximumDepth; index++) {
       resolvedRoot = { ...rowTemplate, content: [resolvedRoot] };

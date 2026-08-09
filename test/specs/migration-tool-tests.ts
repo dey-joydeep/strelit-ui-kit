@@ -139,6 +139,28 @@ layout.updateSize(800, 600);
     expect(secondOutput).toContain('Updated 0 file(s).');
   });
 
+  it('preserves updateSize calls without two explicit dimensions', () => {
+    const filePath = createFixture(`
+import GoldenLayout from 'golden-layout';
+const layout = new GoldenLayout(container);
+layout.updateSize();
+layout.updateSize(800);
+layout.updateSize(undefined, undefined);
+layout.updateSize(800, 600);
+`);
+
+    const output = migrate(filePath);
+    const migrated = readFileSync(filePath, 'utf8');
+
+    expect(migrated).toContain('layout.updateSize();');
+    expect(migrated).toContain('layout.updateSize(800);');
+    expect(migrated).toContain('layout.updateSize(undefined, undefined);');
+    expect(migrated).toContain('layout.setSize(800, 600);');
+    expect(
+      output.match(/requires exactly two explicit dimensions/g),
+    ).toHaveLength(1);
+  });
+
   it('aliases generated imports when the target name is already bound', () => {
     const filePath = createFixture(`
 import { LayoutConfig } from 'golden-layout';
@@ -1337,6 +1359,31 @@ const config: DragSource.ComponentItemConfig = {
     expect(readFileSync(filePath, 'utf8')).toBe(firstMigration);
   });
 
+  it.each([
+    ['minItemWidth', 'wide'],
+    ['minItemHeight', -1],
+  ])('preserves unsafe saved-layout dimension %s', (dimension, value) => {
+    const source = JSON.stringify({
+      root: { type: 'component', componentType: 'editor' },
+      dimensions: { [dimension]: value },
+    });
+    const filePath = createFixture(source, 'layout.json');
+
+    const output = migrate(filePath, ['--from', 'v2']);
+    const migrated = JSON.parse(readFileSync(filePath, 'utf8')) as {
+      dimensions: Record<string, unknown>;
+    };
+
+    expect(migrated.dimensions[dimension]).toBe(value);
+    expect(
+      migrated.dimensions[`defaultM${dimension.slice(1)}`],
+    ).toBeUndefined();
+    expect(output).toContain(
+      `dimensions.${dimension} could not be converted safely and was preserved`,
+    );
+    expect(readFileSync(filePath, 'utf8')).toBe(source);
+  });
+
   it('preserves a saved layout with multiple roots for manual review', () => {
     const source = JSON.stringify({
       content: [
@@ -1564,20 +1611,18 @@ fs.renameSync = (source, destination) => {
   });
 
   it('reports malformed saved-layout structures instead of silently normalizing them', () => {
-    const filePath = createFixture(
-      JSON.stringify({
-        settings: false,
-        root: {
-          type: 'component',
-          componentName: 'editor',
-          width: 'wide',
-          hasHeaders: true,
-          header: false,
-        },
-        openPopouts: 'invalid',
-      }),
-      'layout.json',
-    );
+    const source = JSON.stringify({
+      settings: false,
+      root: {
+        type: 'component',
+        componentName: 'editor',
+        width: 'wide',
+        hasHeaders: true,
+        header: false,
+      },
+      openPopouts: 'invalid',
+    });
+    const filePath = createFixture(source, 'layout.json');
 
     const output = migrate(filePath, ['--from', 'v1']);
 
@@ -1585,6 +1630,7 @@ fs.renameSync = (source, destination) => {
     expect(output).toContain('header is not an object');
     expect(output).toContain('settings is not an object');
     expect(output).toContain('openPopouts is not an array');
+    expect(readFileSync(filePath, 'utf8')).toBe(source);
   });
 
   it('migrates numeric sizing from the original v2 demo layout pattern', () => {

@@ -58,7 +58,7 @@ export type StrelitLayoutComponentFactoryFunction<
   container: ComponentContainer,
   state: TState | undefined,
   virtual: boolean,
-) => TComponent | undefined;
+) => TComponent | undefined | void;
 
 /**
  * Defines the strelit layout component instantiator contract.
@@ -284,7 +284,8 @@ export class StrelitLayout extends VirtualLayout {
       } else {
         const factoryFunction = instantiator.factoryFunction;
         if (factoryFunction !== undefined) {
-          component = factoryFunction(container, componentState, virtual);
+          component = factoryFunction(container, componentState, virtual) as
+            ComponentContainerComponent | undefined;
         } else {
           throw new AssertError('LMBCFFU10008');
         }
@@ -337,20 +338,20 @@ export class StrelitLayout extends VirtualLayout {
     if (!this._registeredComponentMap.has(container)) {
       super.unbindComponent(container, virtual, component); // was not created from registration so use virtual unbind events
     } else {
-      this._registeredComponentMap.delete(container);
       const virtualComponent = this._virtualComponentMap.get(container);
       if (virtualComponent !== undefined) {
         const componentRootElement = virtualComponent.rootHtmlElement;
         if (componentRootElement === undefined) {
           throw new AssertError('SLUC77743', container.title);
         } else {
-          this.container.removeChild(componentRootElement);
-          this._virtualComponentMap.delete(container);
+          componentRootElement.remove();
           container.virtualRectingRequiredEvent = undefined;
           container.virtualVisibilityChangeRequiredEvent = undefined;
           container.virtualZIndexChangeRequiredEvent = undefined;
+          this._virtualComponentMap.delete(container);
         }
       }
+      this._registeredComponentMap.delete(container);
     }
   }
 

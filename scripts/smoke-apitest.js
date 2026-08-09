@@ -7,7 +7,7 @@ const repoRoot = path.resolve(__dirname, '..');
 const viteBin = path.join(repoRoot, 'node_modules', 'vite', 'bin', 'vite.js');
 const host = '127.0.0.1';
 const port = Number(process.env.STRELIT_SMOKE_PORT ?? 4173);
-const url = `http://${host}:${port}/`;
+const url = `http://${host}:${port}/?smoke=1`;
 
 /** Runs a child process and rejects when it exits unsuccessfully. */
 function run(command, args, options = {}) {
@@ -163,7 +163,12 @@ async function main() {
       { capture: true },
     );
 
-    for (const marker of ['lm_strelit', 'lm_root', 'lm_item']) {
+    for (const marker of [
+      'lm_strelit',
+      'lm_root',
+      'lm_item',
+      'data-strelit-smoke="passed"',
+    ]) {
       if (!stdout.includes(marker)) {
         throw new Error(`API demo did not render expected marker: ${marker}`);
       }

@@ -1,5 +1,9 @@
 # Strelit UI Kit — Comprehensive Code Review & Uncommitted Changes Report
 
+> **Archival snapshot:** This report records the repository state observed on
+> July 12, 2026. Its branch, commit, package, and test counts are historical
+> evidence and must not be used as current validation.
+
 **Date:** July 12, 2026  
 **Repository Root:** `E:\workspace\project-golden-layout\strelit-ui-kit`  
 **Branch:** `feature/strelit-modernization`  

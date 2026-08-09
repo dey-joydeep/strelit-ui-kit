@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { ComponentContainer, StrelitLayout } from '../../src';
+import { ComponentContainer, ItemType, StrelitLayout } from '../../src';
 
 describe('responsive layout', () => {
   const layouts: StrelitLayout[] = [];
@@ -32,9 +32,7 @@ describe('responsive layout', () => {
 
     layout.setSize(300, 300);
 
-    expect(layout.getAllContentItems().filter((item) => item.isColumn)).toEqual(
-      [],
-    );
+    expect(layout.getItemsByType(ItemType.column)).toEqual([]);
     expect(layout.getComponentItemsByType('component')).toHaveLength(3);
   });
 

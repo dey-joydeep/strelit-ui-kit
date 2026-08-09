@@ -67,6 +67,12 @@ export interface HeaderSettings {
  * @public
  */
 export class Header extends EventEmitter {
+  private _isDestroyed = false;
+  private _destroyCleanupFailed = false;
+  private _destroyEventEmitted = false;
+  private _tabsDestroyed = false;
+  private _documentMouseUpListenerRemoved = false;
+  private _elementRemoved = false;
   /** @internal */
   private readonly _tabsContainer: TabsContainer;
   /** @internal */
@@ -301,7 +307,22 @@ export class Header extends EventEmitter {
    * @internal
    */
   destroy(): void {
-    this.emit('destroy');
+    if (this._isDestroyed && !this._destroyCleanupFailed) {
+      return;
+    }
+    this._isDestroyed = true;
+    let firstError: unknown;
+    const attempt = (action: () => void) => {
+      try {
+        action();
+      } catch (error) {
+        firstError ??= error;
+      }
+    };
+    if (!this._destroyEventEmitted) {
+      this._destroyEventEmitted = true;
+      attempt(() => this.emit('destroy'));
+    }
 
     this._popoutEvent = undefined;
     this._maximiseToggleEvent = undefined;
@@ -311,13 +332,33 @@ export class Header extends EventEmitter {
     this._componentFocusEvent = undefined;
     this._componentDragStartEvent = undefined;
 
-    this._tabsContainer.destroy();
+    if (!this._tabsDestroyed) {
+      attempt(() => {
+        this._tabsContainer.destroy();
+        this._tabsDestroyed = true;
+      });
+    }
 
-    globalThis.document.removeEventListener(
-      'mouseup',
-      this._documentMouseUpListener,
-    );
-    this._element.remove();
+    if (!this._documentMouseUpListenerRemoved) {
+      attempt(() => {
+        globalThis.document.removeEventListener(
+          'mouseup',
+          this._documentMouseUpListener,
+        );
+        this._documentMouseUpListenerRemoved = true;
+      });
+    }
+    if (!this._elementRemoved) {
+      attempt(() => {
+        this._element.remove();
+        this._elementRemoved = true;
+      });
+    }
+    if (firstError !== undefined) {
+      this._destroyCleanupFailed = true;
+      throw firstError;
+    }
+    this._destroyCleanupFailed = false;
   }
 
   /**

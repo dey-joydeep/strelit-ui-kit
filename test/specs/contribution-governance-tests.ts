@@ -78,7 +78,28 @@ function createPullRequestBody(
     '## Scope Justification',
     'The change is below the non-generated line threshold.',
     '## Independent Quality Review',
-    review,
+    [
+      review,
+      ...(risk === 'High'
+        ? [
+            'Coverage gaps: 0',
+            'Synthesis reviewer: Not applicable',
+            'Open Medium findings: 0',
+            'Closed Medium findings: 0',
+            'Accepted Medium findings: 0',
+            'Medium acceptance evidence: Not applicable',
+          ]
+        : []),
+    ].join('\n'),
+    '## Review Coverage Manifest',
+    risk === 'High'
+      ? [
+          'Path: src/ts/layout-manager.ts | Contract: layout behavior | Domains: Runtime behavior, lifecycle, and ownership; Public API, compatibility, and packaging | Assignments: Runtime behavior, lifecycle, and ownership => @reviewer-user; Public API, compatibility, and packaging => @reviewer-user | Adjacent: initialization and teardown | Tests: lifecycle tests',
+          'Path: test/specs/layout-lifecycle-tests.ts | Contract: lifecycle regression evidence | Domains: Tests and documentation | Assignments: Tests and documentation => @reviewer-user | Adjacent: layout lifecycle tests | Tests: self-validating governance fixture',
+        ].join('\n')
+      : 'Coverage manifest is not required for this non-high-risk change.',
+    '## Domain Discovery Reports',
+    'Domain discovery reports are not required for this non-large review.',
     '## Verification',
     '- [x] `npm run verify:pr`',
     'The command completed successfully.',
@@ -90,6 +111,11 @@ async function runPullRequestMetadataPolicy(
   files: readonly PullRequestFile[],
   reviews: readonly PullRequestReview[] = [],
   riskPolicyMissingAtBase = false,
+  comments: readonly {
+    readonly body: string;
+    readonly html_url: string;
+    readonly user: { readonly login: string };
+  }[] = [],
 ): Promise<string[]> {
   const workflow = readFileSync(
     resolve('.github/workflows/contribution-governance.yml'),
@@ -122,6 +148,7 @@ async function runPullRequestMetadataPolicy(
   };
   const listFiles = () => undefined;
   const listReviews = () => undefined;
+  const listComments = () => undefined;
   const riskPolicy = readFileSync(resolve('.github/change-risk.json'), 'utf8');
   const renderGitHubMarkdown = (markdownBody: string) =>
     markdown.render(
@@ -134,7 +161,11 @@ async function runPullRequestMetadataPolicy(
     );
   const github = {
     paginate: async (method: () => undefined) =>
-      method === listFiles ? files : reviews,
+      method === listFiles
+        ? files
+        : method === listReviews
+          ? reviews
+          : comments,
     rest: {
       markdown: {
         render: async ({ text: markdownBody }: { text: string }) => ({
@@ -142,6 +173,7 @@ async function runPullRequestMetadataPolicy(
         }),
       },
       pulls: { listFiles, listReviews },
+      issues: { listComments },
       repos: {
         getContent: async () => {
           if (riskPolicyMissingAtBase) {
@@ -168,6 +200,82 @@ async function runPullRequestMetadataPolicy(
   return failures.flatMap((failure) => failure.split('\n'));
 }
 
+function createLargeHighRiskBody(manifest: string, reports: string): string {
+  const review = [
+    'Review mode: **Independent**',
+    'Reviewer: @synthesis-user',
+    'Synthesis reviewer: @synthesis-user',
+    'Review scope: **Whole PR**',
+    'Review pass: **Fresh discovery**',
+    `Reviewed boundary: ${pullRequestHead}`,
+    'Coverage gaps: 0',
+    'Rubric result: **Pass**',
+    'Dimensions below 2: **0**',
+    'Verdict: **Pass**',
+    'Findings: Critical 0; High 0; Medium 0; Low 0',
+    'Open Critical/High findings: **0**',
+    'Open Medium findings: 0',
+    'Closed Medium findings: 0',
+    'Accepted Medium findings: 0',
+    'Review artifact: Synthesis review',
+    'Finding dispositions: No findings',
+    'Residual risks: No known residual risks',
+  ].join('\n');
+
+  return createPullRequestBody('High', review)
+    .replace(
+      'Regression tests were added for executable behavior.',
+      'The governance policy harness exercises this generated runtime fixture.',
+    )
+    .replace(
+      /## Review Coverage Manifest[\s\S]*?## Verification/,
+      `## Review Coverage Manifest\n\n${manifest}\n\n## Domain Discovery Reports\n\n${reports}\n\n## Verification`,
+    );
+}
+
+const runtimeDomain = 'Runtime behavior, lifecycle, and ownership';
+const publicApiDomain = 'Public API, compatibility, and packaging';
+
+function createCoverage(
+  paths: readonly string[],
+  domains: readonly string[] = [runtimeDomain, publicApiDomain],
+): string {
+  return paths
+    .flatMap((path) => domains.map((domain) => `${path} => ${domain}`))
+    .join('; ');
+}
+
+function createLargeHighRiskFixture(): {
+  body: string;
+  files: PullRequestFile[];
+  manifest: string;
+  reports: string[];
+} {
+  const files = Array.from({ length: 51 }, (_, index) => ({
+    filename: `src/ts/path-${index}.ts`,
+    changes: 1,
+  }));
+  const firstPaths = files.slice(0, 26).map((file) => file.filename);
+  const secondPaths = files.slice(26).map((file) => file.filename);
+  const manifest = files
+    .map((file, index) => {
+      const reviewer = index < 26 ? '@domain-one' : '@domain-two';
+      return `Path: ${file.filename} | Contract: runtime contract ${index} | Domains: Runtime behavior, lifecycle, and ownership; Public API, compatibility, and packaging | Assignments: Runtime behavior, lifecycle, and ownership => ${reviewer}; Public API, compatibility, and packaging => ${reviewer} | Adjacent: caller and cleanup paths | Tests: runtime regression suite`;
+    })
+    .join('\n');
+  const reports = [
+    `Reviewer: @domain-one | Base: base-sha | Head: ${pullRequestHead} | Paths: ${firstPaths.join('; ')} | Domains: ${runtimeDomain}; ${publicApiDomain} | Coverage: ${createCoverage(firstPaths)} | Adjacent: callers and cleanup | Commands: source inspection | Findings: No findings discovered | Uninspected: All assigned paths inspected`,
+    `Reviewer: @domain-two | Base: base-sha | Head: ${pullRequestHead} | Paths: ${secondPaths.join('; ')} | Domains: ${runtimeDomain}; ${publicApiDomain} | Coverage: ${createCoverage(secondPaths)} | Adjacent: callers and cleanup | Commands: source inspection | Findings: No findings discovered | Uninspected: All assigned paths inspected`,
+  ];
+
+  return {
+    body: createLargeHighRiskBody(manifest, reports.join('\n')),
+    files,
+    manifest,
+    reports,
+  };
+}
+
 describe('contribution governance workflow', () => {
   it('grandfathers only the known pre-policy commit subjects', () => {
     const workflow = readFileSync(
@@ -179,6 +287,8 @@ describe('contribution governance workflow', () => {
       'f23a006a99634a5aa9920b935ce5e35a880d9b9e',
       '17a5c0821aefcef62e9aa703b9fcb52bfb9d8d5d',
       'ce374cc1b27507057c8122fd25050f9e629b0480',
+      '5ec1bc7259e6700197bd2d877df1fa9ba139b94e',
+      '44c1b34246cd8db9c3e0bacafda27b6ae26b49da',
     ];
 
     for (const commit of grandfatheredCommits) {
@@ -581,10 +691,17 @@ describe('contribution governance workflow', () => {
   });
 
   it('behaviorally blocks high-risk self-review and accepts independent evidence', async () => {
-    const files = [
-      { filename: 'src/ts/layout-manager.ts', changes: 40 },
-      { filename: 'test/specs/layout-lifecycle-tests.ts', changes: 30 },
-    ];
+    const files = [{ filename: 'src/ts/layout-manager.ts', changes: 40 }];
+    const bodyFor = (review: string) =>
+      createPullRequestBody('High', review)
+        .replace(
+          '\nPath: test/specs/layout-lifecycle-tests.ts | Contract: lifecycle regression evidence | Domains: Tests and documentation | Assignments: Tests and documentation => @reviewer-user | Adjacent: layout lifecycle tests | Tests: self-validating governance fixture',
+          '',
+        )
+        .replace(
+          'Regression tests were added for executable behavior.',
+          'The existing lifecycle suite covers this policy-only fixture.',
+        );
     const selfReview = [
       'Review mode: **Self-review**',
       'Reviewer: Implementer',
@@ -602,7 +719,7 @@ describe('contribution governance workflow', () => {
       'Residual risks: No known residual risks',
     ].join('\n');
     const rejected = await runPullRequestMetadataPolicy(
-      createPullRequestBody('High', selfReview),
+      bodyFor(selfReview),
       files,
     );
 
@@ -615,7 +732,7 @@ describe('contribution governance workflow', () => {
       .replace('Reviewer: Implementer', 'Reviewer: @reviewer-user')
       .replace('Local self-review notes', 'GitHub review by reviewer-user');
     const fabricated = await runPullRequestMetadataPolicy(
-      createPullRequestBody('High', independentReview),
+      bodyFor(independentReview),
       files,
     );
 
@@ -624,7 +741,7 @@ describe('contribution governance workflow', () => {
     );
 
     const staleApproval = await runPullRequestMetadataPolicy(
-      createPullRequestBody('High', independentReview),
+      bodyFor(independentReview),
       files,
       [
         {
@@ -639,7 +756,7 @@ describe('contribution governance workflow', () => {
     );
 
     const supersededApproval = await runPullRequestMetadataPolicy(
-      createPullRequestBody('High', independentReview),
+      bodyFor(independentReview),
       files,
       [
         {
@@ -659,7 +776,7 @@ describe('contribution governance workflow', () => {
     );
 
     const accepted = await runPullRequestMetadataPolicy(
-      createPullRequestBody('High', independentReview),
+      bodyFor(independentReview),
       files,
       [
         {
@@ -671,6 +788,85 @@ describe('contribution governance workflow', () => {
     );
 
     expect(accepted).toEqual([]);
+  });
+
+  it('rejects incomplete per-path domain declarations', async () => {
+    const review = [
+      'Review mode: **Independent**',
+      'Reviewer: @reviewer-user',
+      'Review scope: **Whole PR**',
+      'Review pass: **Fresh discovery**',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 0; High 0; Medium 0; Low 0',
+      'Open Critical/High findings: **0**',
+      'Review artifact: Whole PR review',
+      'Finding dispositions: No findings',
+      'Residual risks: No known residual risks',
+    ].join('\n');
+    const body = createPullRequestBody('High', review).replace(
+      /## Review Coverage Manifest[\s\S]*?## Domain Discovery Reports/,
+      '## Review Coverage Manifest\n\nPath: package.json | Contract: package contract | Domains: Public API, compatibility, and packaging | Assignments: Public API, compatibility, and packaging => @reviewer-user | Adjacent: distribution metadata | Tests: package verification\n\n## Domain Discovery Reports',
+    );
+
+    const failures = await runPullRequestMetadataPolicy(
+      body,
+      [{ filename: 'package.json', changes: 1 }],
+      [
+        {
+          commit_id: pullRequestHead,
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+      ],
+    );
+
+    expect(failures).toContain(
+      'Coverage manifest path package.json must declare exactly these domains: Public API, compatibility, and packaging; Tooling, CI, and verification',
+    );
+  });
+
+  it('rejects coverage assigned to the PR author', async () => {
+    const review = [
+      'Review mode: **Independent**',
+      'Reviewer: @reviewer-user',
+      'Review scope: **Whole PR**',
+      'Review pass: **Fresh discovery**',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 0; High 0; Medium 0; Low 0',
+      'Open Critical/High findings: **0**',
+      'Review artifact: Whole PR review',
+      'Finding dispositions: No findings',
+      'Residual risks: No known residual risks',
+    ].join('\n');
+    const body = createPullRequestBody('High', review).replace(
+      'Runtime behavior, lifecycle, and ownership => @reviewer-user;',
+      'Runtime behavior, lifecycle, and ownership => @implementer-user;',
+    );
+
+    const failures = await runPullRequestMetadataPolicy(
+      body,
+      [
+        { filename: 'src/ts/layout-manager.ts', changes: 1 },
+        { filename: 'test/specs/layout-lifecycle-tests.ts', changes: 1 },
+      ],
+      [
+        {
+          commit_id: pullRequestHead,
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+      ],
+    );
+
+    expect(failures).toContain(
+      'Coverage manifest path src/ts/layout-manager.ts assigns review to the PR author.',
+    );
   });
 
   it('rejects patch-only or finding-closure evidence for high-risk work', async () => {
@@ -711,6 +907,349 @@ describe('contribution governance workflow', () => {
       'High-risk changes require Review pass: **Fresh discovery** after implementation and finding closure.',
     );
   });
+
+  it('rejects a large high-risk PR without complete domain coverage', async () => {
+    const review = [
+      'Review mode: **Independent**',
+      'Reviewer: @reviewer-user',
+      'Review scope: **Whole PR**',
+      'Review pass: **Fresh discovery**',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 0; High 0; Medium 0; Low 0',
+      'Open Critical/High findings: **0**',
+      'Review artifact: Whole PR review',
+      'Finding dispositions: No findings',
+      'Residual risks: No known residual risks',
+    ].join('\n');
+    const files = Array.from({ length: 51 }, (_, index) => ({
+      filename: `src/ts/path-${index}.ts`,
+      changes: 1,
+    }));
+
+    const failures = await runPullRequestMetadataPolicy(
+      createPullRequestBody('High', review),
+      files,
+      [
+        {
+          commit_id: pullRequestHead,
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+      ],
+    );
+
+    expect(failures).toContain(
+      'Large high-risk PRs require assignments to at least two independent domain discovery reviewers.',
+    );
+    expect(failures).toContain(
+      'Coverage manifest is missing changed path: src/ts/path-0.ts',
+    );
+  });
+
+  it('accepts complete large high-risk domain and synthesis evidence', async () => {
+    const { body, files } = createLargeHighRiskFixture();
+
+    const failures = await runPullRequestMetadataPolicy(body, files, [
+      {
+        commit_id: pullRequestHead,
+        state: 'APPROVED',
+        user: { login: 'synthesis-user' },
+      },
+    ]);
+
+    expect(failures).toEqual([]);
+  });
+
+  it('rejects duplicate domain discovery reports from one reviewer', async () => {
+    const fixture = createLargeHighRiskFixture();
+    const body = createLargeHighRiskBody(
+      fixture.manifest,
+      [...fixture.reports, fixture.reports[0]].join('\n'),
+    );
+
+    const failures = await runPullRequestMetadataPolicy(body, fixture.files);
+
+    expect(failures).toContain(
+      'Large high-risk PRs require exactly one domain discovery report per reviewer.',
+    );
+  });
+
+  it.each([
+    ['unassigned reviewer', '@unassigned-user'],
+    ['PR author', '@implementer-user'],
+  ])(
+    'does not count a report from the %s as a qualifying large-review reviewer',
+    async (_label, extraReporter) => {
+      const fixture = createLargeHighRiskFixture();
+      const allPaths = fixture.files.map((file) => file.filename);
+      const oneReviewerManifest = fixture.manifest.replaceAll(
+        '@domain-two',
+        '@domain-one',
+      );
+      const reports = [
+        `Reviewer: @domain-one | Base: base-sha | Head: ${pullRequestHead} | Paths: ${allPaths.join('; ')} | Domains: ${runtimeDomain}; ${publicApiDomain} | Coverage: ${createCoverage(allPaths)} | Adjacent: callers and cleanup | Commands: source inspection | Findings: No findings discovered | Uninspected: All assigned paths inspected`,
+        `Reviewer: ${extraReporter} | Base: base-sha | Head: ${pullRequestHead} | Paths: ${allPaths.join('; ')} | Domains: ${runtimeDomain}; ${publicApiDomain} | Coverage: ${createCoverage(allPaths)} | Adjacent: callers and cleanup | Commands: source inspection | Findings: No findings discovered | Uninspected: All assigned paths inspected`,
+      ].join('\n');
+
+      const failures = await runPullRequestMetadataPolicy(
+        createLargeHighRiskBody(oneReviewerManifest, reports),
+        fixture.files,
+        [
+          {
+            commit_id: pullRequestHead,
+            state: 'APPROVED',
+            user: { login: 'synthesis-user' },
+          },
+        ],
+      );
+
+      expect(failures).toContain(
+        'Large high-risk PRs require assignments to at least two independent domain discovery reviewers.',
+      );
+      expect(failures).toContain(
+        `Domain discovery report for ${extraReporter} has no non-author coverage assignment.`,
+      );
+    },
+  );
+
+  it.each([
+    [
+      'path',
+      (report: string) =>
+        report.replace(' | Domains:', '; src/ts/unassigned-path.ts | Domains:'),
+    ],
+    [
+      'domain',
+      (report: string) =>
+        report.replace(
+          'Public API, compatibility, and packaging | Coverage:',
+          'Public API, compatibility, and packaging; Tests and documentation | Coverage:',
+        ),
+    ],
+  ])(
+    'rejects a domain discovery report with an extra %s',
+    async (_label, alterReport) => {
+      const fixture = createLargeHighRiskFixture();
+      const reports = [alterReport(fixture.reports[0]), fixture.reports[1]];
+      const failures = await runPullRequestMetadataPolicy(
+        createLargeHighRiskBody(fixture.manifest, reports.join('\n')),
+        fixture.files,
+        [
+          {
+            commit_id: pullRequestHead,
+            state: 'APPROVED',
+            user: { login: 'synthesis-user' },
+          },
+        ],
+      );
+
+      expect(failures).toContain(
+        'Domain discovery report for @domain-one must exactly match its assigned paths, domains, and coverage pairs.',
+      );
+    },
+  );
+
+  it('rejects crossed path-domain assignments that make report scope overclaim a cross-product', async () => {
+    const fixture = createLargeHighRiskFixture();
+    const crossedManifest = fixture.manifest
+      .split('\n')
+      .map((line, index) => {
+        if (index === 0) {
+          return line.replace(
+            'Public API, compatibility, and packaging => @domain-one',
+            'Public API, compatibility, and packaging => @domain-two',
+          );
+        }
+        if (index === 26) {
+          return line.replace(
+            'Public API, compatibility, and packaging => @domain-two',
+            'Public API, compatibility, and packaging => @domain-one',
+          );
+        }
+        return line;
+      })
+      .join('\n');
+    const firstPaths = fixture.files.slice(0, 27).map((file) => file.filename);
+    const secondPaths = [
+      fixture.files[0].filename,
+      ...fixture.files.slice(26).map((file) => file.filename),
+    ];
+    const reports = [
+      `Reviewer: @domain-one | Base: base-sha | Head: ${pullRequestHead} | Paths: ${firstPaths.join('; ')} | Domains: ${runtimeDomain}; ${publicApiDomain} | Coverage: ${createCoverage(firstPaths)} | Adjacent: callers and cleanup | Commands: source inspection | Findings: No findings discovered | Uninspected: All assigned paths inspected`,
+      `Reviewer: @domain-two | Base: base-sha | Head: ${pullRequestHead} | Paths: ${secondPaths.join('; ')} | Domains: ${runtimeDomain}; ${publicApiDomain} | Coverage: ${createCoverage(secondPaths)} | Adjacent: callers and cleanup | Commands: source inspection | Findings: No findings discovered | Uninspected: All assigned paths inspected`,
+    ].join('\n');
+
+    const failures = await runPullRequestMetadataPolicy(
+      createLargeHighRiskBody(crossedManifest, reports),
+      fixture.files,
+      [
+        {
+          commit_id: pullRequestHead,
+          state: 'APPROVED',
+          user: { login: 'synthesis-user' },
+        },
+      ],
+    );
+
+    expect(failures).toContain(
+      'Domain discovery report for @domain-one must exactly match its assigned paths, domains, and coverage pairs.',
+    );
+    expect(failures).toContain(
+      'Domain discovery report for @domain-two must exactly match its assigned paths, domains, and coverage pairs.',
+    );
+  });
+
+  it('classifies src documentation with exactly tooling and test/documentation domains', async () => {
+    const review = [
+      'Review mode: **Independent**',
+      'Reviewer: @reviewer-user',
+      'Review scope: **Whole PR**',
+      'Review pass: **Fresh discovery**',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 0; High 0; Medium 0; Low 0',
+      'Open Critical/High findings: **0**',
+      'Review artifact: Whole PR review',
+      'Finding dispositions: No findings',
+      'Residual risks: No known residual risks',
+    ].join('\n');
+    const runtimeManifest =
+      'Path: src/TOOLCHAIN.md | Contract: toolchain documentation | Domains: Runtime behavior, lifecycle, and ownership; Public API, compatibility, and packaging | Assignments: Runtime behavior, lifecycle, and ownership => @reviewer-user; Public API, compatibility, and packaging => @reviewer-user | Adjacent: build scripts and contributor guidance | Tests: governance policy suite';
+    const exactManifest =
+      'Path: src/TOOLCHAIN.md | Contract: toolchain documentation | Domains: Tooling, CI, and verification; Tests and documentation | Assignments: Tooling, CI, and verification => @reviewer-user; Tests and documentation => @reviewer-user | Adjacent: build scripts and contributor guidance | Tests: governance policy suite';
+    const body = createPullRequestBody('High', review);
+    const withManifest = (manifest: string) =>
+      body.replace(
+        /## Review Coverage Manifest[\s\S]*?## Domain Discovery Reports/,
+        `## Review Coverage Manifest\n\n${manifest}\n\n## Domain Discovery Reports`,
+      );
+    const reviews = [
+      {
+        commit_id: pullRequestHead,
+        state: 'APPROVED',
+        user: { login: 'reviewer-user' },
+      },
+    ];
+
+    const rejected = await runPullRequestMetadataPolicy(
+      withManifest(runtimeManifest),
+      [{ filename: 'src/TOOLCHAIN.md', changes: 5 }],
+      reviews,
+    );
+    const accepted = await runPullRequestMetadataPolicy(
+      withManifest(exactManifest),
+      [{ filename: 'src/TOOLCHAIN.md', changes: 5 }],
+      reviews,
+    );
+
+    expect(rejected).toContain(
+      'Coverage manifest path src/TOOLCHAIN.md must declare exactly these domains: Tooling, CI, and verification; Tests and documentation',
+    );
+    expect(accepted).toEqual([]);
+  });
+
+  it('rejects unresolved Medium findings for high-risk work', async () => {
+    const review = [
+      'Review mode: **Independent**',
+      'Reviewer: @reviewer-user',
+      'Review scope: **Whole PR**',
+      'Review pass: **Fresh discovery**',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 0; High 0; Medium 1; Low 0',
+      'Open Critical/High findings: **0**',
+      'Open Medium findings: 1',
+      'Closed Medium findings: 0',
+      'Accepted Medium findings: 0',
+      'Review artifact: Whole PR review',
+      'Finding dispositions: One Medium remains open',
+      'Residual risks: Open Medium finding',
+    ].join('\n');
+
+    const failures = await runPullRequestMetadataPolicy(
+      createPullRequestBody('High', review),
+      [{ filename: 'src/ts/layout-manager.ts', changes: 12 }],
+    );
+
+    expect(failures).toContain(
+      'High-risk changes cannot have open Medium findings.',
+    );
+  });
+
+  it.each([
+    ['missing', [], false],
+    [
+      'wrong author',
+      [
+        {
+          body: 'Accepted Medium findings: 1\nRationale: bounded risk',
+          html_url: 'https://github.test/comment/1',
+          user: { login: 'someone-else' },
+        },
+      ],
+      false,
+    ],
+    [
+      'matching author evidence',
+      [
+        {
+          body: 'Accepted Medium findings: 1\nRationale: bounded risk',
+          html_url: 'https://github.test/comment/1',
+          user: { login: 'implementer-user' },
+        },
+      ],
+      true,
+    ],
+  ] as const)(
+    'validates %s for accepted Medium findings',
+    async (_label, comments, accepted) => {
+      const review = [
+        'Review mode: **Independent**',
+        'Reviewer: @reviewer-user',
+        'Review scope: **Whole PR**',
+        'Review pass: **Fresh discovery**',
+        `Reviewed boundary: ${pullRequestHead}`,
+        'Rubric result: **Pass**',
+        'Dimensions below 2: **0**',
+        'Verdict: **Pass**',
+        'Findings: Critical 0; High 0; Medium 1; Low 0',
+        'Open Critical/High findings: **0**',
+        'Open Medium findings: 0',
+        'Closed Medium findings: 0',
+        'Accepted Medium findings: 1',
+        'Medium acceptance evidence: https://github.test/comment/1',
+        'Review artifact: Whole PR review',
+        'Finding dispositions: One Medium accepted',
+        'Residual risks: Accepted bounded risk',
+      ].join('\n');
+      const failures = await runPullRequestMetadataPolicy(
+        createPullRequestBody('High', review),
+        [{ filename: 'src/ts/layout-manager.ts', changes: 12 }],
+        [
+          {
+            commit_id: pullRequestHead,
+            state: 'APPROVED',
+            user: { login: 'reviewer-user' },
+          },
+        ],
+        false,
+        comments,
+      );
+
+      expect(
+        failures.includes(
+          'Accepted Medium findings require linked acceptance evidence from the PR author with the matching count and rationale.',
+        ),
+      ).toBe(!accepted);
+    },
+  );
 
   it('behaviorally requires and accepts low-risk self-review', async () => {
     const review = [
@@ -813,6 +1352,13 @@ describe('contribution governance workflow', () => {
     expect(workflow).toContain('latestDecisiveReview');
     expect(workflow).toContain('review.user.login.toLowerCase() !== author');
     expect(ci).toContain('fetch-depth: 0');
+    expect(ci).toContain('github.event.pull_request.base.sha ||');
+    expect(ci).toContain(
+      "github.ref == format('refs/heads/{0}', github.event.repository.default_branch)",
+    );
+    expect(ci).toContain(
+      "format('origin/{0}', github.event.repository.default_branch)",
+    );
     expect(ci).toContain("github.ref_type == 'tag' && 'high'");
   });
 });
@@ -856,6 +1402,8 @@ describe('risk-based PR verification', () => {
     ]);
     expect(changeDiscipline.verificationScriptsForRisk('medium')).toEqual([
       'typecheck',
+      'typecheck:bundle:prepare',
+      'typecheck:bundle',
       'test',
       'lint',
       'format:check',
