@@ -36,6 +36,35 @@ executable is not a package dependency. `npm run verify:pr` includes it for
 high-risk changes after the ordered pipeline and API demo build. CI, release,
 and migration environments must install a supported browser.
 
+## Frozen Candidate Review Gate
+
+Verification is necessary evidence but does not establish review coverage. For
+a high-risk pull request, use this final sequence:
+
+1. Complete implementation, focused checks, self-review, and finding closure.
+2. Commit the candidate so the final review targets an immutable full SHA.
+3. Run `npm run verify:pr` against that candidate.
+4. Complete the path-and-domain coverage manifest required by `AGENTS.md`.
+5. For a large high-risk pull request, complete independent domain discovery
+   across at least two unused reviewer contexts.
+6. Validate and disposition every finding, fixing confirmed defects and
+   rerunning affected checks. A Medium-risk acceptance must link to an existing
+   current-PR comment from the PR author that records the accepted count and
+   rationale.
+7. Freeze the resulting SHA and rerun `npm run verify:pr` if the head changed.
+8. For a large high-risk pull request, obtain an unused independent synthesis
+   review over the whole PR and exact frozen SHA. For other high-risk pull
+   requests, obtain the normal independent fresh whole-PR review.
+9. Obtain approval on that same SHA from the synthesis reviewer for a large
+   high-risk pull request or from the declared fresh-discovery reviewer
+   otherwise.
+
+Any new commit invalidates synthesis and approval. New external findings reopen
+the gate until validated and dispositioned. Once the unchanged SHA has complete
+coverage, passing verification, an applicable final-review `Pass`, and approval,
+do not repeat whole-PR review without new code or new external evidence. The
+applicable final review is synthesis only for a large high-risk pull request.
+
 ## Changing The Runner
 
 Keep stages deterministic, non-interactive, and cross-platform. Add a unique ID and monotonically numbered log, preserve fail-fast behavior, and update this document whenever order or semantics change. Do not add commands that modify reviewed source or snapshots to the verification path.

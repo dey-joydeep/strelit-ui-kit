@@ -16,6 +16,74 @@ deeper `AGENTS.md` files, such as `scripts/AGENTS.md`, add scoped requirements.
 5. Read `docs/architecture/product-evolution-policy.md` and apply its active phase
 6. Keep the modernization direction intact unless the user explicitly changes it
 
+## Autonomous Scope Control
+
+Work autonomously for local, reversible changes that are in scope. Do not pause
+merely because additional improvements, enforcement layers, or follow-up work
+are discovered, and do not require the user to supervise routine implementation
+decisions.
+
+Before editing, establish an internal **scope lock** containing:
+
+- The smallest coherent outcome requested by the user
+- The files or subsystems reasonably expected to change
+- The verification appropriate to that outcome
+- The condition that ends the task
+- Work explicitly excluded from the current task
+
+The scope lock is an execution control, not a request for confirmation. Make
+reasonable assumptions and continue unless a missing decision meets one of the
+pause conditions below.
+
+When work outside the scope lock is discovered:
+
+1. Complete the smallest coherent requested outcome
+2. Continue autonomously when the expansion is necessary, local, reversible,
+   and clearly implied by that outcome
+3. Do not silently add optional enforcement, architecture, permissions,
+   integrations, external configuration, or unrelated cleanup
+4. Record useful non-blocking expansion as follow-up work in the final handoff
+5. If an expansion has already started but is not required, stop expanding it;
+   preserve user work and leave a coherent, clearly reported boundary
+
+Apply an autonomous circuit breaker when any of these occurs:
+
+- 30 minutes or more have been spent without completing the original outcome
+- The change grows by 300 unexpected lines or more
+- More than three files outside the expected scope would need modification
+- A final fresh-discovery review would need to restart more than once
+
+The circuit breaker MUST NOT automatically halt for user input. Narrow back to
+the requested outcome, complete and verify that outcome when possible, and move
+the additional work to explicit follow-ups. If narrowing cannot preserve a
+correct result, report the task as incomplete with the concrete blocker.
+
+Request user input only when progress requires:
+
+- An irreversible or destructive action
+- A write to external systems, new credentials, or expanded permissions not
+  already authorized by the task
+- A materially different product or architecture decision
+- Resolution of genuine ambiguity where reasonable alternatives produce
+  materially different user-visible outcomes
+
+For governance changes, use the committed `HEAD` version of repository policy
+as the trusted baseline. Draft or uncommitted governance rules do not govern
+their own implementation and become active only after they are committed. A
+request to change policy text does not implicitly authorize executable CI
+enforcement, workflow permissions, or repository settings; treat those as
+separate follow-up stages unless they are explicitly requested.
+
+Finding-closure reviews may repeat for identified findings. Perform only one
+final fresh-discovery pass for an unchanged candidate. A finding outside the
+scope lock becomes follow-up work unless it invalidates the requested outcome
+or identifies a Critical or High defect in code changed for that outcome. Do
+not repeat final review without a changed candidate or new external evidence.
+
+Use precise completion labels in the handoff. Distinguish policy text added,
+local enforcement implemented, GitHub enforcement implemented, repository
+rules configured, and pull request merge-ready; none implies the next.
+
 ## Mandatory Change Discipline
 
 These rules apply to human- and AI-authored changes. A change is not complete
@@ -64,6 +132,74 @@ high-risk change incomplete.
 For a high-risk pull request, the declared reviewer MUST also approve the
 current head commit using a GitHub identity different from the PR author. A new
 head commit invalidates that approval and requires re-review.
+
+### Definitive High-Risk Pull Request Gate
+
+A high-risk pull request cannot be declared merge-ready from a dirty working
+tree. The candidate MUST be frozen at a full commit SHA before the final review
+gate. If committing has not been authorized, report that the final gate remains
+pending instead of claiming completion.
+
+Before final review, create a coverage manifest that maps every changed path to
+its behavioral contract, risk domains and reviewer assignment for each domain,
+adjacent call paths, and relevant tests. The applicable risk domains are:
+
+- Runtime behavior, lifecycle, and ownership
+- Migration, configuration, and persistence
+- Public API, compatibility, and packaging
+- Tooling, CI, and verification
+- Tests and documentation
+
+For a pull request, record the manifest in the PR body's `Review Coverage
+Manifest` section using the machine-readable format in the pull request
+template. Every changed path MUST have exactly one entry listing its behavioral
+contract, all applicable domains, one independent reviewer assignment per
+domain, adjacent-call-path evidence, and test evidence. Multiple domains in one
+path entry may be assigned to different reviewers. `Coverage gaps` is the
+numeric count of missing or invalid entries and MUST be zero for `Pass`.
+
+A pull request is a **large high-risk pull request** when it changes more than
+50 paths, exceeds 1,000 non-generated changed lines, or spans three or more of
+the risk domains above. A single general-purpose reviewer cannot satisfy the
+discovery requirement for a large high-risk pull request. Assign every
+applicable domain across at least two unused independent reviewer contexts.
+Each reviewer MUST report the exact base and head SHAs, paths and domains
+inspected, adjacent call paths inspected, commands run, findings, and anything
+not inspected, using the machine-readable `Domain Discovery Reports` section in
+the pull request template. A reviewer MUST NOT issue `Pass` when a changed path
+or applicable domain is absent from the coverage record.
+
+Domain discovery reviewers MUST work independently and MUST NOT receive another
+reviewer's findings or intended conclusion. After domain findings are validated
+and closed, an unused independent synthesis reviewer MUST inspect the frozen
+whole PR, coverage manifest, verification evidence, and finding dispositions.
+The synthesis review is `Review scope: Whole PR` and `Review pass: Fresh
+discovery`; it cannot be replaced by aggregating the domain verdicts.
+
+Validate every new finding before editing. Record a reproduction or concrete
+source-to-failure path, the violated invariant, the broader defect class, and a
+disposition of confirmed, false positive, duplicate, or accepted risk.
+Confirmed behavioral defects require regression coverage. Medium findings MUST
+be fixed or explicitly accepted by the user with rationale. For a pull request,
+accepted Medium findings require a linked, existing comment on that PR from the
+PR author stating the accepted count and rationale; body text alone is not
+acceptance evidence. Critical and High findings cannot be accepted for
+completion.
+
+The final gate passes only when the frozen SHA passes required verification,
+every path and domain has recorded coverage, every finding has a disposition,
+no Critical or High finding remains, no unaccepted Medium finding remains, the
+required fresh whole-PR reviewer returns `Pass`, and the required independent
+GitHub approval targets the same SHA. For a large high-risk pull request, the
+unused synthesis reviewer is that final reviewer and MUST provide the GitHub
+approval. For other high-risk pull requests, the declared fresh-discovery
+reviewer provides the approval. New commits invalidate final review and
+approval. New external findings against the frozen SHA reopen the gate until
+validated and dispositioned.
+
+Once a frozen SHA satisfies this gate, do not request repeated whole-PR reviews
+without a new commit or new external evidence. This is the stopping rule for
+the review cycle.
 
 For a bug or PR review finding, the implementer MUST:
 

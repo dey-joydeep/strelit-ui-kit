@@ -30,6 +30,57 @@ commit using a GitHub identity different from the PR author. Repository text can
 record agent review evidence, but self-attested text alone cannot prove
 independence.
 
+## Review Scale And Coverage
+
+Final high-risk review uses a frozen commit SHA. A dirty working-tree review can
+support iteration or finding closure but cannot establish merge readiness.
+
+Before discovery, create a coverage manifest mapping every changed path to its
+contract, risk domain, adjacent call paths, relevant tests, and reviewer. Use
+the risk domains defined in `AGENTS.md`. A review record must identify anything
+not inspected; an unexplained coverage gap prevents `Pass`. Pull requests use
+the machine-readable `Review Coverage Manifest` format from the PR template so
+reviewers can verify exact path coverage, applicable domains, per-domain
+reviewer assignments, and substantive adjacent-path and test evidence.
+For large high-risk pull requests, the machine-readable `Domain Discovery
+Reports` section must also bind every declared domain reviewer to the frozen
+base and head, exact assigned paths and domains, adjacent call paths, commands,
+findings, and uninspected scope.
+
+A large high-risk pull request changes more than 50 paths, exceeds 1,000
+non-generated changed lines, or spans at least three risk domains. It requires:
+
+1. At least two unused independent reviewer contexts assigned across all
+   applicable domains
+2. Independent domain discovery without sharing findings or intended
+   conclusions between discovery reviewers
+3. Validation and disposition of every finding before fixes are accepted
+4. Finding closure after confirmed defects are fixed
+5. An unused independent synthesis reviewer performing fresh whole-PR
+   discovery on the frozen SHA
+
+The synthesis reviewer inspects the complete diff, coverage manifest, domain
+reports, verification, and dispositions. Domain verdict aggregation does not
+replace synthesis, and a single general-purpose reviewer cannot pass a large
+high-risk pull request. The synthesis reviewer is the declared final reviewer
+and must provide the required independent GitHub approval on the frozen SHA.
+For a high-risk pull request that is not large, the normal fresh whole-PR
+reviewer remains the declared reviewer and approver; no additional synthesis
+context is required.
+
+Medium findings must be closed or explicitly accepted. Acceptance requires a
+linked, existing comment on the current PR from its author that states the
+accepted Medium count and rationale; a URL-shaped string in the PR body is not
+sufficient evidence.
+
+Any new commit invalidates synthesis and GitHub approval. New external findings
+on the frozen SHA reopen the gate until validated and dispositioned. Once the
+same frozen SHA has complete coverage, successful verification, an applicable
+final-review `Pass`, and required approval, repeated reviews are not required
+without new code or new external evidence. For a large high-risk pull request,
+the applicable final review is synthesis; otherwise it is the normal fresh
+whole-PR review.
+
 ## Severity
 
 - **Critical**: Data loss, security compromise, destructive behavior, or a
@@ -72,6 +123,7 @@ a blocking finding or failed hard gate.
 | Test strength             | Does a regression test fail without the fix? Are negative, boundary, compatibility, and cleanup paths covered without weakened assertions?                                                                                         |
 | Scope and maintainability | Is the diff the smallest coherent change, free of unrelated cleanup and duplicated sources of truth?                                                                                                                               |
 | Verification evidence     | Did focused checks and the risk-appropriate pipeline complete successfully without unexpected skips or unhandled errors?                                                                                                           |
+| Review coverage           | Does every changed path and applicable risk domain have an assigned independent reviewer, adjacent-call-path evidence, and an explicit inspected or not-inspected record?                                                          |
 | Residual risk             | Are unsupported cases, verification limitations, and accepted risks concrete and visible?                                                                                                                                          |
 
 ## Hard Gates
@@ -85,7 +137,13 @@ A change cannot receive a `Pass` verdict when any of these conditions is true:
 - Required verification failed, was unexpectedly skipped, or did not run.
 - Diagnostics or assertions were suppressed to obtain a pass.
 - A high-risk change lacks an independent review.
+- A large high-risk pull request relies on one general-purpose reviewer, lacks
+  complete path/domain coverage, or lacks an independent synthesis review.
 - Review findings lack an explicit disposition and supporting evidence.
+- A Medium finding remains without a fix or explicit user acceptance with
+  rationale.
+- The final review targets a dirty working tree or a SHA other than the current
+  pull-request head.
 
 ## Required Review Record
 
@@ -96,11 +154,16 @@ The independent reviewer records:
 3. Reviewed commit or diff boundary
 4. Review scope (`Whole PR` or `Patch`) and pass type (`Fresh discovery` or
    `Finding closure`)
-5. Scores and rationale for each applicable dimension
-6. Findings with severity and file/line evidence
-7. Disposition of findings after the implementer responds
-8. Residual risks and verification limitations
-9. Final verdict: `Pass`, `Changes requested`, or `Blocked`
+5. Change scale and applicable risk domains
+6. Coverage-manifest reference and paths, domains, adjacent call paths, tests,
+   and uninspected areas owned by the reviewer
+7. Domain-discovery reviewer identities and synthesis-reviewer identity when
+   the large-change gate applies
+8. Scores and rationale for each applicable dimension
+9. Findings with severity and file/line evidence
+10. Finding validation evidence and disposition after the implementer responds
+11. Residual risks and verification limitations
+12. Final verdict: `Pass`, `Changes requested`, or `Blocked`
 
 Disposable detailed reports belong in `.tmp/`. The PR body must retain the
 review identity, artifact reference, verdict, open-finding count, dispositions,
