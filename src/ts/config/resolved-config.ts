@@ -229,12 +229,23 @@ export function createResolvedStackItemConfigCopy(
   original: ResolvedStackItemConfig,
   content?: ResolvedComponentItemConfig[],
 ): ResolvedStackItemConfig {
+  const copiedContent =
+    content !== undefined
+      ? createResolvedStackItemConfigContentCopy(content)
+      : createResolvedStackItemConfigContentCopy(original.content);
+  const activeItemIndex =
+    content === undefined
+      ? original.activeItemIndex
+      : copiedContent.length === 0
+        ? undefined
+        : original.activeItemIndex !== undefined &&
+            original.activeItemIndex >= 0 &&
+            original.activeItemIndex < copiedContent.length
+          ? original.activeItemIndex
+          : 0;
   const result: ResolvedStackItemConfig = {
     type: original.type,
-    content:
-      content !== undefined
-        ? createResolvedStackItemConfigContentCopy(content)
-        : createResolvedStackItemConfigContentCopy(original.content),
+    content: copiedContent,
     size: original.size,
     sizeUnit: original.sizeUnit,
     minSize: original.minSize,
@@ -242,7 +253,7 @@ export function createResolvedStackItemConfigCopy(
     id: original.id,
     maximised: original.maximised,
     isClosable: original.isClosable,
-    activeItemIndex: original.activeItemIndex,
+    activeItemIndex,
     header: createResolvedHeaderedItemConfigHeaderCopy(original.header),
   };
   return result;
@@ -280,7 +291,7 @@ export function createResolvedStackItemConfigDefault(): ResolvedStackItemConfig 
     id: resolvedItemConfigDefaults.id,
     maximised: resolvedHeaderedItemConfigDefaultMaximised,
     isClosable: resolvedItemConfigDefaults.isClosable,
-    activeItemIndex: resolvedStackItemConfigDefaultActiveItemIndex,
+    activeItemIndex: undefined,
     header: undefined,
   };
   return result;

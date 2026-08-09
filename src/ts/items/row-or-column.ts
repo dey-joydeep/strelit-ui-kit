@@ -105,6 +105,8 @@ export class RowOrColumn extends ContentItem {
   private _splitterMinPosition: number | null;
   /** @internal */
   private _splitterMaxPosition: number | null;
+  /** Deferred resize scheduled after a splitter drag completes. */
+  private _resizeFrame: number | undefined;
 
   /** @internal */
   constructor(
@@ -142,6 +144,49 @@ export class RowOrColumn extends ContentItem {
       default:
         throw new AssertError('ROCCCT00925');
     }
+  }
+
+  /** @internal */
+  override destroy(): void {
+    if (this._isDestroyed && !this._destroyCleanupFailed) {
+      return;
+    }
+
+    let firstError: unknown;
+    const attempt = (action: () => void) => {
+      try {
+        action();
+      } catch (error) {
+        firstError ??= error;
+      }
+    };
+    if (this._resizeFrame !== undefined) {
+      globalThis.cancelAnimationFrame(this._resizeFrame);
+      this._resizeFrame = undefined;
+    }
+    const remainingSplitters: Splitter[] = [];
+    for (const splitter of this._splitter) {
+      let destroyed = false;
+      attempt(() => {
+        splitter.destroy();
+        destroyed = true;
+      });
+      if (!destroyed) {
+        remainingSplitters.push(splitter);
+      }
+    }
+    this._splitter.length = 0;
+    this._splitter.push(...remainingSplitters);
+    if (this._resizeFrame !== undefined) {
+      globalThis.cancelAnimationFrame(this._resizeFrame);
+      this._resizeFrame = undefined;
+    }
+    attempt(() => super.destroy());
+    if (firstError !== undefined) {
+      this._destroyCleanupFailed = true;
+      throw firstError;
+    }
+    this._destroyCleanupFailed = false;
   }
 
   /** Creates component. */
@@ -862,7 +907,15 @@ export class RowOrColumn extends ContentItem {
       items.after.size = (1 - splitterPositionInRange) * totalRelativeSize;
 
       this._splitterPosition = null;
-      globalThis.requestAnimationFrame(() => this.updateSize(false));
+      if (this._resizeFrame !== undefined) {
+        globalThis.cancelAnimationFrame(this._resizeFrame);
+      }
+      this._resizeFrame = globalThis.requestAnimationFrame(() => {
+        this._resizeFrame = undefined;
+        if (!this._isDestroyed) {
+          this.updateSize(false);
+        }
+      });
     }
   }
 }

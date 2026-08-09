@@ -82,12 +82,12 @@ export class TabsContainer {
    * Creates a new tab and associates it with a contentItem
    * @param index - The position of the tab
    */
-  createTab(componentItem: ComponentItem, index: number): void {
+  createTab(componentItem: ComponentItem, index: number): Tab | undefined {
     //If there's already a tab relating to the
     //content item, don't do anything
     for (let i = 0; i < this._tabs.length; i++) {
       if (this._tabs[i].componentItem === componentItem) {
-        return;
+        return undefined;
       }
     }
 
@@ -111,6 +111,8 @@ export class TabsContainer {
     } else {
       this._element.appendChild(tab.element);
     }
+
+    return tab;
   }
 
   removeTab(componentItem: ComponentItem): void {

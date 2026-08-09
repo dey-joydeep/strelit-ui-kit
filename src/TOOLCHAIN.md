@@ -4,10 +4,9 @@
 
 ### JS Code
 
-- Use up-to-date JavaScript, with an option to upgrade to typescript
+- Author strict TypeScript and target the repository's supported modern runtime
 - Produce modern CommonJS + ESM output from TypeScript source
 - Keep build outputs simple and fast enough for local iteration
-- Produce an ES5 + UMD bundle to consume baremetal
 - Do **not** bundle any dependencies.
 
 ### Styles
@@ -20,16 +19,16 @@
 ## Idea
 
 - Prefer `tsup` for library JavaScript output, `tsc` for type declarations, and `Vite` only for the demo app
-- Once upgrade to TS is done -> replace babel-loader by ts-loader
-- Use less/sass-loader to transpile styles.
+- Use the repository CSS build script for Less output and preserve distributable
+  Sass sources without introducing webpack loaders.
 - Ship it roughly in this directory structure
 
 ---
 
 - root
   - src (input code)
-    - js
-      - LayoutManager.js
+    - ts
+      - layout-manager.ts
     - less
       - base.less
       - theme-dark.less
@@ -38,17 +37,11 @@
   - dist (output products)
     - css
       - strelit.css
-    - umd (completely bundled variant)
-      - strelit.min.js
-      - strelit.min.js.map
-      - strelit.js
-    - module (ES5 code, ESM modules)
+    - cjs
       - index.js
-      - js
-        - LayoutManager.js
-    - es2015 (ES6 code, ESM modules)
-      - index.js
-      - js
-        - LayoutManager.js
+    - esm
+      - index.mjs
+    - types
+      - index.d.ts
 
 ---

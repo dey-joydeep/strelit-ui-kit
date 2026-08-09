@@ -17,6 +17,9 @@ export type EventHubChildEventDetail = {
   eventName: string;
   args: unknown[];
 };
+type EventHubPropagationEventDetail = EventHubChildEventDetail & {
+  originLayoutManager?: LayoutManager;
+};
 /** @internal */
 export type EventHubChildEventInit = CustomEventInit<EventHubChildEventDetail>;
 
@@ -37,8 +40,8 @@ declare global {
  *
  * - Propagate events from this layout to the parent layout
  *   - Repeat until the event arrived at the root layout
- * - Propagate events to this layout and to all children
- *   - Repeat until all layouts got the event
+ * - Propagate events to every layout except the originating layout
+ *   - Repeat until every other layout got the event
  *
  * **WARNING**: Only userBroadcast events are propagated between windows.
  * This means the you have to take care of propagating state changes between windows yourself.
@@ -88,12 +91,13 @@ export class EventHub extends EventEmitter {
   }
 
   /**
-   * Broadcasts a message to all other currently opened windows.
+   * Broadcasts a message to all other currently opened windows. The sender
+   * does not receive its own broadcast.
    * @public
    */
   emitUserBroadcast(...args: EventEmitterUnknownParams): void {
     // Step 1: Bubble up the event
-    this.handleUserBroadcastEvent('userBroadcast', args);
+    this.handleUserBroadcastEvent('userBroadcast', args, this._layoutManager);
   }
 
   /**
@@ -111,14 +115,18 @@ export class EventHub extends EventEmitter {
    * Internal processor to process local events.
    * @internal
    */
-  private handleUserBroadcastEvent(eventName: string, args: unknown[]) {
+  private handleUserBroadcastEvent(
+    eventName: string,
+    args: unknown[],
+    originLayoutManager: LayoutManager,
+  ) {
     if (this._layoutManager.isSubWindow) {
       // We are a sub window and received an event from one of our children.
       // So propagate it to the Root.
-      this.propagateToParent(eventName, args);
+      this.propagateToParent(eventName, args, originLayoutManager);
     } else {
       // We are the root window, propagate it to the subtree below us.
-      this.propagateToThisAndSubtree(eventName, args);
+      this.propagateToThisAndSubtree(eventName, args, originLayoutManager);
     }
   }
 
@@ -127,7 +135,7 @@ export class EventHub extends EventEmitter {
    * @internal
    */
   private onEventFromChild(event: CustomEvent<EventHubChildEventDetail>) {
-    const detail = event.detail;
+    const detail = event.detail as EventHubPropagationEventDetail;
     const isOwnedChild = this._layoutManager.openPopouts.some((popout) => {
       try {
         return popout.getStrelitInstance() === detail.layoutManager;
@@ -139,7 +147,11 @@ export class EventHub extends EventEmitter {
       return;
     }
 
-    this.handleUserBroadcastEvent(detail.eventName, detail.args);
+    this.handleUserBroadcastEvent(
+      detail.eventName,
+      detail.args,
+      detail.originLayoutManager ?? detail.layoutManager,
+    );
   }
 
   /**
@@ -147,9 +159,14 @@ export class EventHub extends EventEmitter {
    * it on the parent's DOM window
    * @internal
    */
-  private propagateToParent(eventName: string, args: unknown[]) {
-    const detail: EventHubChildEventDetail = {
+  private propagateToParent(
+    eventName: string,
+    args: unknown[],
+    originLayoutManager: LayoutManager,
+  ) {
+    const detail: EventHubPropagationEventDetail = {
       layoutManager: this._layoutManager,
+      originLayoutManager,
       eventName,
       args: args,
     };
@@ -176,8 +193,14 @@ export class EventHub extends EventEmitter {
    * Propagate events to the whole subtree under this event hub.
    * @internal
    */
-  private propagateToThisAndSubtree(eventName: string, args: unknown[]) {
-    this.emitUnknown(eventName, ...args);
+  private propagateToThisAndSubtree(
+    eventName: string,
+    args: unknown[],
+    originLayoutManager: LayoutManager,
+  ) {
+    if (this._layoutManager !== originLayoutManager) {
+      this.emitUnknown(eventName, ...args);
+    }
     for (let i = 0; i < this._layoutManager.openPopouts.length; i++) {
       let childLayout: LayoutManager | undefined;
       try {
@@ -185,15 +208,29 @@ export class EventHub extends EventEmitter {
       } catch (error) {
         if (
           !(error instanceof UnexpectedNullError) &&
-          !(error instanceof UnexpectedUndefinedError)
+          !(error instanceof UnexpectedUndefinedError) &&
+          !isCrossOriginAccessError(error)
         ) {
           throw error;
         }
         // A newly opened child does not expose its layout until initialization.
       }
       if (childLayout !== undefined) {
-        childLayout.eventHub.propagateToThisAndSubtree(eventName, args);
+        childLayout.eventHub.propagateToThisAndSubtree(
+          eventName,
+          args,
+          originLayoutManager,
+        );
       }
     }
   }
+}
+
+function isCrossOriginAccessError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    error.name === 'SecurityError'
+  );
 }

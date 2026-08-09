@@ -251,7 +251,7 @@ function minifyKey(value: string): string {
 
 function unminifyKey(key: string): string {
   if (key.length === 1) {
-    return configMinifierKeys[parseInt(key, 36)];
+    return configMinifierKeys[parseInt(key, 36)] ?? key;
   }
 
   if (key.startsWith('______')) {
@@ -305,7 +305,7 @@ function unminifyValue(value: unknown): unknown {
   }
 
   if (typeof value === 'string' && value.length === 1) {
-    return configMinifierValues[parseInt(value, 36)];
+    return configMinifierValues[parseInt(value, 36)] ?? value;
   }
 
   if (typeof value === 'string' && value.startsWith('______')) {

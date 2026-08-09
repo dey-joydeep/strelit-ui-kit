@@ -132,6 +132,8 @@ export abstract class ContentItem extends EventEmitter {
   private _isInitialised;
   /** @internal */
   protected _isDestroyed = false;
+  /** @internal */
+  protected _destroyCleanupFailed = false;
 
   /** @internal */
   size: number;
@@ -498,7 +500,7 @@ export abstract class ContentItem extends EventEmitter {
    * @internal
    */
   destroy(): void {
-    if (this._isDestroyed) {
+    if (this._isDestroyed && !this._destroyCleanupFailed) {
       return;
     }
     this._isDestroyed = true;
@@ -507,14 +509,35 @@ export abstract class ContentItem extends EventEmitter {
         globalThis.cancelAnimationFrame(frame);
       }
     }
-    for (let i = 0; i < this._contentItems.length; i++) {
-      this._contentItems[i].destroy();
+    let firstError: unknown;
+    const attempt = (action: () => void) => {
+      try {
+        action();
+      } catch (error) {
+        firstError ??= error;
+      }
+    };
+    const remainingContentItems: ContentItem[] = [];
+    for (const contentItem of this._contentItems) {
+      let destroyed = false;
+      attempt(() => {
+        contentItem.destroy();
+        destroyed = true;
+      });
+      if (!destroyed) {
+        remainingContentItems.push(contentItem);
+      }
     }
-    this._contentItems = [];
+    this._contentItems = remainingContentItems;
 
-    this.emitBaseBubblingEvent('beforeItemDestroyed');
-    this._element.remove();
-    this.emitBaseBubblingEvent('itemDestroyed');
+    attempt(() => this.emitBaseBubblingEvent('beforeItemDestroyed'));
+    attempt(() => this._element.remove());
+    attempt(() => this.emitBaseBubblingEvent('itemDestroyed'));
+    if (firstError !== undefined) {
+      this._destroyCleanupFailed = true;
+      throw firstError;
+    }
+    this._destroyCleanupFailed = false;
   }
 
   /**

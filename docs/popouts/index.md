@@ -6,7 +6,11 @@ Popouts are automatically closed when the page unloads because `closePopoutsOnUn
 
 Popout examples are available in the `standard` and `tabDropdown` layouts within the apitest application.
 
-EventHub can be used to broadcast messages and events to all windows. The LayoutManager.eventHub.emitUserBroadcast() function is used to broadcast messages. Messages can be received by listening to “userBroadcast” events. For example:
+EventHub can be used to broadcast messages and events to every other window in
+the layout tree. The sending layout does not receive its own broadcast. The
+LayoutManager.eventHub.emitUserBroadcast() function is used to broadcast
+messages. Messages can be received by listening to “userBroadcast” events. For
+example:
 
 ```typescript
 layoutManager.eventHub.on(

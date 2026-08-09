@@ -324,6 +324,8 @@ export abstract class LayoutManager extends EventEmitter {
   /** @internal */
   private _isDestroyed = false;
   /** @internal */
+  private _destroyCleanupFailed = false;
+  /** @internal */
   private _groundItem: GroundItem | undefined = undefined;
   /** @internal */
   private _openPopouts: BrowserPopout[] = [];
@@ -491,7 +493,7 @@ export abstract class LayoutManager extends EventEmitter {
    * be released.
    */
   destroy(): void {
-    if (this._isDestroyed) {
+    if (this._isDestroyed && !this._destroyCleanupFailed) {
       return;
     }
     this._isDestroyed = true;
@@ -510,13 +512,15 @@ export abstract class LayoutManager extends EventEmitter {
     };
 
     if (this._windowBeforeUnloadListening) {
-      this._windowBeforeUnloadListening = false;
       attempt(() =>
         globalThis.removeEventListener(
           'beforeunload',
           this._windowBeforeUnloadListener,
         ),
       );
+      if (!hasError) {
+        this._windowBeforeUnloadListening = false;
+      }
     }
 
     if (this.layoutConfig !== undefined) {
@@ -524,31 +528,71 @@ export abstract class LayoutManager extends EventEmitter {
         attempt(() => this.closeAllOpenPopouts());
       }
     }
-    this._openPopouts = [];
+    const openPopouts = [...this._openPopouts];
+    const remainingOpenPopouts: BrowserPopout[] = [];
+    for (const popout of openPopouts) {
+      let destroyed = false;
+      attempt(() => {
+        if (typeof popout.destroy === 'function') {
+          popout.destroy();
+        }
+        destroyed = true;
+      });
+      if (!destroyed) {
+        remainingOpenPopouts.push(popout);
+      }
+    }
+    this._openPopouts = remainingOpenPopouts;
 
     attempt(() => this.checkClearResizeTimeout());
 
     if (this._groundItem !== undefined) {
       const groundItem = this._groundItem;
-      attempt(() => groundItem.destroy());
-      this._groundItem = undefined;
+      let destroyed = false;
+      attempt(() => {
+        groundItem.destroy();
+        destroyed = true;
+      });
+      if (destroyed) {
+        this._groundItem = undefined;
+      }
     }
     attempt(() => this._tabDropPlaceholder.remove());
     if (this._dropTargetIndicator !== null) {
       const dropTargetIndicator = this._dropTargetIndicator;
-      this._dropTargetIndicator = null;
-      attempt(() => dropTargetIndicator.destroy());
+      let destroyed = false;
+      attempt(() => {
+        dropTargetIndicator.destroy();
+        destroyed = true;
+      });
+      if (destroyed) {
+        this._dropTargetIndicator = null;
+      }
     }
     if (this._transitionIndicator !== null) {
       const transitionIndicator = this._transitionIndicator;
-      this._transitionIndicator = null;
-      attempt(() => transitionIndicator.destroy());
+      let destroyed = false;
+      attempt(() => {
+        transitionIndicator.destroy();
+        destroyed = true;
+      });
+      if (destroyed) {
+        this._transitionIndicator = null;
+      }
     }
     const dragSources = this._dragSources;
-    this._dragSources = [];
+    const remainingDragSources: DragSource[] = [];
     for (const dragSource of dragSources) {
-      attempt(() => dragSource.destroy());
+      let destroyed = false;
+      attempt(() => {
+        dragSource.destroy();
+        destroyed = true;
+      });
+      if (!destroyed) {
+        remainingDragSources.push(dragSource);
+      }
     }
+    this._dragSources = remainingDragSources;
 
     this._isInitialised = false;
     attempt(() => this._maximisePlaceholder.remove());
@@ -558,8 +602,10 @@ export abstract class LayoutManager extends EventEmitter {
     attempt(() => this.restoreBodyContainerStyles());
 
     if (hasError) {
+      this._destroyCleanupFailed = true;
       throw firstError;
     }
+    this._destroyCleanupFailed = false;
   }
 
   /** @internal */
@@ -1504,12 +1550,12 @@ export abstract class LayoutManager extends EventEmitter {
     this._openPopouts = failedPopouts;
 
     if (failedPopouts.length === 0 && this._windowBeforeUnloadListening) {
-      this._windowBeforeUnloadListening = false;
       try {
         globalThis.removeEventListener(
           'beforeunload',
           this._windowBeforeUnloadListener,
         );
+        this._windowBeforeUnloadListening = false;
       } catch (error) {
         if (!hasError) {
           firstError = error;
@@ -1968,6 +2014,8 @@ export abstract class LayoutManager extends EventEmitter {
       try {
         if (!element.getWindow().closed) {
           openPopouts.push(element);
+        } else if (element.closedWithFailedPopIn) {
+          openPopouts.push(element);
         } else {
           this.emit('windowClosed', element);
         }
@@ -2380,6 +2428,27 @@ export abstract class LayoutManager extends EventEmitter {
     const count = selectors.length;
     for (let i = 0; i < count; i++) {
       const selector = selectors[i];
+      if (
+        itemConfig !== undefined &&
+        !isComponentItemConfig(itemConfig) &&
+        selector.typeId === LayoutManagerLocationSelectorTypeId.Root &&
+        this._groundItem !== undefined
+      ) {
+        const rootItem = this._groundItem.contentItems[0];
+        if (rootItem?.isStack || rootItem?.isComponent) {
+          if (
+            selector.index === undefined ||
+            selector.index === 0 ||
+            selector.index === 1
+          ) {
+            return {
+              parentItem: this._groundItem,
+              index: selector.index ?? 1,
+            };
+          }
+          continue;
+        }
+      }
       const location = this.findLocation(selector);
       if (location !== undefined) {
         if (

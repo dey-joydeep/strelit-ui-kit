@@ -13,6 +13,7 @@ import {
   createResolvedStackItemConfigDefault,
 } from '../config/resolved-config';
 import { Header, type HeaderSettings } from '../controls/header';
+import { type Tab } from '../controls/tab';
 import {
   AssertError,
   UnexpectedNullError,
@@ -288,6 +289,7 @@ export class Stack extends ComponentParentableItem {
 
     const contentItems = this.contentItems;
     const contentItemCount = contentItems.length;
+    const createdTabs: Tab[] = [];
     if (contentItemCount > 0) {
       // contentItemCount will be 0 on drag drop
       if (
@@ -305,7 +307,10 @@ export class Stack extends ComponentParentableItem {
               `Stack Content Item is not of type ComponentItem: ${i} id: ${this.id}`,
             );
           } else {
-            this._header.createTab(contentItem, i);
+            const tab = this._header.createTab(contentItem, i);
+            if (tab !== undefined) {
+              createdTabs.push(tab);
+            }
             contentItem.hide();
             contentItem.container.setBaseLogicalZIndex();
           }
@@ -322,6 +327,9 @@ export class Stack extends ComponentParentableItem {
 
     this._header.updateClosability();
     this.initContentItems();
+    for (const tab of createdTabs) {
+      this.layoutManager.emit('tabCreated', tab);
+    }
   }
 
   /** Sets active component item. */
@@ -450,7 +458,7 @@ export class Stack extends ComponentParentableItem {
     } else {
       index = super.addChild(contentItem, index, suspendResize);
       this._childElementContainer.appendChild(contentItem.element);
-      this._header.createTab(contentItem, index);
+      const tab = this._header.createTab(contentItem, index);
       this.setActiveComponentItem(contentItem, focus);
       this._header.updateTabSizes();
       if (!suspendResize) {
@@ -459,6 +467,9 @@ export class Stack extends ComponentParentableItem {
       contentItem.container.setBaseLogicalZIndex();
       this._header.updateClosability();
       this.emitStateChangedEvent();
+      if (tab !== undefined) {
+        this.layoutManager.emit('tabCreated', tab);
+      }
       return index;
     }
   }
@@ -557,7 +568,7 @@ export class Stack extends ComponentParentableItem {
 
   /** @internal */
   override destroy(): void {
-    if (this._isDestroyed) {
+    if (this._isDestroyed && !this._destroyCleanupFailed) {
       return;
     }
     if (this._activeComponentItem?.focused) {

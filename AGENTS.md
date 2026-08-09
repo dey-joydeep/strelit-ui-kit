@@ -48,6 +48,13 @@ findings before editing code. A same-context role change does not qualify. Give
 the reviewer the behavioral contract, diff, tests, and repository policy, not
 the implementer's intended conclusion.
 
+For high-risk work, distinguish finding closure from final discovery. A review
+limited to the latest patch or seeded with the known finding list is a
+finding-closure pass and cannot satisfy the final gate. After implementation and
+closure, a fresh independent context MUST review the whole change from merge
+base through the current head, across every changed path. Record `Review scope:
+Whole PR` and `Review pass: Fresh discovery`; any new head invalidates that pass.
+
 Every independent-review finding MUST have an explicit disposition. Critical
 and High findings block completion. After fixes, the implementer MUST rerun the
 affected checks and the reviewer MUST confirm that blocking findings are closed.

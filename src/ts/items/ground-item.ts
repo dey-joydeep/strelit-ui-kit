@@ -2,6 +2,7 @@ import {
   type ComponentItemConfig,
   type RowOrColumnItemConfig,
   type StackItemConfig,
+  isComponentItemConfig,
   resolveItemConfigWithComponentReorderEnabledDefault,
 } from '../config/config';
 import {
@@ -11,6 +12,7 @@ import {
   type ResolvedRootItemConfig,
   createResolvedGroundItemConfig,
   createResolvedItemConfigDefault,
+  createResolvedRowOrColumnItemConfigDefault,
   createResolvedStackItemConfigDefault,
   isResolvedRootItemConfig,
 } from '../config/resolved-config';
@@ -164,8 +166,18 @@ export class GroundItem extends ComponentParentableItem {
     }
     try {
       previousRoot?.destroy();
-    } catch {
-      // The replacement is committed; cleanup failures must not roll it back.
+    } catch (error) {
+      // The replacement is committed. Surface cleanup failure without making
+      // callers roll configuration back around a root that is already live.
+      try {
+        if (typeof globalThis.reportError === 'function') {
+          globalThis.reportError(error);
+        } else {
+          console.error('Failed to release the previous layout root', error);
+        }
+      } catch {
+        // A failing host diagnostic hook must not corrupt the committed root.
+      }
     }
   }
 
@@ -210,7 +222,16 @@ export class GroundItem extends ComponentParentableItem {
       // eslint-disable-next-line @typescript-eslint/no-this-alias
       parent = this;
     }
-    if (parent.isComponent) {
+    if (
+      (parent.isComponent || parent.isStack) &&
+      !isComponentItemConfig(itemConfig)
+    ) {
+      return this.addStructuralItemBesideIncompatibleRoot(
+        parent,
+        resolvedItemConfig,
+        index,
+      );
+    } else if (parent.isComponent) {
       throw new Error('Cannot add item as child to ComponentItem');
     } else {
       const contentItem = this.layoutManager.createAndInitContentItem(
@@ -219,6 +240,99 @@ export class GroundItem extends ComponentParentableItem {
       );
       index = parent.addChild(contentItem, index);
       return parent === this ? -1 : index;
+    }
+  }
+
+  /** @internal Restores a detached root without invoking sizing or state propagation. */
+  restoreRootWithoutResize(rootItem: ContentItem): void {
+    if (this.contentItems.length !== 0) {
+      throw new AssertError('GIRR99241');
+    }
+    this._childElementContainer.appendChild(rootItem.element);
+    super.addChild(rootItem, 0, true);
+  }
+
+  /** Wraps a root that cannot directly own structural children. */
+  private addStructuralItemBesideIncompatibleRoot(
+    existingRoot: ContentItem,
+    itemConfig: ResolvedItemConfig,
+    index: number | undefined,
+  ): number {
+    index ??= 1;
+    if (index !== 0 && index !== 1) {
+      throw new RangeError('Structural root insertion index must be 0 or 1');
+    }
+    const wrapper = this.layoutManager.createAndInitContentItem(
+      createResolvedRowOrColumnItemConfigDefault(ItemType.row),
+      this,
+    );
+    let newItem: ContentItem;
+    try {
+      newItem = this.layoutManager.createAndInitContentItem(
+        itemConfig,
+        wrapper,
+      );
+      wrapper.addChild(newItem, 0, true);
+    } catch (error) {
+      try {
+        wrapper.destroy();
+      } catch {
+        // Preserve the item-construction error.
+      }
+      throw error;
+    }
+
+    try {
+      super.removeChild(existingRoot, true);
+      this.addChild(wrapper, 0);
+      wrapper.addChild(existingRoot, index === 0 ? 1 : 0, true);
+      wrapper.updateSize(false);
+      return index;
+    } catch (error) {
+      const rollbackErrors: unknown[] = [];
+      if (wrapper.contentItems.includes(existingRoot)) {
+        try {
+          wrapper.removeChild(existingRoot, true);
+        } catch (rollbackError) {
+          rollbackErrors.push(rollbackError);
+        }
+      }
+      if (this.contentItems.includes(wrapper)) {
+        try {
+          super.removeChild(wrapper, true);
+        } catch (rollbackError) {
+          rollbackErrors.push(rollbackError);
+        }
+      }
+      if (
+        !this.contentItems.includes(existingRoot) &&
+        !wrapper.contentItems.includes(existingRoot)
+      ) {
+        try {
+          this.restoreRootWithoutResize(existingRoot);
+        } catch (rollbackError) {
+          rollbackErrors.push(rollbackError);
+        }
+      }
+      if (
+        !this.contentItems.includes(wrapper) &&
+        !wrapper.contentItems.includes(existingRoot)
+      ) {
+        try {
+          wrapper.destroy();
+        } catch (rollbackError) {
+          rollbackErrors.push(rollbackError);
+        }
+      }
+      if (rollbackErrors.length > 0) {
+        throw Object.assign(
+          new Error(
+            'Structural root insertion failed and rollback was incomplete',
+          ),
+          { errors: [error, ...rollbackErrors] },
+        );
+      }
+      throw error;
     }
   }
 

@@ -34,6 +34,10 @@ export class BrowserPopout extends EventEmitter {
     _initialWindowSize: Rect,
     _layoutManager: LayoutManager);
     close(): void;
+    // @internal (undocumented)
+    get closedWithFailedPopIn(): boolean;
+    // @internal (undocumented)
+    destroy(): void;
     getStrelitInstance(): LayoutManager;
     getWindow(): Window;
     popIn(): void;
@@ -243,6 +247,8 @@ export abstract class ContentItem extends EventEmitter {
     get contentItems(): ContentItem[];
     // @internal
     destroy(): void;
+    // @internal (undocumented)
+    protected _destroyCleanupFailed: boolean;
     get element(): HTMLElement;
     getComponentItemsByType(componentType: ComponentType): ComponentItem[];
     // @internal
@@ -656,7 +662,7 @@ export class Header extends EventEmitter {
     applyFocusedValue(value: boolean): void;
     get controlsContainerElement(): HTMLElement;
     // @internal
-    createTab(componentItem: ComponentItem, index: number): void;
+    createTab(componentItem: ComponentItem, index: number): Tab | undefined;
     // @internal
     destroy(): void;
     get element(): HTMLElement;
@@ -1363,6 +1369,8 @@ export class RowOrColumn extends ContentItem {
     addItem(itemConfig: RowOrColumnItemConfig | StackItemConfig | ComponentItemConfig, index?: number): number;
     // @internal (undocumented)
     checkCollapse(): void;
+    // @internal (undocumented)
+    destroy(): void;
     // @internal
     init(): void;
     newComponent(componentType: ComponentType, componentState?: SerializableValue, title?: string, index?: number): ComponentItem;

@@ -3,8 +3,10 @@ import {
   ComponentContainer,
   StrelitLayout,
   LayoutConfig,
+  LayoutManagerLocationSelectorTypeId,
   RowOrColumn,
   Stack,
+  Tab,
 } from '../../src';
 
 describe('Runtime layout tree manipulation', function () {
@@ -110,6 +112,230 @@ describe('Runtime layout tree manipulation', function () {
         ],
       });
     }).not.toThrow();
+  });
+
+  it('wraps a stack root when adding a structural item via default placement', function () {
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: [{ type: 'component', componentType: 'testComponent' }],
+      },
+    });
+
+    expect(() =>
+      layout.addItem({
+        type: 'column',
+        content: [{ type: 'component', componentType: 'testComponent' }],
+      }),
+    ).not.toThrow();
+
+    expect(layout.rootItem?.type).toBe('row');
+    expect(layout.rootItem?.contentItems.map((item) => item.type)).toEqual([
+      'stack',
+      'column',
+    ]);
+  });
+
+  it('keeps an incompatible root unchanged when structural item creation fails', function () {
+    layout.registerComponentFactoryFunction('failingComponent', () => {
+      throw new Error('factory failed');
+    });
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: [{ type: 'component', componentType: 'testComponent' }],
+      },
+    });
+    const originalRoot = layout.rootItem as Stack;
+
+    expect(() =>
+      layout.addItem({
+        type: 'row',
+        content: [{ type: 'component', componentType: 'failingComponent' }],
+      }),
+    ).toThrow('factory failed');
+
+    expect(layout.rootItem).toBe(originalRoot);
+    expect(originalRoot.contentItems).toHaveLength(1);
+    expect(originalRoot.header.tabs).toHaveLength(1);
+  });
+
+  it('restores an incompatible root without re-entering failed GroundItem sizing', function () {
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: [{ type: 'component', componentType: 'testComponent' }],
+      },
+    });
+    const originalRoot = layout.rootItem;
+    vi.spyOn(layout.groundItem!, 'addChild').mockImplementation(() => {
+      throw new Error('persistent ground insertion failure');
+    });
+
+    expect(() =>
+      layout.addItem({
+        type: 'column',
+        content: [{ type: 'component', componentType: 'testComponent' }],
+      }),
+    ).toThrow('persistent ground insertion failure');
+
+    expect(layout.rootItem).toBe(originalRoot);
+    expect(originalRoot?.element.isConnected).toBe(true);
+  });
+
+  it.each([
+    [0, ['column', 'stack']],
+    [1, ['stack', 'column']],
+  ] as const)(
+    'honors explicit structural root placement index %i',
+    (index, expectedTypes) => {
+      layout.loadLayout({
+        root: {
+          type: 'stack',
+          content: [{ type: 'component', componentType: 'testComponent' }],
+        },
+      });
+
+      const location = layout.addItemAtLocation(
+        {
+          type: 'column',
+          content: [{ type: 'component', componentType: 'testComponent' }],
+        },
+        [{ typeId: LayoutManagerLocationSelectorTypeId.Root, index }],
+      );
+
+      expect(location?.index).toBe(index);
+      expect(layout.rootItem?.contentItems.map((item) => item.type)).toEqual(
+        expectedTypes,
+      );
+    },
+  );
+
+  it('rejects an invalid structural root placement boundary without mutation', function () {
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: [{ type: 'component', componentType: 'testComponent' }],
+      },
+    });
+    const originalRoot = layout.rootItem;
+
+    const location = layout.addItemAtLocation(
+      {
+        type: 'column',
+        content: [{ type: 'component', componentType: 'testComponent' }],
+      },
+      [{ typeId: LayoutManagerLocationSelectorTypeId.Root, index: 2 }],
+    );
+
+    expect(location).toBeUndefined();
+    expect(layout.rootItem).toBe(originalRoot);
+  });
+
+  it('wraps a direct component root before adding structural content', function () {
+    layout.loadComponentAsRoot({
+      type: 'component',
+      componentType: 'testComponent',
+    });
+
+    expect(() =>
+      layout.addItem({
+        type: 'column',
+        content: [{ type: 'component', componentType: 'testComponent' }],
+      }),
+    ).not.toThrow();
+
+    expect(layout.rootItem?.contentItems.map((item) => item.type)).toEqual([
+      'component',
+      'column',
+    ]);
+  });
+
+  it('commits the complete stack insertion before notifying tabCreated listeners', function () {
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: [{ type: 'component', componentType: 'testComponent' }],
+      },
+    });
+    const stack = layout.rootItem as Stack;
+    let notifiedTab: Tab | undefined;
+    layout.on('tabCreated', (tab) => {
+      notifiedTab = tab;
+      throw new Error('listener failed');
+    });
+
+    expect(() =>
+      stack.addItem({ type: 'component', componentType: 'testComponent' }),
+    ).toThrow('listener failed');
+
+    expect(stack.contentItems).toHaveLength(2);
+    expect(stack.header.tabs).toHaveLength(2);
+    const createdTab = stack.contentItems[1].tab;
+    expect(stack.header.tabs).toContain(createdTab);
+    expect(notifiedTab).toBe(createdTab);
+    expect(createdTab.element.isConnected).toBe(true);
+    expect(createdTab.isActive).toBe(true);
+    expect(stack.getActiveComponentItem()).toBe(stack.contentItems[1]);
+    expect(stack.contentItems[1].element.style.display).not.toBe('none');
+  });
+
+  it('initializes the complete stack before notifying tabCreated listeners', function () {
+    const observed: Array<{
+      tab: Tab;
+      itemInitialised: boolean;
+      headerContainsTab: boolean;
+    }> = [];
+    layout.on('tabCreated', (tab) => {
+      const stack = tab.componentItem.parent as Stack;
+      observed.push({
+        tab,
+        itemInitialised: tab.componentItem.isInitialised,
+        headerContainsTab: stack.header.tabs.includes(tab),
+      });
+    });
+
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: [{ type: 'component', componentType: 'testComponent' }],
+      },
+    });
+
+    expect(observed).toHaveLength(1);
+    expect(observed[0].tab.componentItem.isInitialised).toBe(true);
+    expect(observed[0].itemInitialised).toBe(true);
+    expect(observed[0].headerContainsTab).toBe(true);
+  });
+
+  it('destroys later siblings and its own element after a child destroy failure', function () {
+    layout.loadLayout({
+      root: {
+        type: 'row',
+        content: [
+          { type: 'component', componentType: 'testComponent' },
+          { type: 'component', componentType: 'testComponent' },
+        ],
+      },
+    });
+    const root = layout.rootItem as RowOrColumn;
+    const firstDestroy = vi
+      .spyOn(root.contentItems[0], 'destroy')
+      .mockImplementationOnce(() => {
+        throw new Error('first destroy failed');
+      });
+    const secondDestroy = vi.spyOn(root.contentItems[1], 'destroy');
+
+    expect(() => root.destroy()).toThrow('first destroy failed');
+
+    expect(firstDestroy).toHaveBeenCalledOnce();
+    expect(secondDestroy).toHaveBeenCalledOnce();
+    expect(root.contentItems).toHaveLength(1);
+    expect(root.element.isConnected).toBe(false);
+
+    expect(() => root.destroy()).not.toThrow();
+    expect(firstDestroy).toHaveBeenCalledTimes(2);
+    expect(root.contentItems).toHaveLength(0);
   });
 
   it.each([-1, 0.5, 3, Number.NaN])(

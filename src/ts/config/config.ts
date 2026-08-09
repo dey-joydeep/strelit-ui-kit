@@ -426,14 +426,15 @@ function resolveStackItemConfigWithBudget(
     itemConfig.minSize,
   );
 
+  const content = resolveStackItemConfigContentWithBudget(
+    itemConfig.content,
+    budget,
+    depth + 1,
+    componentReorderEnabledDefault,
+  );
   const result: ResolvedStackItemConfig = {
     type: ItemType.stack,
-    content: resolveStackItemConfigContentWithBudget(
-      itemConfig.content,
-      budget,
-      depth + 1,
-      componentReorderEnabledDefault,
-    ),
+    content,
     size,
     sizeUnit,
     minSize,
@@ -442,8 +443,10 @@ function resolveStackItemConfigWithBudget(
     maximised,
     isClosable: itemConfig.isClosable ?? resolvedItemConfigDefaults.isClosable,
     activeItemIndex:
-      itemConfig.activeItemIndex ??
-      resolvedStackItemConfigDefaultActiveItemIndex,
+      content.length === 0
+        ? undefined
+        : (itemConfig.activeItemIndex ??
+          resolvedStackItemConfigDefaultActiveItemIndex),
     header: resolveHeaderedItemConfigHeader(itemConfig.header),
   };
   return result;
@@ -1660,6 +1663,8 @@ export function parseSize(
     throw new ConfigurationError(
       `${i18nStrings[I18nStringId.InvalidNumberPartInSizeString]}: ${sizeString}`,
     );
+  } else if (size < 0) {
+    throw new ConfigurationError(`Size cannot be negative: ${sizeString}`);
   } else {
     const sizeUnit = tryParseSizeUnit(firstNonDigitPart);
     if (sizeUnit === undefined) {

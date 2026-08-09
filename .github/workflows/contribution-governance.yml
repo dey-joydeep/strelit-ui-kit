@@ -281,6 +281,23 @@ jobs:
               );
             }
 
+            const reviewScope = independentReview
+              .match(/^Review scope:[ \t]*(Whole PR|Patch)/im)?.[1]
+              .toLowerCase();
+            const reviewPass = independentReview
+              .match(/^Review pass:[ \t]*(Fresh discovery|Finding closure)/im)?.[1]
+              .toLowerCase();
+            if (computedRisk === 'high' && reviewScope !== 'whole pr') {
+              errors.push(
+                'High-risk changes require Review scope: **Whole PR**; a patch-only review cannot satisfy the final gate.'
+              );
+            }
+            if (computedRisk === 'high' && reviewPass !== 'fresh discovery') {
+              errors.push(
+                'High-risk changes require Review pass: **Fresh discovery** after implementation and finding closure.'
+              );
+            }
+
             if (reviewMode !== undefined) {
               const reviewerMatch = independentReview.match(
                 /^Reviewer:[ \t]*(.+)$/im

@@ -25,6 +25,12 @@ incomplete. A high-risk pull request additionally requires approval of its
 current head commit by the declared reviewer using a GitHub identity different
 from the author; updating the head invalidates that approval.
 
+Use a finding-closure pass to verify specific fixes, then use a fresh reviewer
+context for final discovery over the whole PR from merge base through current
+head. A review of only the latest patch cannot satisfy the high-risk gate. Record
+`Review scope: Whole PR` and `Review pass: Fresh discovery` in the PR review
+evidence.
+
 ## Preferred Validation Set
 
 During iteration, run the narrowest relevant checks. Before handoff, run:

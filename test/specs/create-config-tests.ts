@@ -6,10 +6,53 @@ import {
   createLayoutConfigFromResolved,
   createResolvedLayoutConfigCopy,
   createResolvedLayoutConfigDefault,
+  createResolvedStackItemConfigDefault,
   resolveLayoutConfig,
 } from '../../src';
+import { createResolvedStackItemConfigCopy } from '../../src/ts/config/resolved-config';
 
 describe('Layout configuration resolution and defaults', function () {
+  it('recomputes stack activeItemIndex when copying replacement content', function () {
+    const resolved = resolveLayoutConfig({
+      root: {
+        type: 'stack',
+        activeItemIndex: 1,
+        content: [
+          { type: 'component', componentType: 'first' },
+          { type: 'component', componentType: 'second' },
+        ],
+      },
+    });
+    if (resolved.root?.type !== 'stack') {
+      throw new Error('Expected a stack root');
+    }
+
+    const oneItemCopy = createResolvedStackItemConfigCopy(
+      resolved.root,
+      resolved.root.content.slice(0, 1),
+    );
+    const emptyCopy = createResolvedStackItemConfigCopy(resolved.root, []);
+
+    expect(oneItemCopy.activeItemIndex).toBe(0);
+    expect(emptyCopy.activeItemIndex).toBeUndefined();
+  });
+
+  it('uses undefined activeItemIndex for empty resolved stacks', function () {
+    const resolved = resolveLayoutConfig({
+      root: { type: 'stack', content: [], activeItemIndex: 4 },
+    });
+    const defaultStack = createResolvedStackItemConfigDefault();
+
+    expect(resolved.root?.type).toBe('stack');
+    expect(resolved.root?.activeItemIndex).toBeUndefined();
+    expect(defaultStack.content).toEqual([]);
+    expect(defaultStack.activeItemIndex).toBeUndefined();
+    expect(
+      resolveLayoutConfig(createLayoutConfigFromResolved(resolved)).root
+        ?.activeItemIndex,
+    ).toBeUndefined();
+  });
+
   it("doesn't mutate default configuration when resolving custom layout configs", function () {
     const defaultConfig = createResolvedLayoutConfigDefault();
     expect(defaultConfig.dimensions.borderWidth).toBe(5);
@@ -97,6 +140,18 @@ describe('Layout configuration resolution and defaults', function () {
           type: 'component',
           componentType: 'panel',
           size: overflowingSize,
+        },
+      }),
+    ).toThrow(ConfigurationError);
+  });
+
+  it('rejects negative parsed sizes', function () {
+    expect(() =>
+      resolveLayoutConfig({
+        root: {
+          type: 'component',
+          componentType: 'panel',
+          minSize: '-10px',
         },
       }),
     ).toThrow(ConfigurationError);

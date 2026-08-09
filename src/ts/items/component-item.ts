@@ -123,7 +123,7 @@ export class ComponentItem extends ContentItem {
 
   /** @internal */
   override destroy(): void {
-    if (this._isDestroyed) {
+    if (this._isDestroyed && !this._destroyCleanupFailed) {
       return;
     }
     if (this._focused) {

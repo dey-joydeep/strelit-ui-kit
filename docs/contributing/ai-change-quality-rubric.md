@@ -15,6 +15,13 @@ the change. The reviewer first reports findings without editing the code and is
 given the behavioral contract, diff, tests, and relevant repository policy, but
 not the implementer's intended conclusion.
 
+The final high-risk review is a **fresh discovery pass** over the **whole PR**:
+the merge base through the reviewed head, across every changed path. Reviewing
+only the latest fix commit, checking closure of known findings, or reusing a
+review context already anchored to the known finding list does not satisfy this
+gate. Finding closure is a separate pass and must be followed by fresh whole-PR
+discovery whenever the head changes.
+
 If an independent reviewer is unavailable, the high-risk change remains
 incomplete. A same-context role change, checklist completion, or fresh prompt in
 the implementation conversation does not satisfy the independent-review gate.
@@ -87,11 +94,13 @@ The independent reviewer records:
 1. Reviewer identity or agent task identifier
 2. Confirmation that the reviewer did not implement the change
 3. Reviewed commit or diff boundary
-4. Scores and rationale for each applicable dimension
-5. Findings with severity and file/line evidence
-6. Disposition of findings after the implementer responds
-7. Residual risks and verification limitations
-8. Final verdict: `Pass`, `Changes requested`, or `Blocked`
+4. Review scope (`Whole PR` or `Patch`) and pass type (`Fresh discovery` or
+   `Finding closure`)
+5. Scores and rationale for each applicable dimension
+6. Findings with severity and file/line evidence
+7. Disposition of findings after the implementer responds
+8. Residual risks and verification limitations
+9. Final verdict: `Pass`, `Changes requested`, or `Blocked`
 
 Disposable detailed reports belong in `.tmp/`. The PR body must retain the
 review identity, artifact reference, verdict, open-finding count, dispositions,

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ComponentContainer,
   RowOrColumn,
@@ -119,6 +119,44 @@ describe('splitter limits', () => {
     expect(row.contentItems.map((item) => item.size)).toEqual(originalSizes);
     expect(splitter.element.style.left).toBe('0px');
     expect(internals._splitterPosition).toBeNull();
+  });
+
+  it('releases splitters and cancels deferred resize when its owner is destroyed', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('component', () => undefined);
+    layout.loadLayout({
+      root: {
+        type: 'row',
+        content: [
+          { type: 'component', componentType: 'component' },
+          { type: 'component', componentType: 'component' },
+        ],
+      },
+    });
+    const row = layout.rootItem as RowOrColumn;
+    for (const item of row.contentItems) {
+      item.element.style.width = '100px';
+    }
+    const internals = row as unknown as {
+      _splitter: Array<{ destroy(): void }>;
+      _splitterPosition: number;
+      _resizeFrame: number | undefined;
+      onSplitterDragStop(splitter: unknown): void;
+    };
+    const splitter = internals._splitter[0];
+    const splitterDestroy = vi.spyOn(splitter, 'destroy');
+    const cancelAnimationFrame = vi.spyOn(globalThis, 'cancelAnimationFrame');
+    internals._splitterPosition = 0;
+    internals.onSplitterDragStop(splitter);
+    const resizeFrame = internals._resizeFrame;
+
+    row.destroy();
+
+    expect(resizeFrame).toBeDefined();
+    expect(cancelAnimationFrame).toHaveBeenCalledWith(resizeFrame);
+    expect(splitterDestroy).toHaveBeenCalledOnce();
+    expect(internals._splitter).toHaveLength(0);
   });
 
   it('normalizes fractional children when percent children already total 100', () => {

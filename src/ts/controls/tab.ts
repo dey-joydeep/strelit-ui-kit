@@ -145,7 +145,6 @@ export class Tab {
     );
 
     this._componentItem.setTab(this);
-    this._layoutManager.emit('tabCreated', this);
   }
 
   /**

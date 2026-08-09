@@ -59,6 +59,12 @@ Review the complete diff after implementation:
 - Verify unsupported cases fail safely or produce explicit diagnostics
 - Confirm tests would fail if the implementation were reverted
 
+Treat review scope and review purpose as separate evidence. A patch review that
+closes known findings is `Finding closure`; it does not establish that the rest
+of the pull request is sound. For high-risk work, follow closure with a `Fresh
+discovery` review from an unused independent context over the `Whole PR` from
+merge base through the current head, including every changed path.
+
 Self-review does not satisfy the independent-review requirement for high-risk
 changes.
 
@@ -79,6 +85,8 @@ verification:
 For a high-risk pull request, record the current full head SHA as the reviewed
 boundary and require the declared reviewer to approve that SHA using a GitHub
 identity different from the PR author. Re-review after any new head commit.
+Record `Review scope: Whole PR` and `Review pass: Fresh discovery`; patch-only
+or finding-closure evidence cannot satisfy the final gate.
 
 A same-context role change is still self-review. If no independent reviewer is
 available, report that limitation and leave the high-risk task incomplete.

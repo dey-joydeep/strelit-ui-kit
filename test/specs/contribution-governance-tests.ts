@@ -256,8 +256,12 @@ describe('contribution governance workflow', () => {
       'High-risk changes cannot have open Critical or High review findings.',
     );
     expect(workflow).toContain('Reviewed boundary');
+    expect(workflow).toContain('Review scope: **Whole PR**');
+    expect(workflow).toContain('Review pass: **Fresh discovery**');
     expect(workflow).toContain('Finding dispositions');
     expect(template).toContain('Review mode: **Pending**');
+    expect(template).toContain('Review scope: **Pending**');
+    expect(template).toContain('Review pass: **Pending**');
     expect(template).toContain('Rubric result: **Pending**');
     expect(template).toContain('Open Critical/High findings: **Pending**');
     expect(agents).toContain('A same-context role change does not qualify');
@@ -267,6 +271,7 @@ describe('contribution governance workflow', () => {
     expect(rubric).toContain('## Hard Gates');
     expect(rubric).toContain('## Measuring Quality Over Time');
     expect(rubric).toContain('score below 2');
+    expect(rubric).toContain('fresh discovery pass');
   });
 
   it('rejects pending review evidence and requires self-review for every change', () => {
@@ -583,6 +588,8 @@ describe('contribution governance workflow', () => {
     const selfReview = [
       'Review mode: **Self-review**',
       'Reviewer: Implementer',
+      'Review scope: **Whole PR**',
+      'Review pass: **Fresh discovery**',
       `Reviewed boundary: ${pullRequestHead}`,
       'Rubric: `docs/contributing/ai-change-quality-rubric.md`',
       'Rubric result: **Pass**',
@@ -664,6 +671,45 @@ describe('contribution governance workflow', () => {
     );
 
     expect(accepted).toEqual([]);
+  });
+
+  it('rejects patch-only or finding-closure evidence for high-risk work', async () => {
+    const files = [{ filename: 'src/ts/layout-manager.ts', changes: 12 }];
+    const review = [
+      'Review mode: **Independent**',
+      'Reviewer: @reviewer-user',
+      'Review scope: **Patch**',
+      'Review pass: **Finding closure**',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric: `docs/contributing/ai-change-quality-rubric.md`',
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 0; High 0; Medium 0; Low 0',
+      'Open Critical/High findings: **0**',
+      'Review artifact: Latest-fix review only',
+      'Finding dispositions: Known findings closed',
+      'Residual risks: Whole-PR discovery not performed',
+    ].join('\n');
+
+    const failures = await runPullRequestMetadataPolicy(
+      createPullRequestBody('High', review),
+      files,
+      [
+        {
+          commit_id: pullRequestHead,
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+      ],
+    );
+
+    expect(failures).toContain(
+      'High-risk changes require Review scope: **Whole PR**; a patch-only review cannot satisfy the final gate.',
+    );
+    expect(failures).toContain(
+      'High-risk changes require Review pass: **Fresh discovery** after implementation and finding closure.',
+    );
   });
 
   it('behaviorally requires and accepts low-risk self-review', async () => {
@@ -817,6 +863,7 @@ describe('risk-based PR verification', () => {
     expect(changeDiscipline.verificationScriptsForRisk('high')).toEqual([
       'verify:ordered',
       'apitest:build',
+      'apitest:smoke',
     ]);
   });
 

@@ -2338,6 +2338,74 @@ function transformLayoutItem(item, itemPath, manualReviews, sourceVersion) {
   }
 }
 
+/** Finds saved-layout ambiguities that cannot be migrated without data loss. */
+function collectBlockingLayoutItemAmbiguities(item, itemPath, manualReviews) {
+  if (!isRecord(item)) {
+    return;
+  }
+
+  if (Array.isArray(item.id)) {
+    const ids = item.id.filter((id) => id !== '__glMaximised');
+    if (ids.length > 1) {
+      manualReviews.add(`${itemPath}.id contains multiple non-protocol IDs`);
+    }
+  }
+
+  if (Array.isArray(item.content)) {
+    item.content.forEach((child, index) =>
+      collectBlockingLayoutItemAmbiguities(
+        child,
+        `${itemPath}.content[${index}]`,
+        manualReviews,
+      ),
+    );
+  }
+}
+
+/** Finds layout-level ambiguities recursively, including nested popouts. */
+function collectBlockingLayoutConfigAmbiguities(
+  layoutConfig,
+  configPath,
+  manualReviews,
+) {
+  if (Array.isArray(layoutConfig.content)) {
+    if (layoutConfig.root !== undefined && layoutConfig.content.length > 0) {
+      manualReviews.add(
+        `${configPath} defines both root and legacy content; root selection requires manual review`,
+      );
+    } else if (layoutConfig.content.length > 1) {
+      manualReviews.add(
+        `${configPath}.content has multiple roots; root selection requires manual review`,
+      );
+    }
+    layoutConfig.content.forEach((item, index) =>
+      collectBlockingLayoutItemAmbiguities(
+        item,
+        `${configPath}.content[${index}]`,
+        manualReviews,
+      ),
+    );
+  }
+  if (layoutConfig.root !== undefined) {
+    collectBlockingLayoutItemAmbiguities(
+      layoutConfig.root,
+      `${configPath}.root`,
+      manualReviews,
+    );
+  }
+  if (Array.isArray(layoutConfig.openPopouts)) {
+    layoutConfig.openPopouts.forEach((popout, index) => {
+      if (isRecord(popout)) {
+        collectBlockingLayoutConfigAmbiguities(
+          popout,
+          `${configPath}.openPopouts[${index}]`,
+          manualReviews,
+        );
+      }
+    });
+  }
+}
+
 /** Consolidates legacy header settings into the current header schema. */
 function migrateHeader(layoutConfig, configPath, manualReviews) {
   for (const propertyName of ['settings', 'labels', 'header']) {
@@ -2483,7 +2551,11 @@ function transformJsonContent(content, sourceVersion = 'auto') {
   try {
     parsed = JSON.parse(jsonContent);
   } catch {
-    return undefined;
+    return {
+      transformed: content,
+      applied: [],
+      manualReviews: ['malformed JSON requires manual migration'],
+    };
   }
   if (
     !isLayoutConfig(parsed) &&
@@ -2493,6 +2565,19 @@ function transformJsonContent(content, sourceVersion = 'auto') {
   }
 
   const manualReviews = new Set();
+  if (isLayoutItem(parsed)) {
+    collectBlockingLayoutItemAmbiguities(parsed, '$', manualReviews);
+  } else {
+    collectBlockingLayoutConfigAmbiguities(parsed, '$', manualReviews);
+  }
+  if (manualReviews.size > 0) {
+    return {
+      transformed: content,
+      applied: [],
+      manualReviews: [...manualReviews],
+    };
+  }
+
   if (isLayoutItem(parsed)) {
     transformLayoutItem(parsed, '$', manualReviews, sourceVersion);
   } else {
@@ -2823,6 +2908,147 @@ function insertAfterDirectivePrologue(content, statement, sourceFile) {
   return `${prefix}${beforeStatement}${statement}${afterStatement}${suffix}`;
 }
 
+/** Creates a collision-resistant sibling path for a staged migration file. */
+function createStagedSiblingPath(filePath, label) {
+  const directory = path.dirname(filePath);
+  const baseName = path.basename(filePath);
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const candidate = path.join(
+      directory,
+      `.${baseName}.strelit-${process.pid}-${label}-${attempt}`,
+    );
+    if (!fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  throw new Error(`Could not allocate a staged migration path for ${filePath}`);
+}
+
+/** Removes a staged file without replacing the error being handled. */
+function removeStagedFile(filePath) {
+  try {
+    fs.unlinkSync(filePath);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      return error;
+    }
+  }
+  return undefined;
+}
+
+/** Preserves the primary failure while surfacing cleanup failures as well. */
+function throwWithCleanupErrors(error, cleanupErrors, message) {
+  if (cleanupErrors.length === 0) {
+    throw error;
+  }
+  const primaryError =
+    error instanceof Error ? error : new Error(String(error));
+  throw Object.assign(primaryError, {
+    errors: [error, ...cleanupErrors],
+    message: `${primaryError.message}; ${message}`,
+  });
+}
+
+/** Flushes a staged file before any original is replaced. */
+function flushStagedFile(filePath) {
+  const descriptor = fs.openSync(filePath, 'r+');
+  try {
+    fs.fsyncSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
+/** Stages every changed file before atomically replacing any original. */
+function applyMigrationWritePlans(plans, canonicalTarget) {
+  const staged = [];
+  try {
+    for (const plan of plans) {
+      assertSafeMigrationPath(plan.filePath, canonicalTarget);
+      const fileStat = fs.statSync(plan.filePath);
+      const temporaryPath = createStagedSiblingPath(plan.filePath, 'next');
+      const backupPath = createStagedSiblingPath(plan.filePath, 'backup');
+      const entry = {
+        ...plan,
+        temporaryPath,
+        backupPath,
+        committed: false,
+      };
+      staged.push(entry);
+      fs.writeFileSync(temporaryPath, plan.transformed, {
+        encoding: 'utf8',
+        flag: 'wx',
+        mode: fileStat.mode,
+      });
+      fs.chmodSync(temporaryPath, fileStat.mode);
+      flushStagedFile(temporaryPath);
+      fs.copyFileSync(plan.filePath, backupPath, fs.constants.COPYFILE_EXCL);
+      flushStagedFile(backupPath);
+    }
+  } catch (error) {
+    const cleanupErrors = [];
+    for (const entry of staged) {
+      const temporaryError = removeStagedFile(entry.temporaryPath);
+      if (temporaryError !== undefined) cleanupErrors.push(temporaryError);
+      const backupError = removeStagedFile(entry.backupPath);
+      if (backupError !== undefined) cleanupErrors.push(backupError);
+    }
+    throwWithCleanupErrors(
+      error,
+      cleanupErrors,
+      'staging cleanup was incomplete',
+    );
+  }
+
+  try {
+    for (const entry of staged) {
+      assertSafeMigrationPath(entry.filePath, canonicalTarget);
+      fs.renameSync(entry.temporaryPath, entry.filePath);
+      entry.committed = true;
+    }
+  } catch (error) {
+    const rollbackErrors = [];
+    for (let index = staged.length - 1; index >= 0; index--) {
+      const entry = staged[index];
+      let backupCanBeRemoved = !entry.committed;
+      if (entry.committed) {
+        try {
+          fs.renameSync(entry.backupPath, entry.filePath);
+          backupCanBeRemoved = true;
+        } catch (rollbackError) {
+          rollbackErrors.push(rollbackError);
+        }
+      }
+      const temporaryError = removeStagedFile(entry.temporaryPath);
+      if (temporaryError !== undefined) rollbackErrors.push(temporaryError);
+      if (backupCanBeRemoved) {
+        const backupError = removeStagedFile(entry.backupPath);
+        if (backupError !== undefined) rollbackErrors.push(backupError);
+      }
+    }
+    if (rollbackErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...rollbackErrors],
+        'Migration commit failed and rollback was incomplete',
+      );
+    }
+    throw error;
+  }
+
+  const cleanupErrors = [];
+  for (const entry of staged) {
+    const backupError = removeStagedFile(entry.backupPath);
+    if (backupError !== undefined) cleanupErrors.push(backupError);
+  }
+  if (cleanupErrors.length > 0) {
+    throwWithCleanupErrors(
+      new Error('Migration commit succeeded but cleanup was incomplete'),
+      cleanupErrors,
+      'staged-file cleanup failed',
+    );
+  }
+}
+
 /** Executes discovery, dry-run reporting, and guarded write-mode updates. */
 function main() {
   const { target, write, sourceVersion } = parseArguments(
@@ -2841,8 +3067,7 @@ function main() {
   const files = [];
   walk(canonicalTarget, files, canonicalTarget);
 
-  let changedFileCount = 0;
-  let manualReviewFileCount = 0;
+  const plans = [];
   for (const filePath of files) {
     assertSafeMigrationPath(filePath, canonicalTarget);
     const original = fs.readFileSync(filePath, 'utf8');
@@ -2851,26 +3076,42 @@ function main() {
       filePath,
       { sourceVersion },
     );
-    const relativePath = path.relative(process.cwd(), filePath);
-    if (transformed !== original) {
-      changedFileCount++;
-      console.log(
-        `${write ? 'update' : 'would update'} ${relativePath} (${applied.join(', ')})`,
-      );
+    plans.push({
+      applied,
+      filePath,
+      manualReviews,
+      original,
+      transformed,
+    });
+  }
 
-      if (write) {
-        assertSafeMigrationPath(filePath, canonicalTarget);
-        fs.writeFileSync(filePath, transformed);
-      }
+  const changedPlans = plans.filter(
+    ({ original, transformed }) => transformed !== original,
+  );
+  if (write) {
+    applyMigrationWritePlans(changedPlans, canonicalTarget);
+  }
+
+  for (const plan of plans) {
+    const relativePath = path.relative(process.cwd(), plan.filePath);
+    if (plan.transformed !== plan.original) {
+      console.log(
+        `${write ? 'update' : 'would update'} ${relativePath} (${plan.applied.join(', ')})`,
+      );
     }
-    if (manualReviews.length > 0) {
-      manualReviewFileCount++;
-      console.log(`manual review ${relativePath}: ${manualReviews.join('; ')}`);
+    if (plan.manualReviews.length > 0) {
+      console.log(
+        `manual review ${relativePath}: ${plan.manualReviews.join('; ')}`,
+      );
     }
   }
 
-  console.log(`${write ? 'Updated' : 'Matched'} ${changedFileCount} file(s).`);
-  console.log(`Flagged ${manualReviewFileCount} file(s) for manual review.`);
+  console.log(
+    `${write ? 'Updated' : 'Matched'} ${changedPlans.length} file(s).`,
+  );
+  console.log(
+    `Flagged ${plans.filter(({ manualReviews }) => manualReviews.length > 0).length} file(s) for manual review.`,
+  );
   if (!write) {
     console.log(
       'Dry run only. Re-run with --write after reviewing the planned changes.',

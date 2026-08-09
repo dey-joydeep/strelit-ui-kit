@@ -147,7 +147,7 @@ function collectChangedFiles(baseRef, cwd = process.cwd()) {
 function verificationScriptsForRisk(risk) {
   switch (risk) {
     case 'high':
-      return ['verify:ordered', 'apitest:build'];
+      return ['verify:ordered', 'apitest:build', 'apitest:smoke'];
     case 'medium':
       return ['typecheck', 'test', 'lint', 'format:check'];
     case 'low':

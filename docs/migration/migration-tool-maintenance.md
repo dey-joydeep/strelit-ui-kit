@@ -28,6 +28,10 @@ Saved-layout migration walks recognized layout items, converts deterministic v1/
 - Once a module expression is classified as manual-only, preserve its owned expression or atomic declaration plus its local bindings, callbacks, destructuring property names, and binding-owned API expressions; continue migrating unrelated siblings and function bodies.
 - Never run identifier or API replacements over unparsed markup or non-layout JSON; only bounded package and selector rewrites are safe there.
 - Preserve malformed source unchanged and report it instead of applying edits to a recovery parse tree.
+- Preflight the complete target before write mode changes any file. Stage every
+  changed file beside its original, retain rollback copies until the batch
+  commits, and replace originals atomically. A staging or replacement failure
+  must restore every earlier replacement and leave no migration artifacts.
 - A warning-free run means only that all recognized transformations were deterministic. The migrated application still requires its own typecheck and behavioral tests.
 - Treat standalone row, column, and stack JSON as item configs only when they contain a `content` array. Treat standalone component JSON as an item config only when layout-specific fields such as `componentType`, `componentState`, `isClosable`, or `reorderEnabled` prove layout intent. A `componentName`-only item is accepted only in explicit `--from v1` mode; in `auto` mode the same ambiguous shape must remain unchanged as possible application metadata. Never promote item children into a layout root.
 

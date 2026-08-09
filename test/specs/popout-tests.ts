@@ -1243,9 +1243,11 @@ describe('BrowserPopout functionality (item.popout())', function () {
       parent?.addPopInParentId('return-parent');
       const popout = layout.openPopouts[0] as unknown as {
         _isInitialised: boolean;
+        _initialisedStrelitInstance: typeof childLayout;
         popIn(): void;
       };
       popout._isInitialised = true;
+      popout._initialisedStrelitInstance = childLayout;
 
       expect(() => popout.popIn()).not.toThrow();
 
@@ -1343,6 +1345,171 @@ describe('BrowserPopout functionality (item.popout())', function () {
     expect(attempts).toBe(2);
     expect(layout.findFirstComponentItemById('retry-return')).toBeDefined();
     expect(childLayout.closeWindow).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a closed popout serializable when automatic pop-in binding fails', function () {
+    vi.useFakeTimers();
+    const reportError = vi.fn();
+    vi.stubGlobal('reportError', reportError);
+    try {
+      let beforeUnload: (() => void) | undefined;
+      let attempts = 0;
+      layout.registerComponentFactoryFunction('flaky-auto-popin', () => {
+        if (++attempts === 1) {
+          throw new Error('automatic pop-in bind failure');
+        }
+        return undefined;
+      });
+      const childLayout = {
+        isInitialised: true,
+        on: vi.fn(),
+        saveLayout: () =>
+          resolveLayoutConfig({
+            root: {
+              type: 'component',
+              id: 'failed-auto-popin',
+              componentType: 'flaky-auto-popin',
+            },
+          }),
+        closeWindow: vi.fn(),
+        width: 320,
+        height: 200,
+      };
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn((name: string, listener: () => void) => {
+          if (name === 'beforeunload') {
+            beforeUnload = listener;
+          }
+        }),
+        removeEventListener: vi.fn(),
+        __strelitInstance: childLayout,
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        settings: { popInOnClose: true },
+        root: {
+          type: 'component',
+          id: 'auto-popin-host',
+          componentType: 'testComponent',
+        },
+        openPopouts: [
+          {
+            root: {
+              type: 'component',
+              id: 'failed-auto-popin',
+              componentType: 'flaky-auto-popin',
+            },
+            parentId: null,
+          },
+        ],
+      });
+      const popout = layout.openPopouts[0];
+      vi.advanceTimersByTime(10);
+
+      (mockWindow as unknown as { closed: boolean }).closed = true;
+      beforeUnload?.();
+      expect(() => vi.advanceTimersByTime(50)).not.toThrow();
+
+      expect(reportError).toHaveBeenCalledOnce();
+      expect(
+        layout.findFirstComponentItemById('failed-auto-popin'),
+      ).toBeUndefined();
+      expect(layout.saveLayout().openPopouts[0].root?.id).toBe(
+        'failed-auto-popin',
+      );
+
+      expect(() => popout.popIn()).not.toThrow();
+      vi.advanceTimersByTime(50);
+      expect(
+        layout.findFirstComponentItemById('failed-auto-popin'),
+      ).toBeDefined();
+      expect(layout.openPopouts).toHaveLength(0);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+
+  it('restores a wrapped root without re-entering failed GroundItem sizing', function () {
+    vi.useFakeTimers();
+    try {
+      const childLayout = {
+        isInitialised: true,
+        on: vi.fn(),
+        saveLayout: () =>
+          resolveLayoutConfig({
+            root: {
+              type: 'stack',
+              id: 'returned-stack',
+              content: [{ type: 'component', componentType: 'testComponent' }],
+            },
+          }),
+        closeWindow: vi.fn(),
+      };
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        __strelitInstance: childLayout,
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        root: {
+          type: 'stack',
+          id: 'existing-stack',
+          content: [{ type: 'component', componentType: 'testComponent' }],
+        },
+        openPopouts: [
+          {
+            root: {
+              type: 'stack',
+              id: 'returned-stack',
+              content: [{ type: 'component', componentType: 'testComponent' }],
+            },
+            parentId: null,
+          },
+        ],
+      });
+      const originalRoot = layout.rootItem;
+      const popout = layout.openPopouts[0] as unknown as {
+        _isInitialised: boolean;
+        _initialisedStrelitInstance: typeof childLayout;
+        popIn(): void;
+      };
+      popout._isInitialised = true;
+      popout._initialisedStrelitInstance = childLayout;
+      vi.spyOn(layout.groundItem!, 'addChild').mockImplementation(() => {
+        throw new Error('persistent pop-in insertion failure');
+      });
+
+      expect(() => popout.popIn()).toThrow(
+        'persistent pop-in insertion failure',
+      );
+
+      expect(layout.rootItem).toBe(originalRoot);
+      expect(originalRoot?.element.isConnected).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('rolls back inserted content when closing the child throws and allows retry', function () {
@@ -1545,9 +1712,11 @@ describe('BrowserPopout functionality (item.popout())', function () {
       });
       const popout = layout.openPopouts[0] as unknown as {
         _isInitialised: boolean;
+        _initialisedStrelitInstance: typeof childLayout;
         popIn(): void;
       };
       popout._isInitialised = true;
+      popout._initialisedStrelitInstance = childLayout;
 
       popout.popIn();
       expect(
@@ -1926,6 +2095,79 @@ describe('BrowserPopout functionality (item.popout())', function () {
       expect(closed).toHaveBeenCalledOnce();
       expect(layout.findFirstComponentItemById('reload-popout')).toBeDefined();
       expect(localStorage.getItem(storageKey)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rebinds popIn once when a reload creates a new child layout', function () {
+    vi.useFakeTimers();
+    try {
+      let beforeUnload: (() => void) | undefined;
+      const firstChild = {
+        isInitialised: true,
+        on: vi.fn(),
+        off: vi.fn(),
+      };
+      const secondChild = {
+        isInitialised: true,
+        on: vi.fn(),
+        off: vi.fn(),
+      };
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn((name: string, listener: () => void) => {
+          if (name === 'beforeunload') {
+            beforeUnload = listener;
+          }
+        }),
+        removeEventListener: vi.fn(),
+        __strelitInstance: firstChild,
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        openPopouts: [
+          {
+            root: {
+              type: 'component',
+              componentType: 'testComponent',
+            },
+          },
+        ],
+      });
+      const popout = layout.openPopouts[0];
+      const initialised = vi.fn();
+      popout.on('initialised', initialised);
+
+      vi.advanceTimersByTime(10);
+      expect(firstChild.on).toHaveBeenCalledOnce();
+      expect(initialised).toHaveBeenCalledOnce();
+
+      beforeUnload?.();
+      vi.advanceTimersByTime(50);
+      mockWindow.__strelitInstance = secondChild;
+      vi.advanceTimersByTime(20);
+
+      expect(firstChild.on).toHaveBeenCalledOnce();
+      expect(firstChild.off).toHaveBeenCalledWith(
+        'popIn',
+        expect.any(Function),
+      );
+      expect(secondChild.on).toHaveBeenCalledOnce();
+      expect(secondChild.on).toHaveBeenCalledWith(
+        'popIn',
+        expect.any(Function),
+      );
+      expect(initialised).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
     }

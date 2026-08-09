@@ -17,6 +17,21 @@ import { EventEmitter } from '../utils/event-emitter';
 import { ItemType, Rect } from '../utils/types';
 import { getErrorMessage, getUniqueId } from '../utils/utils';
 
+/** Preserves a pop-in failure while surfacing cleanup failures as well. */
+function throwWithPopInCleanupErrors(
+  error: unknown,
+  cleanupErrors: unknown[],
+): never {
+  if (cleanupErrors.length === 0) {
+    throw error;
+  }
+  const primaryError =
+    error instanceof Error ? error : new Error(String(error));
+  throw Object.assign(primaryError, {
+    errors: [error, ...cleanupErrors],
+  });
+}
+
 /**
  * Pops a content item out into a new browser window.
  * This is achieved by
@@ -34,6 +49,14 @@ export class BrowserPopout extends EventEmitter {
   private _popoutWindow: Window | null;
   /** @internal */
   private _isInitialised: boolean;
+  /** Child layout instance to which the pop-in listener is currently bound. */
+  private _initialisedStrelitInstance: LayoutManager | undefined;
+  /** Listener bound to the current child layout's pop-in event. */
+  private _popInListener: (() => void) | undefined;
+  /** @internal */
+  private readonly _loadListener = () => this.positionWindow();
+  /** @internal */
+  private readonly _beforeUnloadListener = () => this._onClose();
   /** @internal */
   private _checkReadyInterval: ReturnType<typeof setTimeout> | undefined;
   /** @internal */
@@ -42,6 +65,8 @@ export class BrowserPopout extends EventEmitter {
   private _closeRequested = false;
   /** @internal */
   private _closeEventScheduled = false;
+  /** Closed child retained because automatic pop-in could not reconstruct it. */
+  private _closedWithFailedPopIn = false;
   /** Rolls back content inserted while child-window closure is unconfirmed. */
   private _pendingPopInRollback: (() => void) | undefined;
   /** @internal */
@@ -76,8 +101,39 @@ export class BrowserPopout extends EventEmitter {
     this.createWindow();
   }
 
+  /** @internal */
+  get closedWithFailedPopIn(): boolean {
+    return this._closedWithFailedPopIn;
+  }
+
+  /** Releases parent-owned listeners and polling without closing the child window. */
+  /** @internal */
+  destroy(): void {
+    this.clearCheckReadyInterval();
+    try {
+      this.unbindPopInListener();
+    } catch (error) {
+      this.reportAsynchronousError(error);
+    }
+    this._pendingPopInRollback = undefined;
+    if (this._popoutWindow !== null) {
+      try {
+        this._popoutWindow.removeEventListener('load', this._loadListener);
+        this._popoutWindow.removeEventListener(
+          'beforeunload',
+          this._beforeUnloadListener,
+        );
+      } catch {
+        // Cross-origin children may reject listener access during disposal.
+      }
+    }
+  }
+
   /** Performs the to config operation. */
   toConfig(): ResolvedPopoutLayoutConfig {
+    if (this._closedWithFailedPopIn) {
+      return createResolvedPopoutLayoutConfigCopy(this._config);
+    }
     const strelitInstance = this.tryGetStrelitInstance();
     if (!this._isInitialised || strelitInstance === undefined) {
       return createResolvedPopoutLayoutConfigCopy(this._config);
@@ -190,6 +246,7 @@ export class BrowserPopout extends EventEmitter {
     this._isClosingOrPoppingIn = true;
     try {
       this._pendingPopInRollback = this.popInInternal();
+      this._closedWithFailedPopIn = false;
     } catch (error) {
       this._isClosingOrPoppingIn = false;
       throw error;
@@ -225,7 +282,9 @@ export class BrowserPopout extends EventEmitter {
       return undefined;
     }
 
-    const strelitInstance = this._popoutWindow?.__strelitInstance ?? undefined;
+    const strelitInstance = this._closedWithFailedPopIn
+      ? undefined
+      : (this._popoutWindow?.__strelitInstance ?? undefined);
     const strelitInstanceLayoutConfig =
       strelitInstance !== undefined
         ? strelitInstance.saveLayout()
@@ -233,6 +292,13 @@ export class BrowserPopout extends EventEmitter {
     const copiedStrelitLayoutConfig = createResolvedLayoutConfigCopy(
       strelitInstanceLayoutConfig,
     );
+    this._config = createResolvedPopoutLayoutConfigCopy({
+      ...copiedStrelitLayoutConfig,
+      window: this._config.window,
+      parentId: this._config.parentId,
+      indexInParent: this._config.indexInParent,
+      resolved: true,
+    });
     const copiedRoot = copiedStrelitLayoutConfig.root;
     if (copiedRoot === undefined) {
       return undefined;
@@ -287,19 +353,35 @@ export class BrowserPopout extends EventEmitter {
         parentItem,
       );
     } catch (error) {
-      wrapperItem?.destroy();
-      throw error;
+      const cleanupErrors: unknown[] = [];
+      if (wrapperItem !== undefined) {
+        try {
+          wrapperItem.destroy();
+        } catch (cleanupError) {
+          cleanupErrors.push(cleanupError);
+        }
+      }
+      throwWithPopInCleanupErrors(error, cleanupErrors);
     }
 
     if (rootItemToWrap !== undefined && wrapperItem !== undefined) {
       try {
         wrapperItem.addChild(newContentItem, 0, true);
       } catch (error) {
+        const cleanupErrors: unknown[] = [];
         if (!wrapperItem.contentItems.includes(newContentItem)) {
-          newContentItem.destroy();
+          try {
+            newContentItem.destroy();
+          } catch (cleanupError) {
+            cleanupErrors.push(cleanupError);
+          }
         }
-        wrapperItem.destroy();
-        throw error;
+        try {
+          wrapperItem.destroy();
+        } catch (cleanupError) {
+          cleanupErrors.push(cleanupError);
+        }
+        throwWithPopInCleanupErrors(error, cleanupErrors);
       }
 
       try {
@@ -307,28 +389,49 @@ export class BrowserPopout extends EventEmitter {
         groundItem.addChild(wrapperItem);
         wrapperItem.addChild(rootItemToWrap, 0, true);
       } catch (error) {
+        const rollbackErrors: unknown[] = [];
         if (wrapperItem.contentItems.includes(rootItemToWrap)) {
           try {
             wrapperItem.removeChild(rootItemToWrap, true);
-          } catch {
-            //
+          } catch (rollbackError) {
+            rollbackErrors.push(rollbackError);
           }
         }
         if (groundItem.contentItems.includes(wrapperItem)) {
           try {
             groundItem.removeChild(wrapperItem, true);
-          } catch {
-            //
+          } catch (rollbackError) {
+            rollbackErrors.push(rollbackError);
           }
         }
-        if (!groundItem.contentItems.includes(rootItemToWrap)) {
+        if (
+          !groundItem.contentItems.includes(rootItemToWrap) &&
+          !wrapperItem.contentItems.includes(rootItemToWrap)
+        ) {
           try {
-            groundItem.addChild(rootItemToWrap);
-          } catch {
-            //
+            groundItem.restoreRootWithoutResize(rootItemToWrap);
+          } catch (rollbackError) {
+            rollbackErrors.push(rollbackError);
           }
         }
-        wrapperItem.destroy();
+        if (
+          !groundItem.contentItems.includes(wrapperItem) &&
+          !wrapperItem.contentItems.includes(rootItemToWrap)
+        ) {
+          try {
+            wrapperItem.destroy();
+          } catch (rollbackError) {
+            rollbackErrors.push(rollbackError);
+          }
+        }
+        if (rollbackErrors.length > 0) {
+          throw Object.assign(
+            new Error(
+              'Pop-in insertion failed and root rollback was incomplete',
+            ),
+            { errors: [error, ...rollbackErrors] },
+          );
+        }
         throw error;
       }
       return () => {
@@ -339,7 +442,7 @@ export class BrowserPopout extends EventEmitter {
           groundItem.removeChild(wrapperItem, true);
         }
         if (!groundItem.contentItems.includes(rootItemToWrap)) {
-          groundItem.addChild(rootItemToWrap);
+          groundItem.restoreRootWithoutResize(rootItemToWrap);
         }
         wrapperItem.destroy();
       };
@@ -355,17 +458,22 @@ export class BrowserPopout extends EventEmitter {
       }
       parentItem.addChild(newContentItem, index);
     } catch (error) {
+      const cleanupErrors: unknown[] = [];
       if (parentItem.contentItems.includes(newContentItem)) {
         try {
           parentItem.removeChild(newContentItem, true);
-        } catch {
-          //
+        } catch (cleanupError) {
+          cleanupErrors.push(cleanupError);
         }
       }
       if (!parentItem.contentItems.includes(newContentItem)) {
-        newContentItem.destroy();
+        try {
+          newContentItem.destroy();
+        } catch (cleanupError) {
+          cleanupErrors.push(cleanupError);
+        }
       }
-      throw error;
+      throwWithPopInCleanupErrors(error, cleanupErrors);
     }
     return () => {
       if (parentItem.contentItems.includes(newContentItem)) {
@@ -422,16 +530,12 @@ export class BrowserPopout extends EventEmitter {
       }
     }
 
-    this._popoutWindow.addEventListener('load', () => this.positionWindow(), {
+    this._popoutWindow.addEventListener('load', this._loadListener, {
       passive: true,
     });
     this._popoutWindow.addEventListener(
       'beforeunload',
-      () => {
-        // beforeunload also fires for reloads; wait for Window.closed before
-        // treating it as a real close.
-        this._onClose();
-      },
+      this._beforeUnloadListener,
       { passive: true },
     );
 
@@ -467,8 +571,11 @@ export class BrowserPopout extends EventEmitter {
           // A navigated child can become cross-origin. Keep polling closure.
           return;
         }
-        if (!this._isInitialised && strelitInstance?.isInitialised) {
-          this.onInitialised();
+        if (
+          strelitInstance?.isInitialised &&
+          strelitInstance !== this._initialisedStrelitInstance
+        ) {
+          this.onInitialised(strelitInstance);
           this.clearCheckReadyInterval();
         }
       }
@@ -548,13 +655,23 @@ export class BrowserPopout extends EventEmitter {
    * within it is initialised
    * @internal
    */
-  private onInitialised(): void {
+  private onInitialised(strelitInstance: LayoutManager): void {
     if (this._layoutManager.isDestroyed) {
       return;
     }
+    const isFirstInitialisation = !this._isInitialised;
     this._isInitialised = true;
-    this.getStrelitInstance().on('popIn', () => this.popIn());
-    this.emit('initialised');
+    try {
+      this.unbindPopInListener();
+    } catch (error) {
+      this.reportAsynchronousError(error);
+    }
+    this._initialisedStrelitInstance = strelitInstance;
+    this._popInListener = () => this.popIn();
+    strelitInstance.on('popIn', this._popInListener);
+    if (isFirstInitialisation) {
+      this.emit('initialised');
+    }
   }
 
   /**
@@ -580,10 +697,13 @@ export class BrowserPopout extends EventEmitter {
         this._isClosingOrPoppingIn = true;
         try {
           this.popInInternal();
+          this._closedWithFailedPopIn = false;
         } catch (error) {
+          this._closedWithFailedPopIn = true;
           this._isClosingOrPoppingIn = false;
           this._closeEventScheduled = false;
-          throw error;
+          this.reportAsynchronousError(error);
+          return;
         }
       }
       this._closeEventScheduled = false;
@@ -602,6 +722,11 @@ export class BrowserPopout extends EventEmitter {
       } else {
         this._pendingPopInRollback = undefined;
         this._closeRequested = false;
+        try {
+          this.unbindPopInListener();
+        } catch (error) {
+          this.reportAsynchronousError(error);
+        }
         if (!this._layoutManager.isDestroyed) {
           this.emit('closed');
         }
@@ -618,6 +743,40 @@ export class BrowserPopout extends EventEmitter {
     if (rollback !== undefined) {
       rollback();
       this._pendingPopInRollback = undefined;
+    }
+  }
+
+  private unbindPopInListener(): void {
+    let cleanupError: unknown;
+    if (
+      this._initialisedStrelitInstance !== undefined &&
+      this._popInListener !== undefined
+    ) {
+      const childLayout = this._initialisedStrelitInstance;
+      if (typeof childLayout.off === 'function') {
+        try {
+          childLayout.off('popIn', this._popInListener);
+        } catch (error) {
+          cleanupError = error;
+        }
+      }
+      this._initialisedStrelitInstance = undefined;
+      this._popInListener = undefined;
+    }
+    if (cleanupError !== undefined) {
+      throw cleanupError;
+    }
+  }
+
+  private reportAsynchronousError(error: unknown): void {
+    try {
+      if (typeof globalThis.reportError === 'function') {
+        globalThis.reportError(error);
+      } else {
+        console.error('Automatic pop-in failed', error);
+      }
+    } catch {
+      // A failing host diagnostic hook must not discard persistence state.
     }
   }
 

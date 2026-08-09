@@ -8,6 +8,11 @@ import {
 import { translateObject } from '../../src/ts/utils/config-minifier';
 
 describe('resolved layout config minifier', function () {
+  it('preserves unknown compact value tokens while unminifying', function () {
+    expect(translateObject({ value: 'a' }, false)).toEqual({ value: 'a' });
+    expect(translateObject({ value: 'z' }, false)).toEqual({ value: 'z' });
+  });
+
   it('round-trips the maximum supported semantic layout depth', function () {
     let componentState: Record<string, unknown> = { leaf: true };
     for (let depth = 0; depth < 128; depth++) {

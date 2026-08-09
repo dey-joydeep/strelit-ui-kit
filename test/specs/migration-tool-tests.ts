@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -1120,6 +1121,16 @@ const layout: LayoutConfig = {
     );
   });
 
+  it('preserves malformed JSON with an explicit manual-review diagnostic', () => {
+    const source = '{ "root": { "type": "component",';
+    const filePath = createFixture(source, 'layout.json');
+
+    const output = migrate(filePath);
+
+    expect(readFileSync(filePath, 'utf8')).toBe(source);
+    expect(output).toContain('malformed JSON requires manual migration');
+  });
+
   it('places migrated source theme imports under themes directory', () => {
     const filePath = createFixture(`
 import 'golden-layout/dist/css/goldenlayout-dark-theme.css';
@@ -1273,7 +1284,7 @@ const config: DragSource.ComponentItemConfig = {
     expect(output).toContain('type/state to componentType/componentState');
   });
 
-  it('migrates deterministic saved-layout fields and reports lossy roots', () => {
+  it('migrates deterministic saved-layout fields', () => {
     const filePath = createFixture(
       JSON.stringify({
         content: [
@@ -1284,7 +1295,6 @@ const config: DragSource.ComponentItemConfig = {
             minWidth: 120,
             id: ['editor', '__glMaximised'],
           },
-          { type: 'component', componentName: 'preview' },
         ],
         settings: {
           hasHeaders: false,
@@ -1320,11 +1330,150 @@ const config: DragSource.ComponentItemConfig = {
       defaultMinItemWidth: '10px',
       defaultMinItemHeight: '5px',
     });
-    expect(output).toContain('multiple roots');
+    expect(output).toContain('Flagged 0 file(s) for manual review.');
 
     const firstMigration = readFileSync(filePath, 'utf8');
     migrate(filePath, ['--from', 'v2']);
     expect(readFileSync(filePath, 'utf8')).toBe(firstMigration);
+  });
+
+  it('preserves a saved layout with multiple roots for manual review', () => {
+    const source = JSON.stringify({
+      content: [
+        { type: 'component', componentName: 'editor' },
+        { type: 'component', componentName: 'preview' },
+      ],
+    });
+    const filePath = createFixture(source, 'layout.json');
+
+    const output = migrate(filePath, ['--from', 'v1']);
+
+    expect(readFileSync(filePath, 'utf8')).toBe(source);
+    expect(output).toContain('multiple roots');
+  });
+
+  it('preserves a saved layout item with multiple non-protocol IDs', () => {
+    const source = JSON.stringify({
+      root: {
+        type: 'component',
+        componentName: 'editor',
+        id: ['editor', 'workspace-editor', '__glMaximised'],
+      },
+    });
+    const filePath = createFixture(source, 'layout.json');
+
+    const output = migrate(filePath, ['--from', 'v1']);
+
+    expect(readFileSync(filePath, 'utf8')).toBe(source);
+    expect(output).toContain('multiple non-protocol IDs');
+  });
+
+  it('rolls back earlier files when a later atomic replacement fails', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'strelit-migration-batch-'));
+    temporaryDirectories.push(directory);
+    const firstPath = join(directory, 'a.json');
+    const secondPath = join(directory, 'b.json');
+    const firstSource = JSON.stringify({
+      root: { type: 'component', componentName: 'first' },
+    });
+    const secondSource = JSON.stringify({
+      root: { type: 'component', componentName: 'second' },
+    });
+    writeFileSync(firstPath, firstSource);
+    writeFileSync(secondPath, secondSource);
+    const preloadPath = join(directory, 'fail-second-rename.cjs');
+    writeFileSync(
+      preloadPath,
+      `const fs = require('node:fs');
+const path = require('node:path');
+const renameSync = fs.renameSync;
+fs.renameSync = (source, destination) => {
+  if (path.basename(destination) === 'b.json' && source.includes('-next-')) {
+    throw new Error('injected second replacement failure');
+  }
+  return renameSync(source, destination);
+};
+`,
+    );
+
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [migrationScript, '--target', directory, '--from', 'v1', '--write'],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            NODE_OPTIONS: `--require=${preloadPath}`,
+          },
+        },
+      ),
+    ).toThrow(/injected second replacement failure/);
+
+    expect(readFileSync(firstPath, 'utf8')).toBe(firstSource);
+    expect(readFileSync(secondPath, 'utf8')).toBe(secondSource);
+    expect(
+      readdirSync(directory).filter((name) => name.includes('.strelit-')),
+    ).toEqual([]);
+  });
+
+  it('preserves a rollback backup when restoration itself fails', () => {
+    const directory = mkdtempSync(
+      join(tmpdir(), 'strelit-migration-recovery-'),
+    );
+    temporaryDirectories.push(directory);
+    const firstPath = join(directory, 'a.json');
+    const secondPath = join(directory, 'b.json');
+    const firstSource = JSON.stringify({
+      root: { type: 'component', componentName: 'first' },
+    });
+    writeFileSync(firstPath, firstSource);
+    writeFileSync(
+      secondPath,
+      JSON.stringify({
+        root: { type: 'component', componentName: 'second' },
+      }),
+    );
+    const preloadPath = join(directory, 'fail-replacement-and-rollback.cjs');
+    writeFileSync(
+      preloadPath,
+      `const fs = require('node:fs');
+const path = require('node:path');
+const renameSync = fs.renameSync;
+fs.renameSync = (source, destination) => {
+  if (path.basename(destination) === 'b.json' && source.includes('-next-')) {
+    throw new Error('injected replacement failure');
+  }
+  if (path.basename(destination) === 'a.json' && source.includes('-backup-')) {
+    throw new Error('injected rollback failure');
+  }
+  return renameSync(source, destination);
+};
+`,
+    );
+
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [migrationScript, '--target', directory, '--from', 'v1', '--write'],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            NODE_OPTIONS: `--require=${preloadPath}`,
+          },
+        },
+      ),
+    ).toThrow(/rollback was incomplete/);
+
+    const recoveryBackup = readdirSync(directory).find(
+      (name) =>
+        name.startsWith('.a.json.strelit-') && name.includes('-backup-'),
+    );
+    expect(recoveryBackup).toBeDefined();
+    expect(readFileSync(join(directory, recoveryBackup!), 'utf8')).toBe(
+      firstSource,
+    );
   });
 
   it('migrates standalone item JSON without dropping its wrapper or children', () => {

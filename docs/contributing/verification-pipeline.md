@@ -31,7 +31,10 @@ Vitest bounds file-worker concurrency in `vitest.config.ts` because each jsdom w
 
 `npm run apitest:smoke` builds the Vite API demo, serves its production output, launches Chrome or Edge headlessly, and asserts that Strelit root, item, and brand markers were rendered. Set `STRELIT_BROWSER_PATH` when the browser is not in a standard location. `STRELIT_SMOKE_PORT` can override the default isolated port.
 
-The browser smoke is a release and migration gate but is separate from `verify:ordered` because an external browser executable is not a package dependency. CI and release environments must install a supported browser and run both commands.
+The browser smoke is separate from `verify:ordered` because an external browser
+executable is not a package dependency. `npm run verify:pr` includes it for
+high-risk changes after the ordered pipeline and API demo build. CI, release,
+and migration environments must install a supported browser.
 
 ## Changing The Runner
 

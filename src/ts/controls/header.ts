@@ -325,8 +325,8 @@ export class Header extends EventEmitter {
    * @param index - The position of the tab
    * @internal
    */
-  createTab(componentItem: ComponentItem, index: number): void {
-    this._tabsContainer.createTab(componentItem, index);
+  createTab(componentItem: ComponentItem, index: number): Tab | undefined {
+    return this._tabsContainer.createTab(componentItem, index);
   }
 
   /**

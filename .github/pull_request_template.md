@@ -60,6 +60,8 @@ change is below the threshold.
 
 Review mode: **Pending**
 Reviewer: Pending
+Review scope: **Pending**
+Review pass: **Pending**
 Reviewed boundary: Pending
 Rubric: `docs/contributing/ai-change-quality-rubric.md`
 Rubric result: **Pending**
@@ -73,11 +75,13 @@ Residual risks: Pending
 
 <!--
 High-risk changes require Review mode: **Independent**, a reviewer that did not
-implement the change, Rubric result: **Pass**, zero dimensions below 2, Verdict:
-**Pass**, numeric finding counts, and zero open Critical/High findings. Low- or
+implement the change, Review scope: **Whole PR**, Review pass: **Fresh
+discovery**, Rubric result: **Pass**, zero dimensions below 2, Verdict: **Pass**,
+numeric finding counts, and zero open Critical/High findings. A finding-closure
+or latest-patch review cannot satisfy the final high-risk gate. Low- or
 Medium-risk changes use at least **Self-review**. For high risk, Reviewer must be
-the GitHub login that approved the current PR head, and Reviewed boundary must be
-the current full head SHA. Detailed local reports may live in .tmp/, but
+the GitHub login that approved the current PR head, and Reviewed boundary must
+be the current full head SHA. Detailed local reports may live in .tmp/, but
 summarize durable evidence here.
 -->
 

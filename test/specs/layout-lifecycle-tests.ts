@@ -409,6 +409,44 @@ describe('layout lifecycle', () => {
     expect(layout.openPopouts).toHaveLength(0);
   });
 
+  it('reports old-root cleanup failure after committing its replacement', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        id: 'working-root',
+        componentType: 'panel',
+      },
+    });
+    const reportError = vi.fn();
+    vi.stubGlobal('reportError', reportError);
+    vi.spyOn(layout, 'unbindComponent').mockImplementationOnce(() => {
+      throw new Error('old root cleanup failed');
+    });
+
+    try {
+      expect(() =>
+        layout.loadLayout({
+          root: {
+            type: 'component',
+            id: 'replacement-root',
+            componentType: 'panel',
+          },
+        }),
+      ).not.toThrow();
+
+      expect(layout.rootItem?.id).toBe('replacement-root');
+      expect(reportError).toHaveBeenCalledOnce();
+      expect(reportError.mock.calls[0][0]).toEqual(
+        expect.objectContaining({ message: 'old root cleanup failed' }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it.each([1, 2])(
     'destroys %i constructed siblings when a later child factory fails',
     (failureIndex) => {
@@ -701,6 +739,112 @@ describe('layout lifecycle', () => {
 
     expect(firstPopout.close).toHaveBeenCalledTimes(2);
     expect(layout.openPopouts).toHaveLength(0);
+  });
+
+  it('disposes failed popouts before clearing destruction ownership', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    const failedPopout = {
+      close: vi.fn(() => {
+        throw new Error('close failed during destroy');
+      }),
+      getWindow: () => ({ closed: false }),
+      destroy: vi.fn(),
+    };
+    const internals = layout as unknown as {
+      _openPopouts: {
+        close(): void;
+        getWindow(): { closed: boolean };
+        destroy(): void;
+      }[];
+    };
+    internals._openPopouts.push(failedPopout);
+
+    expect(() => layout.destroy()).toThrow('close failed during destroy');
+    expect(failedPopout.destroy).toHaveBeenCalledOnce();
+    expect(layout.openPopouts).toHaveLength(0);
+  });
+
+  it('keeps unload-listener ownership after a failed removal for retry', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    const internals = layout as unknown as {
+      _windowBeforeUnloadListening: boolean;
+      _windowBeforeUnloadListener: EventListener;
+    };
+    internals._windowBeforeUnloadListening = true;
+    const removeEventListener = vi
+      .spyOn(globalThis, 'removeEventListener')
+      .mockImplementationOnce(() => {
+        throw new Error('listener removal failed');
+      });
+
+    expect(() => layout.closeAllOpenPopouts()).toThrow(
+      'listener removal failed',
+    );
+    expect(internals._windowBeforeUnloadListening).toBe(true);
+
+    removeEventListener.mockRestore();
+    expect(() => layout.closeAllOpenPopouts()).not.toThrow();
+    expect(internals._windowBeforeUnloadListening).toBe(false);
+  });
+
+  it('retries destroy cleanup after a persistent teardown failure', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    const removeEventListener = vi
+      .spyOn(globalThis, 'removeEventListener')
+      .mockImplementation(() => {
+        throw new Error('listener removal failed during destroy');
+      });
+    const internals = layout as unknown as {
+      _windowBeforeUnloadListening: boolean;
+    };
+    internals._windowBeforeUnloadListening = true;
+
+    expect(() => layout.destroy()).toThrow(
+      'listener removal failed during destroy',
+    );
+    expect(layout.isDestroyed).toBe(true);
+    expect(internals._windowBeforeUnloadListening).toBe(true);
+
+    removeEventListener.mockRestore();
+    expect(() => layout.destroy()).not.toThrow();
+    expect(internals._windowBeforeUnloadListening).toBe(false);
+  });
+
+  it('retains failed indicators and drag sources for destroy retry', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    const dropTargetIndicator = {
+      destroy: vi.fn().mockImplementationOnce(() => {
+        throw new Error('indicator teardown failed');
+      }),
+    };
+    const transitionIndicator = { destroy: vi.fn() };
+    const dragSource = {
+      destroy: vi.fn().mockImplementationOnce(() => {
+        throw new Error('drag source teardown failed');
+      }),
+    };
+    const internals = layout as unknown as {
+      _dropTargetIndicator: typeof dropTargetIndicator;
+      _transitionIndicator: typeof transitionIndicator;
+      _dragSources: (typeof dragSource)[];
+    };
+    internals._dropTargetIndicator = dropTargetIndicator;
+    internals._transitionIndicator = transitionIndicator;
+    internals._dragSources = [dragSource];
+
+    expect(() => layout.destroy()).toThrow('indicator teardown failed');
+    expect(internals._dropTargetIndicator).toBe(dropTargetIndicator);
+    expect(internals._dragSources).toEqual([dragSource]);
+
+    expect(() => layout.destroy()).not.toThrow();
+    expect(dropTargetIndicator.destroy).toHaveBeenCalledTimes(2);
+    expect(dragSource.destroy).toHaveBeenCalledTimes(2);
+    expect(internals._dropTargetIndicator).toBeNull();
+    expect(internals._dragSources).toHaveLength(0);
   });
 
   it('destroys partial layout state when initialization fails', () => {
