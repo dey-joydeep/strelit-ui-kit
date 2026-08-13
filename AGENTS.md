@@ -171,6 +171,20 @@ adjacent call paths, and relevant tests. The applicable risk domains are:
 - Tooling, CI, and verification
 - Tests and documentation
 
+Initialize high-risk pull-request work with `npm run agent:ledger -- init
+--mode pr --implementer <identity> --task <id> --base <ref> --head <sha>`.
+The ledger derives required paths from the Git merge base through the current
+source and derives canonical domains from repository policy. Manually declared
+review scope cannot reduce that generated requirement. Local `npm run
+verify:pr` MUST run `verify:review-ready` for high-risk changes and fail when
+the ledger is absent, incomplete, stale, dirty, self-reviewed, or missing exact
+path-domain coverage. GitHub Actions uses the separately trusted PR-metadata
+gate because `.tmp` ledgers are intentionally not committed.
+For a non-default PR target, trusted automation or repository configuration
+MUST set `STRELIT_REVIEW_BASE_REF`; this target is used by both initialization
+and `verify:review-ready`. The definitive command rejects caller `--base` and
+`--classify-only` overrides.
+
 For a pull request, record the manifest in the PR body's `Review Coverage
 Manifest` section using the machine-readable format in the pull request
 template. Every changed path MUST have exactly one entry listing its behavioral
@@ -223,6 +237,16 @@ validated and dispositioned.
 Once a frozen SHA satisfies this gate, do not request repeated whole-PR reviews
 without a new commit or new external evidence. This is the stopping rule for
 the review cycle.
+
+`verify:review-ready` is the machine-checkable local stopping gate. It requires
+verification commands executed by that same gate process, completed
+fresh-discovery coverage, and
+a passing whole-PR synthesis. Large high-risk changes require at least two
+independent domain reviewers plus an unused independent synthesis reviewer.
+Passing this local gate does not substitute for the required GitHub approval.
+Local reviewer/context identifiers are workflow attestations, not a security
+boundary: orchestrator task records and the different-identity GitHub approval
+are the authoritative proof of independence.
 
 For a bug or PR review finding, the implementer MUST:
 

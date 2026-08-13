@@ -22,6 +22,8 @@ interface CommandReceipt {
 interface Checkpoint {
   lastVerifiedHead: string;
   sourceFingerprint: string;
+  reviewedBase?: string;
+  reviewedHead?: string;
   inspectedPaths: string[];
   remainingPaths: string[];
   commands: CommandReceipt[];
@@ -33,6 +35,21 @@ interface Checkpoint {
     acceptanceEvidence?: string;
   }>;
   uninspected: string[];
+  verdict?: 'pass' | 'changes-requested' | 'blocked';
+  coverage?: Array<{
+    path: string;
+    domains: string[];
+    contract: string;
+    adjacentPaths: string[];
+    tests: string[];
+  }>;
+}
+
+interface ReviewAssignment {
+  reviewer: string;
+  scope: 'domain' | 'whole-pr';
+  pass: 'fresh-discovery' | 'finding-closure';
+  domains: string[];
 }
 
 interface WorkUnit {
@@ -60,6 +77,18 @@ interface WorkUnit {
     toHead: string;
     changedPaths: string[];
   };
+  review?: ReviewAssignment;
+}
+
+interface ReviewGate {
+  mode: 'pull-request';
+  implementer: string;
+  risk: 'low' | 'medium' | 'high';
+  requiredPaths: string[];
+  requiredCoverage: Array<{ path: string; domains: string[] }>;
+  applicableDomains: string[];
+  nonGeneratedLines: number;
+  largeHighRisk: boolean;
 }
 
 interface Ledger {
@@ -72,6 +101,7 @@ interface Ledger {
   status: 'active' | 'complete';
   units: WorkUnit[];
   updatedAt: string;
+  reviewGate?: ReviewGate;
 }
 
 interface LedgerModule {
@@ -106,6 +136,16 @@ interface LedgerModule {
     sourceChanged: boolean;
   };
   validateLedger(ledger: Ledger): Ledger;
+  validatePullRequestGate(
+    ledger: Ledger,
+    sourceState: { head: string; fingerprint: string; workingPaths: string[] },
+    options?: {
+      requireComplete?: boolean;
+      expectedBaseHead?: string;
+      expectedReviewGate?: ReviewGate;
+      executedCommands?: string[];
+    },
+  ): Ledger;
   summarize(ledger: Ledger): { work: Array<Record<string, unknown>> };
 }
 
@@ -141,6 +181,8 @@ function withTemporaryRepository(run: (repository: string) => void): void {
     execFileSync('git', ['commit', '-m', 'Create fixture.'], {
       cwd: repository,
     });
+    execFileSync('git', ['branch', '-M', 'main'], { cwd: repository });
+    execFileSync('git', ['switch', '-c', 'feature'], { cwd: repository });
     run(repository);
   } finally {
     rmSync(repository, { force: true, recursive: true });
@@ -236,6 +278,71 @@ function completedUnit(
       uninspected: [],
     },
   };
+}
+
+function retargetCompletedUnit(
+  unit: WorkUnit,
+  source: { head: string; fingerprint: string },
+  inspectedPaths: string[],
+): WorkUnit {
+  unit.head = source.head;
+  unit.sourceFingerprint = source.fingerprint;
+  unit.checkpoint = {
+    lastVerifiedHead: source.head,
+    sourceFingerprint: source.fingerprint,
+    inspectedPaths,
+    remainingPaths: [],
+    commands: unit.requiredCommands.map((command) => ({
+      command,
+      exitCode: 0,
+      head: source.head,
+      sourceFingerprint: source.fingerprint,
+    })),
+    findingSummary: 'No findings in the assigned contract.',
+    findings: [],
+    uninspected: [],
+    verdict: 'pass',
+  };
+  return unit;
+}
+
+function addPathEvidence(
+  unit: WorkUnit,
+  path: string,
+  domains: string[],
+  adjacentPath: string,
+  command: string,
+): void {
+  unit.checkpoint!.coverage = [
+    {
+      path,
+      domains,
+      contract: unit.contracts[0],
+      adjacentPaths: [adjacentPath],
+      tests: [command],
+    },
+  ];
+}
+
+function gateOptions(ledger: Ledger): {
+  expectedBaseHead: string;
+  expectedReviewGate: ReviewGate;
+  executedCommands: string[];
+} {
+  return {
+    expectedBaseHead: ledger.baseHead,
+    expectedReviewGate: structuredClone(ledger.reviewGate!),
+    executedCommands: [
+      'npm run verify:ordered',
+      'npm run apitest:build',
+      'npm run apitest:smoke',
+    ],
+  };
+}
+
+function bindReviewBoundary(unit: WorkUnit, ledger: Ledger): void {
+  unit.checkpoint!.reviewedBase = ledger.baseHead;
+  unit.checkpoint!.reviewedHead = ledger.currentHead;
 }
 
 describe('agent work ledger', () => {
@@ -837,6 +944,452 @@ describe('agent work ledger', () => {
     });
   });
 
+  it('derives pull-request review scope and canonical domains from the base diff', () => {
+    withTemporaryRepository((repository) => {
+      const base = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      writeFileSync(
+        join(repository, 'src', 'ts', 'layout-manager.ts'),
+        'layout changed\n',
+      );
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Change layout.'], {
+        cwd: repository,
+      });
+      const head = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+
+      const ledger = ledgerModule.execute(
+        'init',
+        {
+          task: 'PR-review',
+          base,
+          head,
+          mode: 'pr',
+          implementer: 'codex-main',
+        },
+        repository,
+      );
+
+      expect(ledger.reviewGate).toMatchObject({
+        mode: 'pull-request',
+        implementer: 'codex-main',
+        risk: 'high',
+        requiredPaths: ['src/ts/layout-manager.ts'],
+        applicableDomains: [
+          'Public API, compatibility, and packaging',
+          'Runtime behavior, lifecycle, and ownership',
+        ],
+        largeHighRisk: false,
+      });
+      expect(ledger.reviewGate?.requiredCoverage).toEqual([
+        {
+          path: 'src/ts/layout-manager.ts',
+          domains: [
+            'Public API, compatibility, and packaging',
+            'Runtime behavior, lifecycle, and ownership',
+          ],
+        },
+      ]);
+    });
+  });
+
+  it('fails the definitive PR gate for an empty ledger and self-review', () => {
+    withTemporaryRepository((repository) => {
+      const base = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      writeFileSync(
+        join(repository, 'src', 'ts', 'layout-manager.ts'),
+        'layout changed\n',
+      );
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Change layout.'], {
+        cwd: repository,
+      });
+      const head = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      const ledger = ledgerModule.execute(
+        'init',
+        {
+          task: 'PR-review',
+          base,
+          head,
+          mode: 'pr',
+          implementer: 'codex-main',
+        },
+        repository,
+      );
+      const source = ledgerModule.currentSourceState(repository);
+
+      expect(() =>
+        ledgerModule.validatePullRequestGate(
+          ledger,
+          source,
+          gateOptions(ledger),
+        ),
+      ).toThrow('missing completed fresh-discovery review coverage');
+
+      const selfReview = completedUnit('whole-pr-review', 'review', [
+        'src/ts/layout-manager.ts',
+      ]);
+      selfReview.head = source.head;
+      selfReview.sourceFingerprint = source.fingerprint;
+      selfReview.adjacentPaths = ['src/ts/controls/browser-popout.ts'];
+      selfReview.review = {
+        reviewer: 'codex-main',
+        scope: 'whole-pr',
+        pass: 'fresh-discovery',
+        domains: [
+          'Public API, compatibility, and packaging',
+          'Runtime behavior, lifecycle, and ownership',
+        ],
+      };
+      selfReview.checkpoint = {
+        ...selfReview.checkpoint!,
+        lastVerifiedHead: source.head,
+        sourceFingerprint: source.fingerprint,
+        inspectedPaths: [
+          'src/ts/controls/browser-popout.ts',
+          'src/ts/layout-manager.ts',
+        ],
+        verdict: 'pass',
+      };
+      ledger.units.push(selfReview);
+
+      expect(() =>
+        ledgerModule.validatePullRequestGate(
+          ledger,
+          source,
+          gateOptions(ledger),
+        ),
+      ).toThrow('must be independent from implementer codex-main');
+    });
+  });
+
+  it('rejects a caller-selected base that narrows the trusted PR diff', () => {
+    withTemporaryRepository((repository) => {
+      writeFileSync(
+        join(repository, 'src', 'ts', 'layout-manager.ts'),
+        'layout changed\n',
+      );
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Change layout.'], {
+        cwd: repository,
+      });
+      const head = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+
+      expect(() =>
+        ledgerModule.execute(
+          'init',
+          {
+            task: 'narrowed-pr',
+            base: head,
+            head,
+            mode: 'pr',
+            implementer: 'codex-main',
+          },
+          repository,
+        ),
+      ).toThrow('trusted base');
+    });
+  });
+
+  it('accepts exact independent coverage, verification, and synthesis', () => {
+    withTemporaryRepository((repository) => {
+      const base = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      writeFileSync(
+        join(repository, 'src', 'ts', 'layout-manager.ts'),
+        'layout changed\n',
+      );
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Change layout.'], {
+        cwd: repository,
+      });
+      const head = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      const ledger = ledgerModule.execute(
+        'init',
+        {
+          task: 'PR-review',
+          base,
+          head,
+          mode: 'pr',
+          implementer: 'codex-main',
+        },
+        repository,
+      );
+      const source = ledgerModule.currentSourceState(repository);
+      const changedPath = 'src/ts/layout-manager.ts';
+      const adjacentPath = 'src/ts/controls/browser-popout.ts';
+      const domains = ledger.reviewGate!.applicableDomains;
+
+      const review = completedUnit('whole-review', 'review', [changedPath]);
+      review.adjacentPaths = [adjacentPath];
+      review.requiredCommands = ['source inspection'];
+      review.review = {
+        reviewer: 'reviewer-a',
+        scope: 'whole-pr',
+        pass: 'fresh-discovery',
+        domains,
+      };
+      retargetCompletedUnit(review, source, [changedPath, adjacentPath]);
+      addPathEvidence(
+        review,
+        changedPath,
+        domains,
+        adjacentPath,
+        'source inspection',
+      );
+      bindReviewBoundary(review, ledger);
+
+      const verification = completedUnit('verification', 'verification', []);
+      verification.requiredCommands = [
+        'npm run verify:ordered',
+        'npm run apitest:build',
+        'npm run apitest:smoke',
+      ];
+      retargetCompletedUnit(verification, source, []);
+
+      const synthesis = completedUnit('synthesis', 'synthesis', [changedPath]);
+      synthesis.adjacentPaths = [adjacentPath];
+      synthesis.requiredCommands = ['source inspection'];
+      synthesis.dependencies = ['whole-review', 'verification'];
+      synthesis.review = {
+        reviewer: 'reviewer-a',
+        scope: 'whole-pr',
+        pass: 'fresh-discovery',
+        domains,
+      };
+      retargetCompletedUnit(synthesis, source, [changedPath, adjacentPath]);
+      bindReviewBoundary(synthesis, ledger);
+      ledger.units.push(review, verification, synthesis);
+
+      expect(() =>
+        ledgerModule.validatePullRequestGate(
+          ledger,
+          source,
+          gateOptions(ledger),
+        ),
+      ).not.toThrow();
+
+      synthesis.dependencies = ['whole-review'];
+      expect(() =>
+        ledgerModule.validatePullRequestGate(
+          ledger,
+          source,
+          gateOptions(ledger),
+        ),
+      ).toThrow('verification unit');
+      synthesis.dependencies = ['whole-review', 'verification'];
+
+      const completedReview = structuredClone(review);
+      review.status = 'carried-forward';
+      review.head = secondHead;
+      review.sourceFingerprint = 'b'.repeat(64);
+      review.checkpoint!.lastVerifiedHead = secondHead;
+      review.checkpoint!.sourceFingerprint = 'b'.repeat(64);
+      review.checkpoint!.reviewedHead = secondHead;
+      review.carryForward = {
+        fromHead: secondHead,
+        toHead: source.head,
+        changedPaths: ['README.md'],
+      };
+      expect(() =>
+        ledgerModule.validatePullRequestGate(
+          ledger,
+          source,
+          gateOptions(ledger),
+        ),
+      ).not.toThrow();
+      Object.assign(review, completedReview);
+
+      expect(() =>
+        ledgerModule.validatePullRequestGate(
+          ledger,
+          { ...source, workingPaths: ['README.md'] },
+          gateOptions(ledger),
+        ),
+      ).toThrow('clean working tree');
+      expect(() =>
+        ledgerModule.validatePullRequestGate(
+          ledger,
+          { ...source, fingerprint: 'b'.repeat(64) },
+          gateOptions(ledger),
+        ),
+      ).toThrow('does not target the current source');
+      expect(() =>
+        ledgerModule.validatePullRequestGate(ledger, source, {
+          ...gateOptions(ledger),
+          executedCommands: [],
+        }),
+      ).toThrow('gate-executed');
+
+      review.checkpoint!.reviewedBase = secondHead;
+      expect(() =>
+        ledgerModule.validatePullRequestGate(
+          ledger,
+          source,
+          gateOptions(ledger),
+        ),
+      ).toThrow('exact base/head boundary');
+      review.checkpoint!.reviewedBase = ledger.baseHead;
+      synthesis.checkpoint!.reviewedHead = secondHead;
+      expect(() =>
+        ledgerModule.validatePullRequestGate(
+          ledger,
+          source,
+          gateOptions(ledger),
+        ),
+      ).toThrow('exact base/head boundary');
+      synthesis.checkpoint!.reviewedHead = ledger.currentHead;
+
+      const originalCoverage = ledger.reviewGate!.requiredCoverage;
+      const canonicalGate = structuredClone(ledger.reviewGate!);
+      ledger.reviewGate!.requiredCoverage = [];
+      expect(() => ledgerModule.validateLedger(ledger)).toThrow(
+        'coverage paths must match requiredPaths exactly',
+      );
+      expect(() =>
+        ledgerModule.validatePullRequestGate(ledger, source, {
+          ...gateOptions(ledger),
+          expectedReviewGate: canonicalGate,
+        }),
+      ).toThrow('regenerated canonical gate');
+      ledger.reviewGate!.requiredCoverage = originalCoverage;
+
+      const pathEvidence = review.checkpoint!.coverage;
+      delete review.checkpoint!.coverage;
+      expect(() =>
+        ledgerModule.validatePullRequestGate(
+          ledger,
+          source,
+          gateOptions(ledger),
+        ),
+      ).toThrow('lacks per-path review evidence');
+      review.checkpoint!.coverage = pathEvidence;
+
+      review.review.domains = [domains[0]];
+      review.checkpoint!.coverage![0].domains = [domains[0]];
+      expect(() =>
+        ledgerModule.validatePullRequestGate(
+          ledger,
+          source,
+          gateOptions(ledger),
+        ),
+      ).toThrow('does not exactly match the base diff');
+    });
+  });
+
+  it('requires multiple domain reviewers and an unused large-PR synthesis reviewer', () => {
+    const source = {
+      head: firstHead,
+      fingerprint: 'a'.repeat(64),
+      workingPaths: [],
+    };
+    const path = 'src/ts/layout-manager.ts';
+    const adjacent = 'src/ts/controls/browser-popout.ts';
+    const domains = [
+      'Public API, compatibility, and packaging',
+      'Runtime behavior, lifecycle, and ownership',
+    ];
+    const ledger: Ledger = {
+      schemaVersion: 1,
+      taskId: 'large-pr',
+      baseHead: secondHead,
+      currentHead: source.head,
+      currentFingerprint: source.fingerprint,
+      workingPaths: [],
+      status: 'active',
+      updatedAt: '2026-08-13T00:00:00.000Z',
+      reviewGate: {
+        mode: 'pull-request',
+        implementer: 'codex-main',
+        risk: 'high',
+        requiredPaths: [path],
+        requiredCoverage: [{ path, domains }],
+        applicableDomains: domains,
+        nonGeneratedLines: 1001,
+        largeHighRisk: true,
+      },
+      units: [],
+    };
+    const makeDomainReview = (id: string, reviewer: string, domain: string) => {
+      const unit = completedUnit(id, 'review', [path]);
+      unit.adjacentPaths = [adjacent];
+      unit.requiredCommands = ['source inspection'];
+      unit.review = {
+        reviewer,
+        scope: 'domain',
+        pass: 'fresh-discovery',
+        domains: [domain],
+      };
+      return retargetCompletedUnit(unit, source, [path, adjacent]);
+    };
+    const firstReview = makeDomainReview('domain-a', 'reviewer-a', domains[0]);
+    const secondReview = makeDomainReview('domain-b', 'reviewer-b', domains[1]);
+    addPathEvidence(
+      firstReview,
+      path,
+      [domains[0]],
+      adjacent,
+      'source inspection',
+    );
+    bindReviewBoundary(firstReview, ledger);
+    addPathEvidence(
+      secondReview,
+      path,
+      [domains[1]],
+      adjacent,
+      'source inspection',
+    );
+    bindReviewBoundary(secondReview, ledger);
+    const verification = completedUnit('verification', 'verification', []);
+    verification.requiredCommands = [
+      'npm run verify:ordered',
+      'npm run apitest:build',
+      'npm run apitest:smoke',
+    ];
+    retargetCompletedUnit(verification, source, []);
+    const synthesis = completedUnit('synthesis', 'synthesis', [path]);
+    synthesis.adjacentPaths = [adjacent];
+    synthesis.requiredCommands = ['source inspection'];
+    synthesis.dependencies = ['domain-a', 'domain-b', 'verification'];
+    synthesis.review = {
+      reviewer: 'reviewer-c',
+      scope: 'whole-pr',
+      pass: 'fresh-discovery',
+      domains,
+    };
+    retargetCompletedUnit(synthesis, source, [path, adjacent]);
+    bindReviewBoundary(synthesis, ledger);
+    ledger.units.push(firstReview, secondReview, verification, synthesis);
+
+    expect(() =>
+      ledgerModule.validatePullRequestGate(ledger, source, gateOptions(ledger)),
+    ).not.toThrow();
+
+    synthesis.review.reviewer = 'reviewer-a';
+    expect(() =>
+      ledgerModule.validatePullRequestGate(ledger, source, gateOptions(ledger)),
+    ).toThrow('unused independent reviewer');
+  });
+
   it('rejects paths outside the repository and malformed dependencies', () => {
     expect(() => ledgerModule.normalizePath('../outside.json')).toThrow(
       'repository-relative',
@@ -923,6 +1476,9 @@ describe('agent work ledger', () => {
     );
     expect(packageJson.scripts?.['verify:agent-ledger']).toBe(
       'node ./scripts/agent-work-ledger.js validate',
+    );
+    expect(packageJson.scripts?.['verify:review-ready']).toBe(
+      'node ./scripts/verify-pr.js --review-ready',
     );
   });
 });

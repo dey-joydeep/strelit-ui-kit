@@ -27,6 +27,12 @@ State-management scripts MUST also use atomic writes, reject malformed or
 unsupported state, preserve the prior valid state on failure, and make replay
 idempotent.
 
+Keep merge-base path collection, risk classification, and canonical review
+domains centralized in `change-review-policy.js`; local review gates must not
+trust a manually reduced path list. Do not make disposable `.tmp` ledgers a CI
+artifact. Local high-risk `verify:pr` enforces them; GitHub Actions enforces
+trusted PR metadata.
+
 When syntax or symbol ownership matters, use the parser and binding information.
 Do not add a regex rewrite as a parallel source of semantic truth.
 

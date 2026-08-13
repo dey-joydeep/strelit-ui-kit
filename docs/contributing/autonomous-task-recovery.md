@@ -132,6 +132,36 @@ npm run agent:ledger -- status
 npm run verify:agent-ledger
 ```
 
+For high-risk pull-request work, initialize the definitive gate instead:
+
+```powershell
+npm run agent:ledger -- init --mode pr --implementer <identity> --task PR-1 --base <ref> --head <sha>
+```
+
+This mode records the merge-base diff, canonical path-domain coverage,
+non-generated line count, and large-PR classification. Review and synthesis
+units declare `--reviewer`, `--scope`, `--pass`, and semicolon-delimited
+`--domains`. Their checkpoint reports include a `coverage` entry for every
+assigned path with its exact domains, declared contract, inspected adjacent
+paths, and verification commands. `finish` closes structurally complete work;
+the subsequent definitive gate rejects missing or duplicate coverage,
+self-review, non-fresh evidence, incomplete verification, a dirty tree, and
+stale source. After finishing, `npm run verify:review-ready` revalidates the persisted gate.
+The normal local `npm run verify:pr` invokes this final gate for high-risk work;
+GitHub Actions instead validates committed PR metadata and approval state.
+Use trusted `GITHUB_BASE_SHA` or configured `STRELIT_REVIEW_BASE_REF` for PRs
+whose target is not the default branch. `verify:review-ready` rejects CLI base
+and classification overrides so a caller cannot narrow or skip the definitive
+scope.
+
+The local ledger can validate declared context separation and exact review
+boundaries, but editable identity strings are not cryptographic proof of
+independence. Preserve the orchestrator task identifiers in the review record;
+GitHub's different-identity approval remains authoritative. Verification is
+execution-backed only when `verify:review-ready` runs the required commands and
+validates the ledger in that same process; hand-authored command receipts alone
+cannot satisfy the definitive gate.
+
 Use `--root <directory>` for isolated tests or alternate workspaces. Ledger
 writes are atomic, and ledger/report paths reject symbolic-link or junction
 traversal. Invalid input leaves the previous ledger unchanged.

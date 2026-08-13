@@ -78,6 +78,7 @@
     "verify:pr": "node ./scripts/verify-pr.js",
     "agent:ledger": "node ./scripts/agent-work-ledger.js",
     "verify:agent-ledger": "node ./scripts/agent-work-ledger.js validate",
+    "verify:review-ready": "node ./scripts/verify-pr.js --review-ready",
     "apitest:build": "vite build --config ./vite.apitest.config.ts",
     "apitest:serve": "vite --config ./vite.apitest.config.ts",
     "apitest:smoke": "node ./scripts/smoke-apitest.js",

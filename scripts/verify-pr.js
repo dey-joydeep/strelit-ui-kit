@@ -1,46 +1,18 @@
 const { spawnSync } = require('node:child_process');
-const riskPolicy = require('../.github/change-risk.json');
+const {
+  classifyChangeRisk,
+  classifyFileRisk,
+  collectChangedFiles,
+  createPullRequestReviewGate,
+  domainsForPath,
+} = require('./change-review-policy.js');
+const agentLedger = require('./agent-work-ledger.js');
 
 const riskRank = {
   low: 0,
   medium: 1,
   high: 2,
 };
-
-const highRiskPatterns = riskPolicy.high.map((pattern) => new RegExp(pattern));
-const mediumRiskPatterns = riskPolicy.medium.map(
-  (pattern) => new RegExp(pattern),
-);
-const lowRiskPatterns = riskPolicy.low.map((pattern) => new RegExp(pattern));
-
-function normalizeFileName(fileName) {
-  return fileName.replaceAll('\\', '/');
-}
-
-function classifyFileRisk(fileName) {
-  const normalized = normalizeFileName(fileName);
-
-  if (highRiskPatterns.some((pattern) => pattern.test(normalized))) {
-    return 'high';
-  }
-
-  if (mediumRiskPatterns.some((pattern) => pattern.test(normalized))) {
-    return 'medium';
-  }
-
-  if (lowRiskPatterns.some((pattern) => pattern.test(normalized))) {
-    return 'low';
-  }
-
-  return 'medium';
-}
-
-function classifyChangeRisk(fileNames) {
-  return fileNames.reduce((highestRisk, fileName) => {
-    const fileRisk = classifyFileRisk(fileName);
-    return riskRank[fileRisk] > riskRank[highestRisk] ? fileRisk : highestRisk;
-  }, 'low');
-}
 
 function runGit(args, allowFailure = false, cwd = process.cwd()) {
   const result = spawnSync('git', args, {
@@ -114,36 +86,6 @@ function resolveBaseRef(explicitBase, cwd = process.cwd()) {
   return baseRef;
 }
 
-function collectChangedFiles(baseRef, cwd = process.cwd()) {
-  const tracked = runGit(
-    [
-      'diff',
-      '--name-only',
-      '--no-renames',
-      '--diff-filter=ACDMRTUXB',
-      baseRef,
-      '--',
-    ],
-    false,
-    cwd,
-  ).stdout;
-  const untracked = runGit(
-    ['ls-files', '--others', '--exclude-standard'],
-    false,
-    cwd,
-  ).stdout;
-
-  return [
-    ...new Set(
-      `${tracked}\n${untracked}`
-        .split(/\r?\n/)
-        .map((fileName) => fileName.trim())
-        .filter(Boolean)
-        .map(normalizeFileName),
-    ),
-  ].sort((left, right) => left.localeCompare(right));
-}
-
 function verificationScriptsForRisk(risk) {
   switch (risk) {
     case 'high':
@@ -183,6 +125,14 @@ function resolveVerificationRisk(fileNames, forcedRisk) {
     : computedRisk;
 }
 
+function requiresLocalReviewGate(risk, environment = process.env) {
+  return risk === 'high' && environment.GITHUB_ACTIONS !== 'true';
+}
+
+function executedCommandNames(scripts) {
+  return scripts.map((script) => `npm run ${script}`);
+}
+
 function runNpmScript(script) {
   const invocation =
     process.platform === 'win32'
@@ -212,6 +162,7 @@ function runNpmScript(script) {
 function parseArguments(args) {
   let base;
   let classifyOnly = false;
+  let reviewReady = false;
 
   for (let index = 0; index < args.length; index++) {
     const argument = args[index];
@@ -224,21 +175,29 @@ function parseArguments(args) {
       index++;
     } else if (argument === '--classify-only') {
       classifyOnly = true;
+    } else if (argument === '--review-ready') {
+      reviewReady = true;
     } else {
       throw new Error(`Unknown argument: ${argument}`);
     }
   }
 
-  return { base, classifyOnly };
+  if (reviewReady && (classifyOnly || base !== undefined)) {
+    throw new Error('--review-ready rejects --classify-only and --base.');
+  }
+  return { base, classifyOnly, reviewReady };
 }
 
 function main() {
   const options = parseArguments(process.argv.slice(2));
-  const baseRef = resolveBaseRef(options.base);
+  const baseRef = options.reviewReady
+    ? resolveBaseRef(process.env.STRELIT_REVIEW_BASE_REF)
+    : resolveBaseRef(options.base);
   const changedFiles = collectChangedFiles(baseRef);
   const forcedRisk = process.env.GITHUB_FORCE_RISK;
   const risk = resolveVerificationRisk(changedFiles, forcedRisk);
   const scripts = verificationScriptsForRisk(risk);
+  const localReviewGate = options.reviewReady || requiresLocalReviewGate(risk);
 
   process.stdout.write(
     [
@@ -246,13 +205,15 @@ function main() {
       `Changed files: ${changedFiles.length}`,
       `Risk: ${risk}`,
       `Checks: ${scripts.map((script) => `npm run ${script}`).join(', ')}`,
+      `Local definitive review gate: ${localReviewGate ? 'required' : 'not required'}`,
       '',
     ].join('\n'),
   );
 
   if (
     options.classifyOnly ||
-    (changedFiles.length === 0 &&
+    (!options.reviewReady &&
+      changedFiles.length === 0 &&
       (forcedRisk === undefined || forcedRisk.length === 0))
   ) {
     return;
@@ -260,6 +221,28 @@ function main() {
 
   for (const script of scripts) {
     runNpmScript(script);
+  }
+  if (localReviewGate) {
+    const expectedBaseHead = runGit(
+      ['merge-base', baseRef, 'HEAD'],
+      false,
+    ).stdout.trim();
+    const ledger = agentLedger.execute('status', {});
+    const expectedReviewGate = createPullRequestReviewGate(
+      expectedBaseHead,
+      ledger.reviewGate?.implementer ?? '',
+      process.cwd(),
+    );
+    agentLedger.validatePullRequestGate(
+      ledger,
+      agentLedger.currentSourceState(),
+      {
+        requireComplete: true,
+        expectedBaseHead,
+        expectedReviewGate,
+        executedCommands: executedCommandNames(scripts),
+      },
+    );
   }
 }
 
@@ -276,8 +259,11 @@ module.exports = {
   classifyChangeRisk,
   classifyFileRisk,
   collectChangedFiles,
+  domainsForPath,
+  executedCommandNames,
   parseArguments,
   resolveBaseRef,
   resolveVerificationRisk,
+  requiresLocalReviewGate,
   verificationScriptsForRisk,
 };

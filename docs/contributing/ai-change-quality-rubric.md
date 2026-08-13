@@ -147,6 +147,8 @@ A change cannot receive a `Pass` verdict when any of these conditions is true:
   pull-request head.
 - An interrupted unit is represented as completed, or final synthesis relies on
   partial, stale, or unvalidated checkpoint evidence.
+- A local high-risk PR lacks a completed generated-scope ledger or has not
+  passed `npm run verify:review-ready` on the frozen source.
 
 ## Required Review Record
 

@@ -28,6 +28,7 @@
     },
     "status": { "enum": ["active", "complete"] },
     "updatedAt": { "type": "string", "format": "date-time" },
+    "reviewGate": { "$ref": "#/$defs/reviewGate" },
     "units": {
       "type": "array",
       "items": { "$ref": "#/$defs/unit" }
@@ -67,6 +68,8 @@
       "properties": {
         "lastVerifiedHead": { "$ref": "#/$defs/head" },
         "sourceFingerprint": { "$ref": "#/$defs/fingerprint" },
+        "reviewedBase": { "$ref": "#/$defs/head" },
+        "reviewedHead": { "$ref": "#/$defs/head" },
         "inspectedPaths": {
           "type": "array",
           "items": { "$ref": "#/$defs/path" },
@@ -105,7 +108,119 @@
         "uninspected": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
+        },
+        "verdict": { "enum": ["pass", "changes-requested", "blocked"] },
+        "coverage": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pathEvidence" }
         }
+      }
+    },
+    "pathEvidence": {
+      "type": "object",
+      "required": ["path", "domains", "contract", "adjacentPaths", "tests"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "$ref": "#/$defs/path" },
+        "domains": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "contract": { "type": "string", "minLength": 4 },
+        "adjacentPaths": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/path" }
+        },
+        "tests": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "reviewAssignment": {
+      "type": "object",
+      "required": ["reviewer", "scope", "pass", "domains"],
+      "additionalProperties": false,
+      "properties": {
+        "reviewer": { "type": "string", "minLength": 1 },
+        "scope": { "enum": ["domain", "whole-pr"] },
+        "pass": { "enum": ["fresh-discovery", "finding-closure"] },
+        "domains": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "Migration, configuration, and persistence",
+              "Public API, compatibility, and packaging",
+              "Runtime behavior, lifecycle, and ownership",
+              "Tests and documentation",
+              "Tooling, CI, and verification"
+            ]
+          }
+        }
+      }
+    },
+    "reviewGate": {
+      "type": "object",
+      "required": [
+        "mode",
+        "implementer",
+        "risk",
+        "requiredPaths",
+        "requiredCoverage",
+        "applicableDomains",
+        "nonGeneratedLines",
+        "largeHighRisk"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "const": "pull-request" },
+        "implementer": { "type": "string", "minLength": 1 },
+        "risk": { "enum": ["low", "medium", "high"] },
+        "requiredPaths": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/path" },
+          "uniqueItems": true
+        },
+        "requiredCoverage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "domains"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "$ref": "#/$defs/path" },
+              "domains": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "Migration, configuration, and persistence",
+                    "Public API, compatibility, and packaging",
+                    "Runtime behavior, lifecycle, and ownership",
+                    "Tests and documentation",
+                    "Tooling, CI, and verification"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "applicableDomains": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "nonGeneratedLines": { "type": "integer", "minimum": 0 },
+        "largeHighRisk": { "type": "boolean" }
       }
     },
     "unit": {
@@ -167,6 +282,7 @@
         "startedAt": { "type": "string", "format": "date-time" },
         "sourceFingerprint": { "$ref": "#/$defs/fingerprint" },
         "checkpoint": { "$ref": "#/$defs/report" },
+        "review": { "$ref": "#/$defs/reviewAssignment" },
         "carryForward": {
           "type": "object",
           "required": ["fromHead", "toHead", "changedPaths"],

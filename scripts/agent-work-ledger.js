@@ -17,6 +17,10 @@ const join = (...values) => nodePath.join(...values);
 const relative = (from, to) => nodePath.relative(from, to);
 const resolve = (...values) => nodePath.resolve(...values);
 const { sep } = nodePath;
+const {
+  canonicalDomains,
+  createPullRequestReviewGate,
+} = require('./change-review-policy.js');
 
 const schemaVersion = 1;
 const defaultRoot = '.tmp/agent-work';
@@ -34,6 +38,8 @@ const validStatuses = new Set([
   'carried-forward',
   'invalidated',
 ]);
+const validReviewScopes = new Set(['domain', 'whole-pr']);
+const validReviewPasses = new Set(['fresh-discovery', 'finding-closure']);
 
 function parseArguments(args) {
   const [command = 'status', ...rest] = args;
@@ -291,11 +297,21 @@ function validateReport(report, label = 'checkpoint') {
       'findings',
       'uninspected',
       'sourceFingerprint',
+      'verdict',
+      'coverage',
+      'reviewedBase',
+      'reviewedHead',
     ]),
     label,
   );
   validateString(report.lastVerifiedHead, `${label}.lastVerifiedHead`);
   validateString(report.sourceFingerprint, `${label}.sourceFingerprint`);
+  if (report.reviewedBase !== undefined) {
+    validateString(report.reviewedBase, `${label}.reviewedBase`);
+  }
+  if (report.reviewedHead !== undefined) {
+    validateString(report.reviewedHead, `${label}.reviewedHead`);
+  }
   validateStringArray(report.inspectedPaths, `${label}.inspectedPaths`, {
     paths: true,
   });
@@ -342,6 +358,37 @@ function validateReport(report, label = 'checkpoint') {
     }
   }
   validateStringArray(report.uninspected, `${label}.uninspected`);
+  if (
+    report.verdict !== undefined &&
+    !['pass', 'changes-requested', 'blocked'].includes(report.verdict)
+  ) {
+    throw new Error(`${label}.verdict is invalid: ${report.verdict}`);
+  }
+  if (report.coverage !== undefined) {
+    if (!Array.isArray(report.coverage)) {
+      throw new Error(`${label}.coverage must be an array.`);
+    }
+    const paths = new Set();
+    for (const entry of report.coverage) {
+      rejectUnknownKeys(
+        entry,
+        new Set(['path', 'domains', 'contract', 'adjacentPaths', 'tests']),
+        `${label}.coverage entry`,
+      );
+      const path = normalizePath(entry.path);
+      if (paths.has(path)) {
+        throw new Error(`${label}.coverage repeats path: ${path}`);
+      }
+      paths.add(path);
+      validateStringArray(entry.domains, `${path}.domains`, { minimum: 1 });
+      validateString(entry.contract, `${path}.contract`, 4);
+      validateStringArray(entry.adjacentPaths, `${path}.adjacentPaths`, {
+        paths: true,
+        minimum: 1,
+      });
+      validateStringArray(entry.tests, `${path}.tests`, { minimum: 1 });
+    }
+  }
   if (!Array.isArray(report.commands)) {
     throw new Error(`${label}.commands must be an array.`);
   }
@@ -366,6 +413,105 @@ function validateReport(report, label = 'checkpoint') {
   }
 }
 
+function validateReviewAssignment(review, label) {
+  if (review === null || typeof review !== 'object' || Array.isArray(review)) {
+    throw new Error(`${label} must be an object.`);
+  }
+  rejectUnknownKeys(
+    review,
+    new Set(['reviewer', 'scope', 'pass', 'domains']),
+    label,
+  );
+  validateString(review.reviewer, `${label}.reviewer`);
+  if (!validReviewScopes.has(review.scope)) {
+    throw new Error(`${label}.scope is invalid: ${review.scope}`);
+  }
+  if (!validReviewPasses.has(review.pass)) {
+    throw new Error(`${label}.pass is invalid: ${review.pass}`);
+  }
+  validateStringArray(review.domains, `${label}.domains`, { minimum: 1 });
+  for (const domain of review.domains) {
+    if (!canonicalDomains.includes(domain)) {
+      throw new Error(`${label} contains an invalid domain: ${domain}`);
+    }
+  }
+}
+
+function validateReviewGate(reviewGate) {
+  if (
+    reviewGate === null ||
+    typeof reviewGate !== 'object' ||
+    Array.isArray(reviewGate)
+  ) {
+    throw new Error('reviewGate must be an object.');
+  }
+  rejectUnknownKeys(
+    reviewGate,
+    new Set([
+      'mode',
+      'implementer',
+      'risk',
+      'requiredPaths',
+      'requiredCoverage',
+      'applicableDomains',
+      'nonGeneratedLines',
+      'largeHighRisk',
+    ]),
+    'reviewGate',
+  );
+  if (reviewGate.mode !== 'pull-request') {
+    throw new Error(`Unsupported review gate mode: ${reviewGate.mode}`);
+  }
+  validateString(reviewGate.implementer, 'reviewGate.implementer');
+  if (!['low', 'medium', 'high'].includes(reviewGate.risk)) {
+    throw new Error(`Invalid reviewGate risk: ${reviewGate.risk}`);
+  }
+  validateStringArray(reviewGate.requiredPaths, 'reviewGate.requiredPaths', {
+    paths: true,
+  });
+  validateStringArray(
+    reviewGate.applicableDomains,
+    'reviewGate.applicableDomains',
+  );
+  if (
+    !Number.isInteger(reviewGate.nonGeneratedLines) ||
+    reviewGate.nonGeneratedLines < 0
+  ) {
+    throw new Error(
+      'reviewGate.nonGeneratedLines must be a nonnegative integer.',
+    );
+  }
+  if (typeof reviewGate.largeHighRisk !== 'boolean') {
+    throw new Error('reviewGate.largeHighRisk must be boolean.');
+  }
+  if (!Array.isArray(reviewGate.requiredCoverage)) {
+    throw new Error('reviewGate.requiredCoverage must be an array.');
+  }
+  const coveredPaths = new Set();
+  for (const entry of reviewGate.requiredCoverage) {
+    rejectUnknownKeys(entry, new Set(['path', 'domains']), 'coverage entry');
+    const path = normalizePath(entry.path);
+    if (coveredPaths.has(path)) {
+      throw new Error(`reviewGate repeats coverage path: ${path}`);
+    }
+    coveredPaths.add(path);
+    validateStringArray(entry.domains, `${path}.domains`, { minimum: 1 });
+    for (const domain of entry.domains) {
+      if (!canonicalDomains.includes(domain)) {
+        throw new Error(`reviewGate contains an invalid domain: ${domain}`);
+      }
+    }
+  }
+  if (
+    coveredPaths.size !== reviewGate.requiredPaths.length ||
+    reviewGate.requiredPaths.some((path) => !coveredPaths.has(path))
+  ) {
+    throw new Error(
+      'reviewGate coverage paths must match requiredPaths exactly.',
+    );
+  }
+}
+
 function validateLedger(ledger) {
   if (ledger === null || typeof ledger !== 'object' || Array.isArray(ledger)) {
     throw new Error('Ledger must be an object.');
@@ -382,6 +528,7 @@ function validateLedger(ledger) {
       'updatedAt',
       'currentFingerprint',
       'workingPaths',
+      'reviewGate',
     ]),
     'Ledger',
   );
@@ -395,6 +542,9 @@ function validateLedger(ledger) {
   validateString(ledger.currentHead, 'currentHead');
   validateString(ledger.currentFingerprint, 'currentFingerprint');
   validateStringArray(ledger.workingPaths, 'workingPaths', { paths: true });
+  if (ledger.reviewGate !== undefined) {
+    validateReviewGate(ledger.reviewGate);
+  }
   if (!['active', 'complete'].includes(ledger.status)) {
     throw new Error(`Invalid ledger status: ${ledger.status}`);
   }
@@ -424,6 +574,7 @@ function validateLedger(ledger) {
         'checkpoint',
         'carryForward',
         'sourceFingerprint',
+        'review',
       ]),
       'unit',
     );
@@ -451,6 +602,9 @@ function validateLedger(ledger) {
     validateStringArray(unit.contracts, `${unit.id}.contracts`, { minimum: 1 });
     validateStringArray(unit.dependencies, `${unit.id}.dependencies`);
     validateStringArray(unit.requiredCommands, `${unit.id}.requiredCommands`);
+    if (unit.review !== undefined) {
+      validateReviewAssignment(unit.review, `${unit.id}.review`);
+    }
     if (unit.checkpoint !== undefined) {
       validateReport(unit.checkpoint, `${unit.id}.checkpoint`);
     }
@@ -637,6 +791,301 @@ function validateCompletion(unit, report, sourceState) {
   }
 }
 
+function sameStringSet(left, right) {
+  return (
+    left.length === right.length && left.every((value) => right.includes(value))
+  );
+}
+
+function requiredCoveragePairs(reviewGate) {
+  return new Set(
+    reviewGate.requiredCoverage.flatMap((entry) =>
+      entry.domains.map((domain) => `${entry.path}\0${domain}`),
+    ),
+  );
+}
+
+function unitCoveragePairs(unit, reviewGate) {
+  const requiredByPath = new Map(
+    reviewGate.requiredCoverage.map((entry) => [
+      entry.path,
+      new Set(entry.domains),
+    ]),
+  );
+  if (!Array.isArray(unit.checkpoint.coverage)) {
+    throw new Error(`${unit.id} lacks per-path review evidence.`);
+  }
+  const evidencePaths = unit.checkpoint.coverage.map((entry) => entry.path);
+  if (!sameStringSet(evidencePaths, unit.assignedPaths)) {
+    throw new Error(
+      `${unit.id} per-path evidence must exactly match assigned paths.`,
+    );
+  }
+  const pairs = new Set();
+  for (const evidence of unit.checkpoint.coverage) {
+    const path = evidence.path;
+    const requiredDomains = requiredByPath.get(path);
+    if (requiredDomains === undefined) {
+      throw new Error(`${unit.id} assigns unchanged path: ${path}`);
+    }
+    const applicable = unit.review.domains.filter((domain) =>
+      requiredDomains.has(domain),
+    );
+    if (applicable.length === 0) {
+      throw new Error(`${unit.id} assigns no applicable domain for ${path}.`);
+    }
+    if (!sameStringSet(evidence.domains, applicable)) {
+      throw new Error(`${unit.id} domain evidence is incorrect for ${path}.`);
+    }
+    if (!unit.contracts.includes(evidence.contract)) {
+      throw new Error(
+        `${unit.id} contract evidence is undeclared for ${path}.`,
+      );
+    }
+    if (
+      evidence.adjacentPaths.some(
+        (adjacent) =>
+          !unit.adjacentPaths.includes(adjacent) ||
+          !unit.checkpoint.inspectedPaths.includes(adjacent),
+      )
+    ) {
+      throw new Error(
+        `${unit.id} adjacent evidence is uninspected for ${path}.`,
+      );
+    }
+    if (
+      evidence.tests.some((command) => !unit.requiredCommands.includes(command))
+    ) {
+      throw new Error(`${unit.id} test evidence is undeclared for ${path}.`);
+    }
+    for (const domain of evidence.domains) {
+      pairs.add(`${path}\0${domain}`);
+    }
+  }
+  return pairs;
+}
+
+function validatePullRequestGate(
+  ledger,
+  sourceState,
+  {
+    requireComplete = false,
+    expectedBaseHead,
+    expectedReviewGate,
+    executedCommands = [],
+  } = {},
+) {
+  const gate = ledger.reviewGate;
+  if (gate === undefined || gate.mode !== 'pull-request') {
+    throw new Error('High-risk pull-request work requires a PR review ledger.');
+  }
+  if (requireComplete && ledger.status !== 'complete') {
+    throw new Error('The definitive PR review ledger is not complete.');
+  }
+  if (expectedBaseHead === undefined || ledger.baseHead !== expectedBaseHead) {
+    throw new Error(
+      `PR review base mismatch: ledger ${ledger.baseHead}; expected ${expectedBaseHead ?? '(missing)'}.`,
+    );
+  }
+  if (
+    expectedReviewGate === undefined ||
+    JSON.stringify(gate) !== JSON.stringify(expectedReviewGate)
+  ) {
+    throw new Error(
+      'Persisted PR review scope does not match the regenerated canonical gate.',
+    );
+  }
+  if (gate.risk !== 'high') {
+    return ledger;
+  }
+  if (
+    ledger.currentHead !== sourceState.head ||
+    ledger.currentFingerprint !== sourceState.fingerprint
+  ) {
+    throw new Error('The PR review ledger does not target the current source.');
+  }
+  if (ledger.workingPaths.length > 0 || sourceState.workingPaths.length > 0) {
+    throw new Error(
+      'The definitive PR review gate requires a frozen commit with a clean working tree.',
+    );
+  }
+
+  const implementer = gate.implementer.toLowerCase();
+  const currentCompleted = (unit) =>
+    unit.status === 'completed' &&
+    unit.head === sourceState.head &&
+    unit.sourceFingerprint === sourceState.fingerprint;
+  const eligibleReview = (unit) =>
+    currentCompleted(unit) ||
+    (unit.status === 'carried-forward' &&
+      unit.carryForward?.toHead === sourceState.head);
+  const reviewUnits = ledger.units.filter(
+    (unit) => unit.kind === 'review' && eligibleReview(unit),
+  );
+  const validDiscovery = reviewUnits.filter(
+    (unit) =>
+      unit.review?.pass === 'fresh-discovery' &&
+      unit.checkpoint?.verdict === 'pass',
+  );
+  if (validDiscovery.length === 0) {
+    throw new Error(
+      'High-risk PR is missing completed fresh-discovery review coverage.',
+    );
+  }
+  for (const unit of validDiscovery) {
+    if (unit.review.reviewer.toLowerCase() === implementer) {
+      throw new Error(
+        `${unit.id} reviewer must be independent from implementer ${gate.implementer}.`,
+      );
+    }
+    if (unit.adjacentPaths.length === 0) {
+      throw new Error(`${unit.id} requires adjacent-path evidence.`);
+    }
+    if (unit.requiredCommands.length === 0) {
+      throw new Error(
+        `${unit.id} requires test or inspection command evidence.`,
+      );
+    }
+    const attestedHead =
+      unit.status === 'carried-forward' ? unit.head : sourceState.head;
+    if (
+      unit.checkpoint.reviewedBase !== ledger.baseHead ||
+      unit.checkpoint.reviewedHead !== attestedHead
+    ) {
+      throw new Error(
+        `${unit.id} does not attest the exact base/head boundary.`,
+      );
+    }
+    const invalidDomains = unit.review.domains.filter(
+      (domain) => !gate.applicableDomains.includes(domain),
+    );
+    if (invalidDomains.length > 0) {
+      throw new Error(
+        `${unit.id} declares inapplicable domains: ${invalidDomains.join(', ')}`,
+      );
+    }
+  }
+
+  const requiredPairs = requiredCoveragePairs(gate);
+  const coveredPairs = new Set();
+  const reviewers = new Set();
+  for (const unit of validDiscovery) {
+    if (gate.largeHighRisk && unit.review.scope !== 'domain') {
+      throw new Error(`${unit.id} must be a domain discovery review.`);
+    }
+    if (!gate.largeHighRisk && unit.review.scope !== 'whole-pr') {
+      throw new Error(`${unit.id} must review the whole PR.`);
+    }
+    reviewers.add(unit.review.reviewer.toLowerCase());
+    for (const pair of unitCoveragePairs(unit, gate)) {
+      if (coveredPairs.has(pair)) {
+        throw new Error(`Review coverage is assigned more than once: ${pair}`);
+      }
+      coveredPairs.add(pair);
+    }
+  }
+  const missingPairs = [...requiredPairs].filter(
+    (pair) => !coveredPairs.has(pair),
+  );
+  const extraPairs = [...coveredPairs].filter(
+    (pair) => !requiredPairs.has(pair),
+  );
+  if (missingPairs.length > 0 || extraPairs.length > 0) {
+    throw new Error(
+      `High-risk PR review coverage does not exactly match the base diff; missing ${missingPairs.length}, extra ${extraPairs.length}.`,
+    );
+  }
+  if (gate.largeHighRisk && reviewers.size < 2) {
+    throw new Error(
+      'Large high-risk PR review requires at least two independent domain reviewers.',
+    );
+  }
+
+  const requiredVerification = [
+    'npm run verify:ordered',
+    'npm run apitest:build',
+    'npm run apitest:smoke',
+  ];
+  if (
+    !requiredVerification.every((command) => executedCommands.includes(command))
+  ) {
+    throw new Error(
+      'High-risk PR requires gate-executed ordered, API build, and API smoke verification.',
+    );
+  }
+  const verification = ledger.units.find(
+    (unit) =>
+      unit.kind === 'verification' &&
+      currentCompleted(unit) &&
+      requiredVerification.every((command) =>
+        unit.requiredCommands.includes(command),
+      ),
+  );
+  if (verification === undefined) {
+    throw new Error(
+      'High-risk PR synthesis requires an exact-source verification unit.',
+    );
+  }
+
+  const synthesisUnits = ledger.units.filter(
+    (unit) => unit.kind === 'synthesis' && currentCompleted(unit),
+  );
+  const synthesis = synthesisUnits.find(
+    (unit) =>
+      unit.review?.scope === 'whole-pr' &&
+      unit.review.pass === 'fresh-discovery' &&
+      unit.checkpoint?.verdict === 'pass' &&
+      sameStringSet(unit.assignedPaths, gate.requiredPaths) &&
+      sameStringSet(unit.review.domains, gate.applicableDomains),
+  );
+  if (synthesis === undefined) {
+    throw new Error(
+      'High-risk PR requires a passing exact-source whole-PR fresh-discovery synthesis.',
+    );
+  }
+  if (
+    synthesis.adjacentPaths.length === 0 ||
+    synthesis.requiredCommands.length === 0
+  ) {
+    throw new Error(
+      'Whole-PR synthesis requires adjacent-path and inspection evidence.',
+    );
+  }
+  if (
+    synthesis.checkpoint.reviewedBase !== ledger.baseHead ||
+    synthesis.checkpoint.reviewedHead !== sourceState.head
+  ) {
+    throw new Error(
+      'Whole-PR synthesis does not attest the exact base/head boundary.',
+    );
+  }
+  const synthesisReviewer = synthesis.review.reviewer.toLowerCase();
+  if (synthesisReviewer === implementer) {
+    throw new Error(
+      `Synthesis reviewer must be independent from implementer ${gate.implementer}.`,
+    );
+  }
+  if (gate.largeHighRisk && reviewers.has(synthesisReviewer)) {
+    throw new Error(
+      'Large high-risk PR synthesis must use an unused independent reviewer.',
+    );
+  }
+  const requiredDependencies = [
+    ...validDiscovery.map((unit) => unit.id),
+    verification.id,
+  ];
+  if (
+    requiredDependencies.some(
+      (dependency) => !synthesis.dependencies.includes(dependency),
+    )
+  ) {
+    throw new Error(
+      'Whole-PR synthesis must depend on every discovery review and verification unit.',
+    );
+  }
+  return ledger;
+}
+
 function gitChangedPaths(fromHead, toHead, cwd) {
   try {
     return gitPaths(
@@ -646,6 +1095,29 @@ function gitChangedPaths(fromHead, toHead, cwd) {
   } catch {
     return undefined;
   }
+}
+
+function canonicalPullRequestBase(cwd) {
+  const candidates = [
+    process.env.GITHUB_BASE_SHA,
+    process.env.STRELIT_REVIEW_BASE_REF,
+    'origin/main',
+    'main',
+  ].filter(
+    (candidate) =>
+      typeof candidate === 'string' &&
+      candidate.length > 0 &&
+      !/^0+$/.test(candidate),
+  );
+  for (const candidate of candidates) {
+    try {
+      gitOutput(['cat-file', '-e', `${candidate}^{commit}`], cwd);
+      return gitOutput(['merge-base', candidate, 'HEAD'], cwd);
+    } catch {
+      continue;
+    }
+  }
+  throw new Error('Cannot resolve the trusted pull-request base.');
 }
 
 function pathsIntersect(unit, changedPaths) {
@@ -753,6 +1225,17 @@ function recoverLedger(
   };
 }
 
+function refreshReviewGate(ledger, cwd) {
+  if (ledger.reviewGate === undefined || ledger.status === 'complete') {
+    return;
+  }
+  ledger.reviewGate = createPullRequestReviewGate(
+    ledger.baseHead,
+    ledger.reviewGate.implementer,
+    cwd,
+  );
+}
+
 function execute(command, options, cwd = process.cwd(), now = new Date()) {
   const root = typeof options.root === 'string' ? options.root : defaultRoot;
   if (command === 'init') {
@@ -779,10 +1262,29 @@ function execute(command, options, cwd = process.cwd(), now = new Date()) {
         `Base head is not available in the repository: ${baseHead}`,
       );
     }
+    const mode = options.mode;
+    if (mode !== undefined && mode !== 'pr') {
+      throw new Error(`Unsupported ledger mode: ${mode}`);
+    }
+    const resolvedBaseHead =
+      mode === 'pr'
+        ? gitOutput(['merge-base', baseHead, sourceState.head], cwd)
+        : baseHead;
+    if (resolvedBaseHead.length === 0) {
+      throw new Error(`Cannot determine merge base for ${baseHead}.`);
+    }
+    if (mode === 'pr') {
+      const trustedBaseHead = canonicalPullRequestBase(cwd);
+      if (resolvedBaseHead !== trustedBaseHead) {
+        throw new Error(
+          `Declared PR base resolves to ${resolvedBaseHead}; trusted base is ${trustedBaseHead}.`,
+        );
+      }
+    }
     const ledger = {
       schemaVersion,
       taskId: requireOption(options, 'task'),
-      baseHead,
+      baseHead: resolvedBaseHead,
       currentHead: sourceState.head,
       currentFingerprint: sourceState.fingerprint,
       workingPaths: sourceState.workingPaths,
@@ -790,6 +1292,13 @@ function execute(command, options, cwd = process.cwd(), now = new Date()) {
       units: [],
       updatedAt: now.toISOString(),
     };
+    if (mode === 'pr') {
+      ledger.reviewGate = createPullRequestReviewGate(
+        resolvedBaseHead,
+        requireOption(options, 'implementer'),
+        cwd,
+      );
+    }
     return writeLedger(fileName, ledger, now);
   }
 
@@ -807,6 +1316,11 @@ function execute(command, options, cwd = process.cwd(), now = new Date()) {
       }
     }
     return ledger;
+  }
+  if (command === 'validate-pr') {
+    throw new Error(
+      'Run npm run verify:review-ready so verification and review evidence are checked in one process.',
+    );
   }
   if (command === 'status') {
     return ledger;
@@ -831,6 +1345,16 @@ function execute(command, options, cwd = process.cwd(), now = new Date()) {
       contracts,
       dependencies: splitList(options.dependencies),
       requiredCommands: splitList(options.commands),
+      ...(options.reviewer === undefined
+        ? {}
+        : {
+            review: {
+              reviewer: requireOption(options, 'reviewer'),
+              scope: requireOption(options, 'scope'),
+              pass: requireOption(options, 'pass'),
+              domains: splitContracts(requireOption(options, 'domains')),
+            },
+          }),
     });
   } else if (command === 'start') {
     const unit = findUnit(ledger, requireOption(options, 'unit'));
@@ -855,6 +1379,14 @@ function execute(command, options, cwd = process.cwd(), now = new Date()) {
     unit.status = 'running';
     unit.head = ledger.currentHead;
     unit.owner = requireOption(options, 'owner');
+    if (
+      unit.review !== undefined &&
+      unit.owner.toLowerCase() !== unit.review.reviewer.toLowerCase()
+    ) {
+      throw new Error(
+        `${unit.id} must be run by declared reviewer ${unit.review.reviewer}.`,
+      );
+    }
     unit.startedAt = now.toISOString();
     unit.sourceFingerprint = sourceState.fingerprint;
     delete unit.carryForward;
@@ -890,6 +1422,7 @@ function execute(command, options, cwd = process.cwd(), now = new Date()) {
         sourceState.fingerprint,
         sourceState.workingPaths,
       );
+      refreshReviewGate(ledger, cwd);
       unit.status = 'running';
       unit.head = sourceState.head;
       unit.sourceFingerprint = sourceState.fingerprint;
@@ -961,6 +1494,7 @@ function execute(command, options, cwd = process.cwd(), now = new Date()) {
       sourceState.fingerprint,
       sourceState.workingPaths,
     );
+    refreshReviewGate(ledger, cwd);
   } else if (command === 'finish') {
     const sourceState = currentSourceState(cwd);
     if (
@@ -1042,6 +1576,7 @@ function summarize(ledger) {
       contracts: unit.contracts,
       requiredCommands: unit.requiredCommands,
       owner: unit.owner,
+      review: unit.review,
     })),
   };
 }
@@ -1085,4 +1620,5 @@ module.exports = {
   summarize,
   validateCompletion,
   validateLedger,
+  validatePullRequestGate,
 };

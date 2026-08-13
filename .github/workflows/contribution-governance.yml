@@ -254,6 +254,11 @@ jobs:
             const domainsForPath = (fileName) => {
               const domains = new Set();
               const sourceDocumentation = /^src\/.*\.md$/i.test(fileName);
+              const governancePolicy =
+                /(?:^|\/)AGENTS\.md$/.test(fileName) ||
+                /^docs\/contributing\//.test(fileName) ||
+                fileName === 'docs/architecture/product-evolution-policy.md' ||
+                fileName === 'docs/architecture/compatibility-audit-maintenance.md';
               if (/^src\//.test(fileName) && !sourceDocumentation) {
                 domains.add('Runtime behavior, lifecycle, and ownership');
                 domains.add('Public API, compatibility, and packaging');
@@ -264,7 +269,7 @@ jobs:
               if (/^(?:src\/index\.ts|src\/ts\/(?:config\/|utils\/types\.ts)|etc\/|package(?:-lock)?\.json)/.test(fileName)) {
                 domains.add('Public API, compatibility, and packaging');
               }
-              if (sourceDocumentation || /^(?:\.github\/|scripts\/|tsconfig|vite|vitest|typedoc|api-extractor|oxlint|package(?:-lock)?\.json)/.test(fileName)) {
+              if (sourceDocumentation || governancePolicy || /^(?:\.github\/|scripts\/|tsconfig|vite|vitest|typedoc|api-extractor|oxlint|package(?:-lock)?\.json)/.test(fileName)) {
                 domains.add('Tooling, CI, and verification');
               }
               if (sourceDocumentation || /^(?:test\/|apitest\/|docs\/|README|AGENTS\.md|\.code-review\/)/.test(fileName)) {

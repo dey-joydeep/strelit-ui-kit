@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
   mkdirSync,
   mkdtempSync,
@@ -17,11 +17,17 @@ interface ChangeDisciplineModule {
   classifyChangeRisk(fileNames: string[]): 'low' | 'medium' | 'high';
   classifyFileRisk(fileName: string): 'low' | 'medium' | 'high';
   collectChangedFiles(baseRef: string, cwd?: string): string[];
+  domainsForPath(fileName: string): string[];
+  executedCommandNames(scripts: string[]): string[];
   resolveBaseRef(explicitBase?: string, cwd?: string): string;
   resolveVerificationRisk(
     fileNames: string[],
     forcedRisk?: string,
   ): 'low' | 'medium' | 'high';
+  requiresLocalReviewGate(
+    risk: 'low' | 'medium' | 'high',
+    environment?: Record<string, string | undefined>,
+  ): boolean;
   verificationScriptsForRisk(risk: 'low' | 'medium' | 'high'): string[];
 }
 
@@ -1416,6 +1422,65 @@ describe('risk-based PR verification', () => {
       'apitest:build',
       'apitest:smoke',
     ]);
+  });
+
+  it('requires the definitive ledger gate only for local high-risk work', () => {
+    expect(
+      changeDiscipline.requiresLocalReviewGate('high', {
+        GITHUB_ACTIONS: 'false',
+      }),
+    ).toBe(true);
+    expect(
+      changeDiscipline.requiresLocalReviewGate('high', {
+        GITHUB_ACTIONS: 'true',
+      }),
+    ).toBe(false);
+    expect(
+      changeDiscipline.requiresLocalReviewGate('medium', {
+        GITHUB_ACTIONS: 'false',
+      }),
+    ).toBe(false);
+  });
+
+  it('binds executed npm script names to definitive gate command names', () => {
+    expect(
+      changeDiscipline.executedCommandNames([
+        'verify:ordered',
+        'apitest:build',
+        'apitest:smoke',
+      ]),
+    ).toEqual([
+      'npm run verify:ordered',
+      'npm run apitest:build',
+      'npm run apitest:smoke',
+    ]);
+  });
+
+  it('makes review-ready mode non-bypassable by classification or base flags', () => {
+    const script = resolve('scripts/verify-pr.js');
+    for (const bypass of [
+      ['--review-ready', '--classify-only'],
+      ['--review-ready', '--base', 'HEAD'],
+    ]) {
+      const result = spawnSync(process.execPath, [script, ...bypass], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('--review-ready rejects');
+    }
+  });
+
+  it('assigns tooling review to executable governance policy', () => {
+    expect(changeDiscipline.domainsForPath('AGENTS.md')).toEqual([
+      'Tests and documentation',
+      'Tooling, CI, and verification',
+    ]);
+    expect(
+      changeDiscipline.domainsForPath(
+        'docs/contributing/ai-change-quality-rubric.md',
+      ),
+    ).toEqual(['Tests and documentation', 'Tooling, CI, and verification']);
   });
 
   it('forces high verification for tag and release-style CI runs', () => {
