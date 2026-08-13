@@ -147,9 +147,15 @@ function collectChangedFiles(baseRef, cwd = process.cwd()) {
 function verificationScriptsForRisk(risk) {
   switch (risk) {
     case 'high':
-      return ['verify:ordered', 'apitest:build', 'apitest:smoke'];
+      return [
+        'verify:agent-ledger',
+        'verify:ordered',
+        'apitest:build',
+        'apitest:smoke',
+      ];
     case 'medium':
       return [
+        'verify:agent-ledger',
         'typecheck',
         'typecheck:bundle:prepare',
         'typecheck:bundle',
@@ -158,7 +164,7 @@ function verificationScriptsForRisk(risk) {
         'format:check',
       ];
     case 'low':
-      return ['lint:docs', 'format:check'];
+      return ['verify:agent-ledger', 'lint:docs', 'format:check'];
     default:
       throw new Error(`Unknown risk: ${risk}`);
   }

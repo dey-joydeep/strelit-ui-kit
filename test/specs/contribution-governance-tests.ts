@@ -1397,10 +1397,12 @@ describe('risk-based PR verification', () => {
 
   it('maps risk to proportionate verification', () => {
     expect(changeDiscipline.verificationScriptsForRisk('low')).toEqual([
+      'verify:agent-ledger',
       'lint:docs',
       'format:check',
     ]);
     expect(changeDiscipline.verificationScriptsForRisk('medium')).toEqual([
+      'verify:agent-ledger',
       'typecheck',
       'typecheck:bundle:prepare',
       'typecheck:bundle',
@@ -1409,6 +1411,7 @@ describe('risk-based PR verification', () => {
       'format:check',
     ]);
     expect(changeDiscipline.verificationScriptsForRisk('high')).toEqual([
+      'verify:agent-ledger',
       'verify:ordered',
       'apitest:build',
       'apitest:smoke',

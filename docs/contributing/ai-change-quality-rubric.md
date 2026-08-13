@@ -124,6 +124,7 @@ a blocking finding or failed hard gate.
 | Scope and maintainability | Is the diff the smallest coherent change, free of unrelated cleanup and duplicated sources of truth?                                                                                                                               |
 | Verification evidence     | Did focused checks and the risk-appropriate pipeline complete successfully without unexpected skips or unhandled errors?                                                                                                           |
 | Review coverage           | Does every changed path and applicable risk domain have an assigned independent reviewer, adjacent-call-path evidence, and an explicit inspected or not-inspected record?                                                          |
+| Recovery integrity        | Were interrupted units resumed from validated checkpoints, partial work kept incomplete, and stale evidence selectively invalidated against the current head?                                                                      |
 | Residual risk             | Are unsupported cases, verification limitations, and accepted risks concrete and visible?                                                                                                                                          |
 
 ## Hard Gates
@@ -144,6 +145,8 @@ A change cannot receive a `Pass` verdict when any of these conditions is true:
   rationale.
 - The final review targets a dirty working tree or a SHA other than the current
   pull-request head.
+- An interrupted unit is represented as completed, or final synthesis relies on
+  partial, stale, or unvalidated checkpoint evidence.
 
 ## Required Review Record
 

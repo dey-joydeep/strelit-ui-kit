@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://strelit.dev/schemas/agent-work-ledger.schema.json",
+  "title": "Strelit autonomous agent work ledger",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "taskId",
+    "baseHead",
+    "currentHead",
+    "currentFingerprint",
+    "workingPaths",
+    "status",
+    "units",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "taskId": { "type": "string", "minLength": 1 },
+    "baseHead": { "$ref": "#/$defs/head" },
+    "currentHead": { "$ref": "#/$defs/head" },
+    "currentFingerprint": { "$ref": "#/$defs/fingerprint" },
+    "workingPaths": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/path" },
+      "uniqueItems": true
+    },
+    "status": { "enum": ["active", "complete"] },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "units": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/unit" }
+    }
+  },
+  "$defs": {
+    "head": { "type": "string", "minLength": 1 },
+    "fingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "command": {
+      "type": "object",
+      "required": ["command", "exitCode", "head", "sourceFingerprint"],
+      "additionalProperties": false,
+      "properties": {
+        "command": { "type": "string", "minLength": 1 },
+        "exitCode": { "type": "integer" },
+        "head": { "$ref": "#/$defs/head" },
+        "sourceFingerprint": { "$ref": "#/$defs/fingerprint" }
+      }
+    },
+    "report": {
+      "type": "object",
+      "required": [
+        "lastVerifiedHead",
+        "inspectedPaths",
+        "remainingPaths",
+        "commands",
+        "findingSummary",
+        "findings",
+        "uninspected",
+        "sourceFingerprint"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "lastVerifiedHead": { "$ref": "#/$defs/head" },
+        "sourceFingerprint": { "$ref": "#/$defs/fingerprint" },
+        "inspectedPaths": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/path" },
+          "uniqueItems": true
+        },
+        "remainingPaths": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/path" },
+          "uniqueItems": true
+        },
+        "commands": { "type": "array", "items": { "$ref": "#/$defs/command" } },
+        "findingSummary": { "type": "string", "minLength": 4 },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["severity", "status", "summary"],
+            "additionalProperties": false,
+            "properties": {
+              "severity": { "enum": ["critical", "high", "medium", "low"] },
+              "status": { "enum": ["open", "closed", "accepted"] },
+              "summary": { "type": "string", "minLength": 1 },
+              "acceptanceEvidence": { "type": "string", "minLength": 4 }
+            },
+            "allOf": [
+              {
+                "if": { "properties": { "status": { "const": "accepted" } } },
+                "then": {
+                  "properties": { "severity": { "const": "medium" } },
+                  "required": ["acceptanceEvidence"]
+                }
+              }
+            ]
+          }
+        },
+        "uninspected": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "unit": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "status",
+        "head",
+        "assignedPaths",
+        "adjacentPaths",
+        "contracts",
+        "dependencies",
+        "requiredCommands"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": {
+          "enum": ["implementation", "review", "verification", "synthesis"]
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "running",
+            "interrupted",
+            "completed",
+            "carried-forward",
+            "invalidated"
+          ]
+        },
+        "head": { "$ref": "#/$defs/head" },
+        "assignedPaths": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/path" },
+          "uniqueItems": true
+        },
+        "adjacentPaths": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/path" },
+          "uniqueItems": true
+        },
+        "contracts": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "dependencies": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "requiredCommands": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "owner": { "type": "string", "minLength": 1 },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "sourceFingerprint": { "$ref": "#/$defs/fingerprint" },
+        "checkpoint": { "$ref": "#/$defs/report" },
+        "carryForward": {
+          "type": "object",
+          "required": ["fromHead", "toHead", "changedPaths"],
+          "additionalProperties": false,
+          "properties": {
+            "fromHead": { "$ref": "#/$defs/head" },
+            "toHead": { "$ref": "#/$defs/head" },
+            "changedPaths": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/path" },
+              "uniqueItems": true
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": ["running", "completed", "carried-forward"]
+              }
+            }
+          },
+          "then": { "required": ["sourceFingerprint"] }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": { "enum": ["completed", "carried-forward"] }
+            }
+          },
+          "then": { "required": ["checkpoint"] }
+        },
+        {
+          "if": { "properties": { "status": { "const": "running" } } },
+          "then": { "required": ["owner", "startedAt"] }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "complete" } } },
+      "then": {
+        "properties": {
+          "units": {
+            "items": {
+              "properties": {
+                "status": { "enum": ["completed", "carried-forward"] }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

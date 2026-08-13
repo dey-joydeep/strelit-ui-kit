@@ -11,10 +11,31 @@ deeper `AGENTS.md` files, such as `scripts/AGENTS.md`, add scoped requirements.
 
 1. Work from the repository root: `E:\workspace\project-golden-layout\strelit-ui-kit`
 2. Check `git status --short` before editing or committing
-3. Confirm Node/npm compatibility before running toolchain commands
-4. Prefer existing repo scripts over ad-hoc commands
-5. Read `docs/architecture/product-evolution-policy.md` and apply its active phase
-6. Keep the modernization direction intact unless the user explicitly changes it
+3. If `.tmp/agent-work/active.json` exists, run `npm run agent:ledger -- recover`
+   and resume its pending, interrupted, or invalidated units before creating
+   duplicate work
+4. Confirm Node/npm compatibility before running toolchain commands
+5. Prefer existing repo scripts over ad-hoc commands
+6. Read `docs/architecture/product-evolution-policy.md` and apply its active phase
+7. Keep the modernization direction intact unless the user explicitly changes it
+
+## Autonomous Task Recovery
+
+Long-running or multi-agent work MUST follow
+`docs/contributing/autonomous-task-recovery.md`. The coordinating agent owns the
+write-ahead ledger and MUST create bounded work units before dispatch. Each
+agent writes structured checkpoints after each reviewable unit of progress.
+
+An interrupted agent is not a completed agent. On recovery, preserve validated
+evidence, reclaim abandoned running units, and resume only unfinished or stale
+units. Do not restart valid work merely because a conversation or agent context
+ended. Do not ask the user to reconstruct recoverable state.
+
+Review evidence is valid only for its recorded scope and Git head. An unchanged
+scoped review may be carried forward with explicit changed-path evidence, but a
+head change always invalidates final synthesis, exact-head approval, and
+verification evidence. Never promote a partial checkpoint to completed review
+evidence.
 
 ## Autonomous Scope Control
 
@@ -326,6 +347,8 @@ downgrade risk merely to avoid verification.
 
 - Use the repository-root `.tmp/` directory for disposable local content such as PR-scoped audit reports, local review artifacts, temporary session context, and agent handoff notes
 - Never commit `.tmp/` contents; promote durable findings or instructions into the appropriate tracked documentation
+- Store active autonomous-work ledgers under `.tmp/agent-work/`; their schema,
+  tooling, and recovery rules are tracked even though task instances are not
 
 ## Licensing Direction
 

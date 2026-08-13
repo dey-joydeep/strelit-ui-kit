@@ -23,6 +23,10 @@ Script changes MUST verify, where applicable:
 - preservation of comments, directives, shebangs, aliases, suffixes, and unrelated code;
 - explicit diagnostics for ambiguous or lossy behavior.
 
+State-management scripts MUST also use atomic writes, reject malformed or
+unsupported state, preserve the prior valid state on failure, and make replay
+idempotent.
+
 When syntax or symbol ownership matters, use the parser and binding information.
 Do not add a regex rewrite as a parallel source of semantic truth.
 
