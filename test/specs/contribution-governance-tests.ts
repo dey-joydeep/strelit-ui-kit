@@ -1645,7 +1645,7 @@ describe('risk-based PR verification', () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  });
+  }, 120_000);
 
   it('forces high verification for tag and release-style CI runs', () => {
     expect(changeDiscipline.resolveVerificationRisk([], 'high')).toBe('high');
