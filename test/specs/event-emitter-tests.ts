@@ -88,6 +88,57 @@ describe('the EventEmitter', function () {
     expect(emitter.bubbled).not.toHaveBeenCalled();
   });
 
+  it.each(['emit', 'emitUnknown'] as const)(
+    '%s preserves throw undefined and continues later listeners',
+    (method) => {
+      const emitter = new EmitterImplementor();
+      const laterListener = vi.fn();
+      emitter.on('titleChanged', () => {
+        throw undefined;
+      });
+      emitter.on('titleChanged', laterListener);
+
+      let didThrow = false;
+      let thrown: unknown;
+      try {
+        emitter[method]('titleChanged', 'title');
+      } catch (error) {
+        didThrow = true;
+        thrown = error;
+      }
+
+      expect(didThrow).toBe(true);
+      expect(thrown).toBeUndefined();
+      expect(laterListener).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('preserves the first undefined all-event failure over a later failure', () => {
+    const emitter = new EmitterImplementor();
+    const laterFailure = new Error('later all-event failure');
+    const laterListener = vi.fn(() => {
+      throw laterFailure;
+    });
+    emitter.on(eventEmitterAllEventName, () => {
+      throw undefined;
+    });
+    emitter.on(eventEmitterAllEventName, laterListener);
+
+    let didThrow = false;
+    let thrown: unknown;
+    try {
+      emitter.emit('titleChanged', 'title');
+    } catch (error) {
+      didThrow = true;
+      thrown = error;
+    }
+
+    expect(didThrow).toBe(true);
+    expect(thrown).toBeUndefined();
+    expect(thrown).not.toBe(laterFailure);
+    expect(laterListener).toHaveBeenCalledOnce();
+  });
+
   it('unbinds events', function () {
     const myObject = new EmitterImplementor();
     const myListener: { titleCallback: () => void } = {

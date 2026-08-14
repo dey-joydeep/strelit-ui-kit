@@ -1895,6 +1895,7 @@ describe('BrowserPopout functionality (item.popout())', function () {
     vi.useFakeTimers();
     try {
       let beforeUnload: (() => void) | undefined;
+      const setItem = vi.spyOn(Storage.prototype, 'setItem');
       const childLayout = {
         isInitialised: false,
         saveLayout: () =>
@@ -1941,14 +1942,29 @@ describe('BrowserPopout functionality (item.popout())', function () {
         'departing-once',
       ) as ComponentItem;
       const popout = departing.popout();
-      const closed = vi.fn();
+      const storageKey = setItem.mock.calls.find(([key]) =>
+        key.startsWith('strelit-window-config-'),
+      )?.[0];
+      if (storageKey === undefined) {
+        throw new Error('Expected a popout storage key');
+      }
+      const closed = vi.fn(() => {
+        throw new Error('closed listener failed');
+      });
+      const reportError = vi.fn();
+      vi.stubGlobal('reportError', reportError);
       popout.on('closed', closed);
 
       popout.popIn();
       vi.advanceTimersByTime(50);
 
       expect(closed).toHaveBeenCalledOnce();
+      expect(localStorage.getItem(storageKey)).toBeNull();
+      expect(reportError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'closed listener failed' }),
+      );
     } finally {
+      vi.unstubAllGlobals();
       vi.useRealTimers();
     }
   });
@@ -2097,6 +2113,7 @@ describe('BrowserPopout functionality (item.popout())', function () {
       expect(closed).toHaveBeenCalledOnce();
       expect(layout.findFirstComponentItemById('reload-popout')).toBeDefined();
       expect(localStorage.getItem(storageKey)).toBeNull();
+      vi.unstubAllGlobals();
     } finally {
       vi.useRealTimers();
     }

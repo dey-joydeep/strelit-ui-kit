@@ -349,6 +349,96 @@ describe('layout lifecycle', () => {
     expect(workingRoot?.focused).toBe(true);
   });
 
+  it('retains incoming popouts and restores unload ownership when replacement rolls back', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadComponentAsRoot({ type: 'component', componentType: 'panel' });
+    const incomingPopout = {
+      close: vi.fn().mockImplementationOnce(() => {
+        throw new Error('incoming popout close failed');
+      }),
+      getWindow: () => ({ closed: false }),
+    };
+    const internals = layout as unknown as {
+      _openPopouts: (typeof incomingPopout)[];
+      _windowBeforeUnloadListening: boolean;
+      createSubWindows: () => void;
+    };
+    vi.spyOn(internals, 'createSubWindows').mockImplementation(() => {
+      internals._openPopouts.push(incomingPopout);
+      internals._windowBeforeUnloadListening = true;
+    });
+    if (layout.groundItem === undefined) {
+      throw new Error('Expected a ground item');
+    }
+    vi.spyOn(layout.groundItem, 'loadRoot').mockImplementation(() => {
+      throw new Error('replacement root failed');
+    });
+    const removeEventListener = vi.spyOn(globalThis, 'removeEventListener');
+
+    expect(() =>
+      layout.loadLayout({
+        root: { type: 'component', componentType: 'panel' },
+      }),
+    ).toThrow('replacement root failed');
+
+    expect(layout.openPopouts).toEqual([incomingPopout]);
+    expect(incomingPopout.close).toHaveBeenCalledOnce();
+    expect(removeEventListener).toHaveBeenCalledWith(
+      'beforeunload',
+      expect.any(Function),
+    );
+    expect(internals._windowBeforeUnloadListening).toBe(false);
+  });
+
+  it('preserves the replacement failure and continues rollback when listener restoration fails', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        id: 'working-root',
+        componentType: 'panel',
+      },
+    });
+    const workingRoot = layout.findFirstComponentItemById('working-root');
+    workingRoot?.focus();
+    const internals = layout as unknown as {
+      _windowBeforeUnloadListening: boolean;
+      createSubWindows(): void;
+    };
+    vi.spyOn(internals, 'createSubWindows').mockImplementation(() => {
+      internals._windowBeforeUnloadListening = true;
+    });
+    if (layout.groundItem === undefined) {
+      throw new Error('Expected a ground item');
+    }
+    vi.spyOn(layout.groundItem, 'loadRoot').mockImplementation(() => {
+      throw new Error('replacement root failed');
+    });
+    const reportError = vi.fn();
+    vi.stubGlobal('reportError', reportError);
+    vi.spyOn(globalThis, 'removeEventListener').mockImplementationOnce(() => {
+      throw new Error('listener rollback failed');
+    });
+
+    expect(() =>
+      layout.loadLayout({
+        root: { type: 'component', componentType: 'panel' },
+      }),
+    ).toThrow('replacement root failed');
+
+    expect(layout.focusedComponentItem).toBe(workingRoot);
+    expect(workingRoot?.focused).toBe(true);
+    expect(internals._windowBeforeUnloadListening).toBe(true);
+    expect(reportError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'listener rollback failed' }),
+    );
+    vi.unstubAllGlobals();
+  });
+
   it('commits the replacement when an old child close request fails', () => {
     const layout = new StrelitLayout();
     layouts.push(layout);
@@ -574,6 +664,34 @@ describe('layout lifecycle', () => {
     expect(headerDestroy).toHaveBeenCalledOnce();
     expect(laterHeaderDestroy).toHaveBeenCalledOnce();
     expect(stack.header.element.isConnected).toBe(false);
+  });
+
+  it('continues stack teardown when the active component blur fails', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: [{ type: 'component', componentType: 'panel' }],
+      },
+    });
+    const root = layout.rootItem;
+    if (root === undefined || !root.isStack)
+      throw new Error('Expected a stack root');
+    const stack = root as Stack;
+    const component = stack.contentItems[0] as ComponentItem;
+    component.focus();
+    const blur = vi.spyOn(component, 'blur').mockImplementationOnce(() => {
+      throw new Error('blur failed');
+    });
+    const headerDestroy = vi.spyOn(stack.header, 'destroy');
+
+    expect(() => stack.destroy()).toThrow('blur failed');
+    expect(headerDestroy).toHaveBeenCalledOnce();
+    expect(() => stack.destroy()).not.toThrow();
+    expect(blur).toHaveBeenCalledOnce();
+    expect(headerDestroy).toHaveBeenCalledOnce();
   });
 
   it.each([1, 2])(

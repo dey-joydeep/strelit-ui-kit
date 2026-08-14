@@ -165,6 +165,10 @@ function collectNonGeneratedLines(baseRef, cwd = process.cwd()) {
 function domainsForPath(fileName) {
   const normalized = normalizeFileName(fileName);
   const domains = new Set();
+  const repositoryProse =
+    /(?:^|\/)(?:(?:README|CHANGELOG|CONTRIBUTING|COMMUNITY|SECURITY|SUPPORT|VERSIONING|LICENSE|LICENSING|NOTICE|AUTHORS)(?:\.[^/]*)?|AGENTS\.md|[^/]+\.(?:md|mdx|txt|adoc|rst))$/i.test(
+      normalized,
+    );
   const sourceDocumentation = /^src\/.*\.md$/i.test(normalized);
   const governancePolicy =
     /(?:^|\/)AGENTS\.md$/.test(normalized) ||
@@ -199,10 +203,8 @@ function domainsForPath(fileName) {
     domains.add('Tooling, CI, and verification');
   }
   if (
-    sourceDocumentation ||
-    /^(?:test\/|apitest\/|docs\/|README|AGENTS\.md|\.code-review\/)/.test(
-      normalized,
-    )
+    repositoryProse ||
+    /^(?:test\/|apitest\/|docs\/|README|\.code-review\/)/.test(normalized)
   ) {
     domains.add('Tests and documentation');
   }

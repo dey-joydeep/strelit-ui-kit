@@ -312,6 +312,7 @@ export class EventEmitter {
     ...args: EventEmitterEventParamsMap[K]
   ): void {
     let firstError: unknown;
+    let hasError = false;
     let subscriptions = this._subscriptionsMap.get(eventName);
 
     if (subscriptions !== undefined) {
@@ -323,7 +324,8 @@ export class EventEmitter {
         try {
           subscriptions[i](...args);
         } catch (error) {
-          firstError ??= error;
+          if (!hasError) firstError = error;
+          hasError = true;
         }
       }
     }
@@ -332,17 +334,19 @@ export class EventEmitter {
       try {
         this.emitAllEvent(eventName, args);
       } catch (error) {
-        firstError ??= error;
+        if (!hasError) firstError = error;
+        hasError = true;
       }
     }
     if (this.isEventDispatchAllowed(eventName)) {
       try {
         this.tryBubbleEvent(eventName, args);
       } catch (error) {
-        firstError ??= error;
+        if (!hasError) firstError = error;
+        hasError = true;
       }
     }
-    if (firstError !== undefined) {
+    if (hasError) {
       throw firstError;
     }
   }
@@ -350,6 +354,7 @@ export class EventEmitter {
   /** @internal */
   emitUnknown(eventName: string, ...args: EventEmitterUnknownParams): void {
     let firstError: unknown;
+    let hasError = false;
     let subs = this._subscriptionsMap.get(eventName);
 
     if (subs !== undefined) {
@@ -361,7 +366,8 @@ export class EventEmitter {
         try {
           subs[i](...args);
         } catch (error) {
-          firstError ??= error;
+          if (!hasError) firstError = error;
+          hasError = true;
         }
       }
     }
@@ -370,17 +376,19 @@ export class EventEmitter {
       try {
         this.emitAllEvent(eventName, args);
       } catch (error) {
-        firstError ??= error;
+        if (!hasError) firstError = error;
+        hasError = true;
       }
     }
     if (this.isEventDispatchAllowed(eventName)) {
       try {
         this.tryBubbleEvent(eventName, args);
       } catch (error) {
-        firstError ??= error;
+        if (!hasError) firstError = error;
+        hasError = true;
       }
     }
-    if (firstError !== undefined) {
+    if (hasError) {
       throw firstError;
     }
   }
@@ -514,6 +522,7 @@ export class EventEmitter {
   private emitAllEvent(eventName: string, args: unknown[]) {
     const allEventSubscriptionsCount = this._allEventSubscriptions.length;
     let firstError: unknown;
+    let hasError = false;
     if (allEventSubscriptionsCount > 0) {
       const unknownArgs = args.slice() as EventEmitterUnknownParams;
       unknownArgs.unshift(eventName);
@@ -527,10 +536,11 @@ export class EventEmitter {
         try {
           allEventSubcriptions[i](...unknownArgs);
         } catch (error) {
-          firstError ??= error;
+          if (!hasError) firstError = error;
+          hasError = true;
         }
       }
-      if (firstError !== undefined) {
+      if (hasError) {
         throw firstError;
       }
     }

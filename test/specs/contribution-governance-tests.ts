@@ -90,6 +90,7 @@ function createPullRequestBody(
         ? [
             'Coverage gaps: 0',
             'Synthesis reviewer: Not applicable',
+            'Closed Critical/High findings: 0',
             'Open Medium findings: 0',
             'Closed Medium findings: 0',
             'Accepted Medium findings: 0',
@@ -220,6 +221,7 @@ function createLargeHighRiskBody(manifest: string, reports: string): string {
     'Verdict: **Pass**',
     'Findings: Critical 0; High 0; Medium 0; Low 0',
     'Open Critical/High findings: **0**',
+    'Closed Critical/High findings: **0**',
     'Open Medium findings: 0',
     'Closed Medium findings: 0',
     'Accepted Medium findings: 0',
@@ -1190,6 +1192,53 @@ describe('contribution governance workflow', () => {
   });
 
   it.each([
+    [
+      'a leading-zero open Critical/High count',
+      'Findings: Critical 1; High 0; Medium 0; Low 0',
+      'Open Critical/High findings: 01',
+      'Closed Critical/High findings: 0',
+      'High-risk changes cannot have open Critical or High review findings.',
+    ],
+    [
+      'unreconciled Critical/High totals',
+      'Findings: Critical 1; High 1; Medium 0; Low 0',
+      'Open Critical/High findings: 0',
+      'Closed Critical/High findings: 1',
+      'Critical and High finding counts must reconcile with their open and closed totals.',
+    ],
+  ])(
+    'rejects %s',
+    async (_label, findings, openFindings, closedFindings, expectedFailure) => {
+      const review = [
+        'Review mode: **Independent**',
+        'Reviewer: @reviewer-user',
+        'Review scope: **Whole PR**',
+        'Review pass: **Fresh discovery**',
+        `Reviewed boundary: ${pullRequestHead}`,
+        'Rubric result: **Pass**',
+        'Dimensions below 2: **0**',
+        'Verdict: **Pass**',
+        findings,
+        openFindings,
+        closedFindings,
+        'Open Medium findings: 0',
+        'Closed Medium findings: 0',
+        'Accepted Medium findings: 0',
+        'Review artifact: Whole PR review',
+        'Finding dispositions: Recorded findings closed or open as counted',
+        'Residual risks: No known residual risks',
+      ].join('\n');
+
+      const failures = await runPullRequestMetadataPolicy(
+        createPullRequestBody('High', review),
+        [{ filename: 'src/ts/layout-manager.ts', changes: 12 }],
+      );
+
+      expect(failures).toContain(expectedFailure);
+    },
+  );
+
+  it.each([
     ['missing', [], false],
     [
       'wrong author',
@@ -1481,6 +1530,121 @@ describe('risk-based PR verification', () => {
         'docs/contributing/ai-change-quality-rubric.md',
       ),
     ).toEqual(['Tests and documentation', 'Tooling, CI, and verification']);
+    expect(changeDiscipline.domainsForPath('LICENSE')).toEqual([
+      'Tests and documentation',
+    ]);
+    expect(changeDiscipline.domainsForPath('COMMUNITY.md')).toEqual([
+      'Tests and documentation',
+    ]);
+  });
+
+  it('classifies extensionless licenses as documentation in the workflow mirror', async () => {
+    const review = [
+      'Review mode: **Independent**',
+      'Reviewer: @reviewer-user',
+      'Review scope: **Whole PR**',
+      'Review pass: **Fresh discovery**',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 0; High 0; Medium 0; Low 0',
+      'Open Critical/High findings: 0',
+      'Closed Critical/High findings: 0',
+      'Review artifact: Whole PR review',
+      'Finding dispositions: No findings',
+      'Residual risks: No known residual risks',
+    ].join('\n');
+    const manifest = [
+      'Path: .github/workflows/example.yml | Contract: workflow behavior | Domains: Tooling, CI, and verification | Assignments: Tooling, CI, and verification => @reviewer-user | Adjacent: governance workflow | Tests: governance policy suite',
+      'Path: LICENSE | Contract: licensing documentation | Domains: Tests and documentation | Assignments: Tests and documentation => @reviewer-user | Adjacent: package metadata | Tests: governance policy suite',
+    ].join('\n');
+    const body = createPullRequestBody('High', review).replace(
+      /## Review Coverage Manifest[\s\S]*?## Domain Discovery Reports/,
+      `## Review Coverage Manifest\n\n${manifest}\n\n## Domain Discovery Reports`,
+    );
+
+    const failures = await runPullRequestMetadataPolicy(
+      body,
+      [
+        { filename: '.github/workflows/example.yml', changes: 5 },
+        { filename: 'LICENSE', changes: 5 },
+      ],
+      [
+        {
+          commit_id: pullRequestHead,
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+      ],
+    );
+
+    expect(failures).toEqual([]);
+  });
+
+  it('strictly compiles the documented Vue hook with its usage example', () => {
+    const documentation = readFileSync(
+      resolve('docs/frameworks/vue/embedding-via-events.md'),
+      'utf8',
+    );
+    const hook = documentation.match(/```typescript\n([\s\S]*?)```/)?.[1];
+    const usage = documentation.match(
+      /<script lang="ts">\n([\s\S]*?)<\/script>/,
+    )?.[1];
+    expect(hook).toBeDefined();
+    expect(usage).toBeDefined();
+    if (hook === undefined || usage === undefined) return;
+
+    const directory = mkdtempSync(join(tmpdir(), 'strelit-vue-docs-'));
+    try {
+      const vueTypes = [
+        "declare module 'vue' {",
+        '  export function defineComponent(options: unknown): unknown;',
+        '  export function h(...args: unknown[]): unknown;',
+        '  export function onBeforeUnmount(callback: () => void): void;',
+        '  export function onMounted(callback: () => void): void;',
+        '  export function ref<T>(value: T): { value: T };',
+        '  export function shallowRef<T>(value: T): { value: T };',
+        '}',
+      ].join('\n');
+      const hookPath = join(directory, 'use-strelit-layout.ts');
+      const sourcePath = join(directory, 'example.ts');
+      const vueTypesPath = join(directory, 'vue.d.ts');
+      const configPath = join(directory, 'tsconfig.json');
+      writeFileSync(hookPath, hook);
+      writeFileSync(sourcePath, usage);
+      writeFileSync(vueTypesPath, vueTypes);
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          compilerOptions: {
+            strict: true,
+            noEmit: true,
+            target: 'ES2022',
+            module: 'ESNext',
+            moduleResolution: 'Bundler',
+            lib: ['ES2022', 'DOM'],
+            baseUrl: process.cwd(),
+            paths: {
+              'strelit-ui-kit': ['./src/index.ts'],
+              vue: [vueTypesPath.replaceAll('\\', '/')],
+              '@/use-strelit-layout': [hookPath.replaceAll('\\', '/')],
+            },
+          },
+          files: [hookPath, sourcePath, vueTypesPath],
+        }),
+      );
+
+      const result = spawnSync(
+        process.execPath,
+        [require.resolve('typescript/bin/tsc'), '--project', configPath],
+        { cwd: process.cwd(), encoding: 'utf8' },
+      );
+      expect(result.stdout + result.stderr).toBe('');
+      expect(result.status).toBe(0);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it('forces high verification for tag and release-style CI runs', () => {

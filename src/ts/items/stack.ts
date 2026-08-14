@@ -575,17 +575,19 @@ export class Stack extends ComponentParentableItem {
     if (this._isDestroyed && !this._destroyCleanupFailed) {
       return;
     }
-    if (this._activeComponentItem?.focused) {
-      this._activeComponentItem.blur();
-    }
     let firstError: unknown;
+    let hasError = false;
     const attempt = (action: () => void) => {
       try {
         action();
       } catch (error) {
-        firstError ??= error;
+        if (!hasError) firstError = error;
+        hasError = true;
       }
     };
+    if (this._activeComponentItem?.focused) {
+      attempt(() => this._activeComponentItem?.blur());
+    }
     attempt(() => super.destroy());
     if (!this._resizeListenerDetached) {
       attempt(() => {
@@ -611,7 +613,7 @@ export class Stack extends ComponentParentableItem {
         this._headerDestroyed = true;
       });
     }
-    if (firstError !== undefined) {
+    if (hasError) {
       this._destroyCleanupFailed = true;
       throw firstError;
     }

@@ -254,6 +254,7 @@ jobs:
             const domainsForPath = (fileName) => {
               const domains = new Set();
               const sourceDocumentation = /^src\/.*\.md$/i.test(fileName);
+              const repositoryProse = /(?:^|\/)(?:(?:README|CHANGELOG|CONTRIBUTING|COMMUNITY|SECURITY|SUPPORT|VERSIONING|LICENSE|LICENSING|NOTICE|AUTHORS)(?:\.[^/]*)?|AGENTS\.md|[^/]+\.(?:md|mdx|txt|adoc|rst))$/i.test(fileName);
               const governancePolicy =
                 /(?:^|\/)AGENTS\.md$/.test(fileName) ||
                 /^docs\/contributing\//.test(fileName) ||
@@ -272,7 +273,7 @@ jobs:
               if (sourceDocumentation || governancePolicy || /^(?:\.github\/|scripts\/|tsconfig|vite|vitest|typedoc|api-extractor|oxlint|package(?:-lock)?\.json)/.test(fileName)) {
                 domains.add('Tooling, CI, and verification');
               }
-              if (sourceDocumentation || /^(?:test\/|apitest\/|docs\/|README|AGENTS\.md|\.code-review\/)/.test(fileName)) {
+              if (repositoryProse || /^(?:test\/|apitest\/|docs\/|README|\.code-review\/)/.test(fileName)) {
                 domains.add('Tests and documentation');
               }
               if (domains.size === 0) {
@@ -646,10 +647,28 @@ jobs:
                 );
               }
 
-              if (!/Open Critical\/High findings:[ \t]*0/i.test(independentReview)) {
+              const openCriticalHighMatch = independentReview.match(
+                /^Open Critical\/High findings:[ \t]*(\d+)[ \t]*$/im
+              );
+              const openCriticalHigh = Number(openCriticalHighMatch?.[1]);
+              if (!Number.isInteger(openCriticalHigh) || openCriticalHigh !== 0) {
                 errors.push(
                   'High-risk changes cannot have open Critical or High review findings.'
                 );
+              }
+
+              const closedCriticalHigh = Number(
+                independentReview.match(/^Closed Critical\/High findings:[ \t]*(\d+)$/im)?.[1]
+              );
+              if (
+                computedRisk === 'high' &&
+                findingsMatch !== null &&
+                (!Number.isInteger(closedCriticalHigh) ||
+                  !Number.isInteger(openCriticalHigh) ||
+                  openCriticalHigh + closedCriticalHigh !==
+                    Number(findingsMatch[1]) + Number(findingsMatch[2]))
+              ) {
+                errors.push('Critical and High finding counts must reconcile with their open and closed totals.');
               }
 
               if (computedRisk === 'high' && findingsMatch !== null) {

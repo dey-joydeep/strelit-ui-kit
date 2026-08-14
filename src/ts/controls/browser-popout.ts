@@ -727,12 +727,28 @@ export class BrowserPopout extends EventEmitter {
         } catch (error) {
           this.reportAsynchronousError(error);
         }
-        if (!this._layoutManager.isDestroyed) {
-          this.emit('closed');
+        let closeError: unknown;
+        let hasCloseError = false;
+        try {
+          if (!this._layoutManager.isDestroyed) {
+            this.emit('closed');
+          }
+        } catch (error) {
+          closeError = error;
+          hasCloseError = true;
+        } finally {
+          if (this._storageKey !== undefined) {
+            try {
+              localStorage.removeItem(this._storageKey);
+              this._storageKey = undefined;
+            } catch (error) {
+              if (!hasCloseError) closeError = error;
+              hasCloseError = true;
+            }
+          }
         }
-        if (this._storageKey !== undefined) {
-          localStorage.removeItem(this._storageKey);
-          this._storageKey = undefined;
+        if (hasCloseError) {
+          this.reportAsynchronousError(closeError);
         }
       }
     }, 50);

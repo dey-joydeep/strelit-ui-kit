@@ -5,11 +5,18 @@ The following snippets of code demonstrate how Strelit Layout can be used in Vue
 ### Composable Hook
 
 ```typescript
-import { StrelitLayout, LayoutConfig } from 'strelit-ui-kit';
+import {
+  StrelitLayout,
+  type ComponentContainerComponent,
+  type LayoutConfig,
+} from 'strelit-ui-kit';
 import { onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 
 export function useStrelitLayout(
-  createComponent: (type: string, container: HTMLElement) => unknown,
+  createComponent: (
+    type: string,
+    container: HTMLElement,
+  ) => ComponentContainerComponent | undefined,
   destroyComponent: (container: HTMLElement) => void,
   config?: LayoutConfig,
 ) {
@@ -99,6 +106,7 @@ export default defineComponent({
         type,
         element,
       });
+      return { id: instanceId };
     };
     const destroyComponent = (toBeRemoved: HTMLElement) => {
       componentInstances.value = componentInstances.value.filter(

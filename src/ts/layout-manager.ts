@@ -708,8 +708,10 @@ export abstract class LayoutManager extends EventEmitter {
       const previousOpenPopouts = [...this._openPopouts];
       const previousMaximisedStack = this._maximisedStack;
       const previousFocusedComponentItem = this._focusedComponentItem;
+      const previousWindowBeforeUnloadListening =
+        this._windowBeforeUnloadListening;
       this.layoutConfig = resolveLayoutConfig(layoutConfig);
-      let incomingOpenPopouts: BrowserPopout[];
+      let incomingOpenPopouts: BrowserPopout[] = [];
       try {
         this.createSubWindows();
         incomingOpenPopouts = this._openPopouts.slice(
@@ -720,24 +722,72 @@ export abstract class LayoutManager extends EventEmitter {
           this.adjustColumnsResponsive();
         });
       } catch (error) {
-        const incomingOpenPopouts = this._openPopouts.slice(
+        const reportRollbackError = (rollbackError: unknown) => {
+          try {
+            if (typeof globalThis.reportError === 'function') {
+              globalThis.reportError(rollbackError);
+            } else {
+              console.error(
+                'Layout replacement rollback failed',
+                rollbackError,
+              );
+            }
+          } catch {
+            // Host diagnostics must not replace the original load failure.
+          }
+        };
+        const attemptRollback = (operation: () => void) => {
+          try {
+            operation();
+          } catch (rollbackError) {
+            reportRollbackError(rollbackError);
+          }
+        };
+        incomingOpenPopouts = this._openPopouts.slice(
           previousOpenPopouts.length,
         );
+        const failedIncomingPopouts: BrowserPopout[] = [];
         for (const popout of incomingOpenPopouts) {
           try {
             popout.close();
           } catch {
             // Popout cleanup must not interrupt root and configuration rollback.
+            failedIncomingPopouts.push(popout);
           }
         }
-        this._openPopouts = previousOpenPopouts;
+        this._openPopouts = [...previousOpenPopouts, ...failedIncomingPopouts];
         this.layoutConfig = previousLayoutConfig;
-        if (previousMaximisedStack === undefined) {
-          this.setMaximisedStack(undefined);
-        } else if (this._maximisedStack !== previousMaximisedStack) {
-          previousMaximisedStack.maximise();
+        if (
+          this._windowBeforeUnloadListening !==
+          previousWindowBeforeUnloadListening
+        ) {
+          if (previousWindowBeforeUnloadListening) {
+            attemptRollback(() => {
+              globalThis.addEventListener(
+                'beforeunload',
+                this._windowBeforeUnloadListener,
+                { passive: true },
+              );
+              this._windowBeforeUnloadListening = true;
+            });
+          } else {
+            attemptRollback(() => {
+              globalThis.removeEventListener(
+                'beforeunload',
+                this._windowBeforeUnloadListener,
+              );
+              this._windowBeforeUnloadListening = false;
+            });
+          }
         }
-        this.setFocusedComponentItem(previousFocusedComponentItem, true);
+        if (previousMaximisedStack === undefined) {
+          attemptRollback(() => this.setMaximisedStack(undefined));
+        } else if (this._maximisedStack !== previousMaximisedStack) {
+          attemptRollback(() => previousMaximisedStack.maximise());
+        }
+        attemptRollback(() =>
+          this.setFocusedComponentItem(previousFocusedComponentItem, true),
+        );
         throw error;
       }
 
