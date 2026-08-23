@@ -430,11 +430,6 @@ export function createStackItemConfigContentFromResolved(resolvedContent: Resolv
 // @public
 export function createStackItemConfigFromResolved(resolvedConfig: ResolvedStackItemConfig): StackItemConfig;
 
-// Warning: (ae-internal-missing-underscore) The name "createVirtualLayoutManagerConstructorParameters" should be prefixed with an underscore because the declaration is marked as @internal
-//
-// @internal (undocumented)
-export function createVirtualLayoutManagerConstructorParameters(containerElement: HTMLElement | undefined): LayoutManagerConstructorParameters;
-
 // @public
 export class DragSource {
     // @internal

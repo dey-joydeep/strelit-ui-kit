@@ -29,4 +29,8 @@ export * from './ts/utils/event-hub';
 export * from './ts/utils/i18n-strings';
 export { StyleConstants } from './ts/utils/style-constants';
 export * from './ts/utils/types';
-export * from './ts/virtual-layout';
+export {
+  VirtualLayout,
+  type VirtualLayoutBindComponentEventHandler,
+  type VirtualLayoutUnbindComponentEventHandler,
+} from './ts/virtual-layout';

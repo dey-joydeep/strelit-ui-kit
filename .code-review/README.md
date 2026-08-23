@@ -4,8 +4,8 @@ This directory (`.code-review/`) contains detailed code review reports and archi
 
 ## Available Reports
 
-- **[Uncommitted Changes & Comprehensive Repository Review](./uncommitted-changes-review.md)**  
-  _Date: July 12, 2026_  
+- **[Uncommitted Changes & Comprehensive Repository Review](./uncommitted-changes-review.md)**<br>
+  _Date: July 12, 2026_<br>
   A detailed evaluation of the uncommitted modernization state of `strelit-ui-kit`, including:
   - Executive summary and Git state analysis (branch `feature/strelit-modernization`)
   - Architectural review of rebranding (`Strelit UI Kit` / `CTHub`), toolchain overhaul (`Vitest`, `tsup`, `Vite`, `Oxlint`, `Prettier`, `@microsoft/api-extractor`), core layout modernization (`StrelitLayout`), and theme system (`strelit-base.*`)

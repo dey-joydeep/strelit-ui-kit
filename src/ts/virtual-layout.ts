@@ -48,7 +48,6 @@ export function createVirtualLayoutManagerConstructorParameters(
   const windowConfigKey = virtualLayoutSubWindowChecked
     ? null
     : new URL(document.location.href).searchParams.get('strelit-window');
-  virtualLayoutSubWindowChecked = true;
   const isSubWindow = windowConfigKey !== null;
 
   let config: LayoutConfig | undefined;
@@ -71,6 +70,7 @@ export function createVirtualLayoutManagerConstructorParameters(
     config = createLayoutConfigFromResolved(resolvedConfig);
   }
 
+  virtualLayoutSubWindowChecked = true;
   return {
     subWindowLayoutConfig: config,
     isSubWindow,

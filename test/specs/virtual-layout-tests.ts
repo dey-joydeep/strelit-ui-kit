@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as publicApi from '../../src';
 import { minifyResolvedLayoutConfig, resolveLayoutConfig } from '../../src';
 
 describe('virtual layout popout bootstrap', () => {
@@ -7,6 +8,12 @@ describe('virtual layout popout bootstrap', () => {
   afterEach(() => {
     history.replaceState({}, '', originalUrl);
     localStorage.clear();
+  });
+
+  it('does not expose internal virtual-layout construction helpers', () => {
+    expect('createVirtualLayoutManagerConstructorParameters' in publicApi).toBe(
+      false,
+    );
   });
 
   it('keeps the stored popout config available across a child reload', async () => {
@@ -55,4 +62,37 @@ describe('virtual layout popout bootstrap', () => {
       ),
     ).toThrow(/limit/i);
   });
+
+  it.each([
+    {
+      name: 'missing',
+      storedConfig: undefined,
+      expectedError: /Missing Strelit popout configuration/,
+    },
+    {
+      name: 'corrupt',
+      storedConfig: '{',
+      expectedError: /Corrupt Strelit popout configuration/,
+    },
+  ])(
+    'preserves subwindow detection after $name configuration failure',
+    async ({ storedConfig, expectedError }) => {
+      const storageKey = 'strelit-window-config-retry-test';
+      if (storedConfig !== undefined) {
+        localStorage.setItem(storageKey, storedConfig);
+      }
+      history.replaceState({}, '', `/?strelit-window=${storageKey}`);
+      vi.resetModules();
+      const { createVirtualLayoutManagerConstructorParameters } =
+        await import('../../src/ts/virtual-layout');
+
+      for (let attempt = 0; attempt < 2; attempt++) {
+        expect(() =>
+          createVirtualLayoutManagerConstructorParameters(
+            document.createElement('div'),
+          ),
+        ).toThrow(expectedError);
+      }
+    },
+  );
 });
