@@ -1434,6 +1434,7 @@ describe('risk-based PR verification', () => {
     ['docs/architecture/compatibility-audit-maintenance.md', 'high'],
     ['.github/workflows/CI.yml', 'high'],
     ['.github/CODEOWNERS', 'high'],
+    ['.npmignore', 'high'],
     ['.oxlintrc.json', 'high'],
     ['tools/release-notes.txt', 'medium'],
   ] as const)('classifies %s as %s risk', (fileName, expectedRisk) => {
@@ -1535,6 +1536,10 @@ describe('risk-based PR verification', () => {
     ]);
     expect(changeDiscipline.domainsForPath('COMMUNITY.md')).toEqual([
       'Tests and documentation',
+    ]);
+    expect(changeDiscipline.domainsForPath('.npmignore')).toEqual([
+      'Public API, compatibility, and packaging',
+      'Tooling, CI, and verification',
     ]);
   });
 

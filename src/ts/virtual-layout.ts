@@ -169,12 +169,9 @@ export class VirtualLayout extends LayoutManager {
       this._popInButtonElement.remove();
       this._popInButtonElement = undefined;
     }
-    try {
-      super.destroy();
-    } finally {
-      this.bindComponentEvent = undefined;
-      this.unbindComponentEvent = undefined;
-    }
+    super.destroy();
+    this.bindComponentEvent = undefined;
+    this.unbindComponentEvent = undefined;
   }
 
   /** Initializes the layout after binding handlers have been assigned. */

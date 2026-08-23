@@ -2,6 +2,7 @@ import { ResolvedItemConfig } from '../config/resolved-config';
 import { BrowserPopout } from '../controls/browser-popout';
 import { AssertError, UnexpectedNullError } from '../errors/internal-error';
 import { LayoutManager } from '../layout-manager';
+import { reportSecondaryCleanupError } from '../utils/error-reporting';
 import {
   EventEmitter,
   EventEmitterBubblingEvent,
@@ -359,14 +360,39 @@ export abstract class ContentItem extends EventEmitter {
     if (parentNode === null) {
       throw new UnexpectedNullError('CIRCP23232');
     } else {
-      parentNode.replaceChild(newChild._element, oldChild._element);
-
       /*
        * Optionally destroy the old content item
        */
       if (destroyOldChild) {
+        const insertionAnchor = document.createComment(
+          'strelit-replace-child-anchor',
+        );
+        parentNode.insertBefore(insertionAnchor, oldChild._element);
+        try {
+          parentNode.replaceChild(newChild._element, oldChild._element);
+        } catch (error) {
+          insertionAnchor.remove();
+          throw error;
+        }
+        try {
+          oldChild.destroy(); // will now also destroy all children of oldChild
+        } catch (error) {
+          try {
+            parentNode.insertBefore(oldChild._element, insertionAnchor);
+            newChild._element.remove();
+            insertionAnchor.remove();
+          } catch (rollbackError) {
+            reportSecondaryCleanupError(
+              'content-item replacement rollback',
+              rollbackError,
+            );
+          }
+          throw error;
+        }
         oldChild._parent = null;
-        oldChild.destroy(); // will now also destroy all children of oldChild
+        insertionAnchor.remove();
+      } else {
+        parentNode.replaceChild(newChild._element, oldChild._element);
       }
 
       /*
@@ -506,11 +532,6 @@ export abstract class ContentItem extends EventEmitter {
       return;
     }
     this._isDestroyed = true;
-    for (const frame of Object.values(this._pendingEventPropagationFrames)) {
-      if (frame !== undefined) {
-        globalThis.cancelAnimationFrame(frame);
-      }
-    }
     let firstError: unknown;
     const attempt = (action: () => void) => {
       try {
@@ -519,6 +540,16 @@ export abstract class ContentItem extends EventEmitter {
         firstError ??= error;
       }
     };
+    for (const [name, frame] of Object.entries(
+      this._pendingEventPropagationFrames,
+    )) {
+      if (frame !== undefined) {
+        attempt(() => {
+          globalThis.cancelAnimationFrame(frame);
+          this._pendingEventPropagationFrames[name] = undefined;
+        });
+      }
+    }
     const remainingContentItems: ContentItem[] = [];
     for (const contentItem of this._contentItems) {
       let destroyed = false;

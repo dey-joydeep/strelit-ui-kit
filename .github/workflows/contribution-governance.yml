@@ -267,10 +267,10 @@ jobs:
               if (/^(?:src\/ts\/config\/|scripts\/migrate-|test\/.*(?:migration|create-config))/.test(fileName)) {
                 domains.add('Migration, configuration, and persistence');
               }
-              if (/^(?:src\/index\.ts|src\/ts\/(?:config\/|utils\/types\.ts)|etc\/|package(?:-lock)?\.json)/.test(fileName)) {
+              if (/^(?:src\/index\.ts|src\/ts\/(?:config\/|utils\/types\.ts)|etc\/|\.npmignore$|package(?:-lock)?\.json)/.test(fileName)) {
                 domains.add('Public API, compatibility, and packaging');
               }
-              if (sourceDocumentation || governancePolicy || /^(?:\.github\/|scripts\/|tsconfig|vite|vitest|typedoc|api-extractor|oxlint|package(?:-lock)?\.json)/.test(fileName)) {
+              if (sourceDocumentation || governancePolicy || /^(?:\.github\/|scripts\/|tsconfig|vite|vitest|typedoc|api-extractor|oxlint|\.npmignore$|package(?:-lock)?\.json)/.test(fileName)) {
                 domains.add('Tooling, CI, and verification');
               }
               if (repositoryProse || /^(?:test\/|apitest\/|docs\/|README|\.code-review\/)/.test(fileName)) {

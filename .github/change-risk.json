@@ -5,7 +5,7 @@
     "^etc/",
     "^\\.agents/skills/",
     "^\\.github/",
-    "^\\.(?:gitattributes|gitignore|npmrc|oxlintrc\\.json|prettierignore|prettierrc(?:\\..*)?)$",
+    "^\\.(?:gitattributes|gitignore|npmignore|npmrc|oxlintrc\\.json|prettierignore|prettierrc(?:\\..*)?)$",
     "(?:^|/)AGENTS\\.md$",
     "^docs/contributing/",
     "^docs/architecture/product-evolution-policy\\.md$",

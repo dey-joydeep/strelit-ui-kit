@@ -924,6 +924,42 @@ describe('layout lifecycle', () => {
     expect(stateChanged).not.toHaveBeenCalled();
   });
 
+  it('retries failed animation-frame cancellation while continuing child cleanup', () => {
+    const scheduledCallbacks: FrameRequestCallback[] = [];
+    vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(
+      (callback) => {
+        scheduledCallbacks.push(callback);
+        return 80 + scheduledCallbacks.length;
+      },
+    );
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    const unbindComponent = vi.spyOn(layout, 'unbindComponent');
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadComponentAsRoot({
+      type: 'component',
+      componentType: 'panel',
+    });
+    for (const callback of scheduledCallbacks.splice(0)) {
+      callback(0);
+    }
+    const cancelAnimationFrame = vi
+      .spyOn(globalThis, 'cancelAnimationFrame')
+      .mockImplementationOnce(() => {
+        throw new Error('transient frame cancellation failure');
+      });
+    (layout.rootItem as ComponentItem).setTitle('schedule state change');
+
+    expect(() => layout.destroy()).toThrow(
+      'transient frame cancellation failure',
+    );
+    expect(unbindComponent).toHaveBeenCalledOnce();
+
+    expect(() => layout.destroy()).not.toThrow();
+    expect(cancelAnimationFrame).toHaveBeenCalledTimes(2);
+    expect(unbindComponent).toHaveBeenCalledOnce();
+  });
+
   it('continues teardown after a destroy step fails and preserves the first error', () => {
     const layout = new StrelitLayout();
     layouts.push(layout);
@@ -1248,6 +1284,56 @@ describe('layout lifecycle', () => {
     expect(layout.container.querySelectorAll('.lm_splitter')).toHaveLength(0);
   });
 
+  it('keeps child replacement retryable when old-child teardown fails', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadLayout({
+      root: {
+        type: 'row',
+        content: [
+          {
+            type: 'stack',
+            content: [{ type: 'component', componentType: 'panel' }],
+          },
+          {
+            type: 'stack',
+            content: [{ type: 'component', componentType: 'panel' }],
+          },
+        ],
+      },
+    });
+    const row = layout.rootItem as RowOrColumn;
+    const oldChild = row.contentItems[0];
+    const newChildConfig = resolveLayoutConfig({
+      root: {
+        type: 'stack',
+        content: [{ type: 'component', componentType: 'panel' }],
+      },
+    }).root;
+    if (newChildConfig === undefined) {
+      throw new Error('Expected replacement config');
+    }
+    const newChild = layout.createAndInitContentItem(newChildConfig, row);
+    vi.spyOn(layout, 'unbindComponent').mockImplementationOnce(() => {
+      throw new Error('transient replacement teardown failure');
+    });
+
+    expect(() => row.replaceChild(oldChild, newChild, true)).toThrow(
+      'transient replacement teardown failure',
+    );
+    expect(row.contentItems[0]).toBe(oldChild);
+    expect(oldChild.parent).toBe(row);
+    expect(oldChild.element.parentNode).toBe(row.element);
+    expect(newChild.element.parentNode).toBeNull();
+
+    expect(() => row.replaceChild(oldChild, newChild, true)).not.toThrow();
+    expect(row.contentItems[0]).toBe(newChild);
+    expect(oldChild.parent).toBeNull();
+    expect(newChild.parent).toBe(row);
+    expect(newChild.element.parentNode).toBe(row.element);
+  });
+
   it('restores body and document inline styles on destroy', () => {
     const documentElement = document.documentElement;
     documentElement.style.cssText =
@@ -1284,6 +1370,31 @@ describe('layout lifecycle', () => {
     expect(document.body.style.overflow).toBe('clip');
 
     second.destroy();
+    expect(documentElement.style.cssText).toBe(documentStyle);
+    expect(document.body.style.cssText).toBe(bodyStyle);
+  });
+
+  it('retries final-owner body style restoration after a CSSOM failure', () => {
+    const documentElement = document.documentElement;
+    documentElement.style.cssText =
+      'height: 42px; margin: 3px; padding: 4px; overflow: auto;';
+    document.body.style.cssText =
+      'height: 84px; margin: 5px; padding: 6px; overflow: scroll;';
+    const documentStyle = documentElement.style.cssText;
+    const bodyStyle = document.body.style.cssText;
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    vi.spyOn(documentElement.style, 'setProperty').mockImplementationOnce(
+      () => {
+        throw new Error('transient style restoration failure');
+      },
+    );
+
+    expect(() => layout.destroy()).toThrow(
+      'transient style restoration failure',
+    );
+    expect(() => layout.destroy()).not.toThrow();
+
     expect(documentElement.style.cssText).toBe(documentStyle);
     expect(document.body.style.cssText).toBe(bodyStyle);
   });

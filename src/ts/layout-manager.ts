@@ -2263,9 +2263,14 @@ export abstract class LayoutManager extends EventEmitter {
     if (!this._ownsBodyContainerStyles) {
       return;
     }
-    this._ownsBodyContainerStyles = false;
     const ownership = bodyContainerStyleOwnership.get(document);
-    if (ownership === undefined || --ownership.count > 0) {
+    if (ownership === undefined) {
+      this._ownsBodyContainerStyles = false;
+      return;
+    }
+    if (ownership.count > 1) {
+      ownership.count--;
+      this._ownsBodyContainerStyles = false;
       return;
     }
     for (const snapshot of ownership.snapshots) {
@@ -2282,6 +2287,7 @@ export abstract class LayoutManager extends EventEmitter {
       }
     }
     bodyContainerStyleOwnership.delete(document);
+    this._ownsBodyContainerStyles = false;
   }
 
   private onBeforeUnload(): void {

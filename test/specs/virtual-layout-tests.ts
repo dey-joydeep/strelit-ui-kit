@@ -108,6 +108,29 @@ describe('virtual layout popout bootstrap', () => {
     expect(window.__strelitInstance).toBe(replacement);
   });
 
+  it('retains consumer unbind handlers until destroy succeeds', () => {
+    const unbind = vi.fn<() => void>().mockImplementationOnce(() => {
+      throw new Error('transient consumer unbind failure');
+    });
+    const layout = new publicApi.VirtualLayout(
+      document.createElement('div'),
+      () => ({ component: undefined, virtual: false }),
+      unbind,
+    );
+    layout.loadComponentAsRoot({
+      type: 'component',
+      componentType: 'retryable-unbind',
+    });
+
+    expect(() => layout.destroy()).toThrow('transient consumer unbind failure');
+    expect(layout.unbindComponentEvent).toBe(unbind);
+
+    expect(() => layout.destroy()).not.toThrow();
+    expect(unbind).toHaveBeenCalledTimes(2);
+    expect(layout.bindComponentEvent).toBeUndefined();
+    expect(layout.unbindComponentEvent).toBeUndefined();
+  });
+
   it('does not expose internal virtual-layout construction helpers', () => {
     expect('createVirtualLayoutManagerConstructorParameters' in publicApi).toBe(
       false,

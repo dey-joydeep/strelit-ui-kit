@@ -187,7 +187,7 @@ function domainsForPath(fileName) {
     domains.add('Migration, configuration, and persistence');
   }
   if (
-    /^(?:src\/index\.ts|src\/ts\/(?:config\/|utils\/types\.ts)|etc\/|package(?:-lock)?\.json)/.test(
+    /^(?:src\/index\.ts|src\/ts\/(?:config\/|utils\/types\.ts)|etc\/|\.npmignore$|package(?:-lock)?\.json)/.test(
       normalized,
     )
   ) {
@@ -196,7 +196,7 @@ function domainsForPath(fileName) {
   if (
     sourceDocumentation ||
     governancePolicy ||
-    /^(?:\.github\/|scripts\/|tsconfig|vite|vitest|typedoc|api-extractor|oxlint|package(?:-lock)?\.json)/.test(
+    /^(?:\.github\/|scripts\/|tsconfig|vite|vitest|typedoc|api-extractor|oxlint|\.npmignore$|package(?:-lock)?\.json)/.test(
       normalized,
     )
   ) {
