@@ -618,12 +618,15 @@ function resolveComponentItemConfigWithDefault(
   itemConfig: ComponentItemConfig,
   reorderEnabledDefault: boolean,
 ): ResolvedComponentItemConfig {
-  const componentType = itemConfig.componentType;
-  if (componentType === undefined) {
+  const unresolvedComponentType = itemConfig.componentType;
+  if (unresolvedComponentType === undefined) {
     throw new ConfigurationError(
       'ComponentItemConfig.componentType is undefined',
     );
   } else {
+    const componentType = deepCloneValue(
+      unresolvedComponentType,
+    ) as ComponentType;
     const { id, maximised } =
       resolveHeaderedItemConfigIdAndMaximised(itemConfig);
     let title: string;
@@ -677,7 +680,9 @@ export function createComponentItemConfigFromResolved(
     reorderEnabled: resolvedConfig.reorderEnabled,
     title: resolvedConfig.title,
     header: createResolvedHeaderedItemConfigHeaderCopy(resolvedConfig.header),
-    componentType: resolvedConfig.componentType,
+    componentType: deepCloneValue(
+      resolvedConfig.componentType,
+    ) as ComponentType,
     componentState: deepCloneValue(
       resolvedConfig.componentState,
     ) as SerializableValue,

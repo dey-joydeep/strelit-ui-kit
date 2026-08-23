@@ -91,21 +91,63 @@ function findBrowser() {
   );
 }
 
-/** Waits until the preview server responds successfully. */
-async function waitForServer(timeoutMs = 15_000) {
+/** Observes preview process failure without allowing an unhandled error event. */
+function observePreview(preview) {
+  let failure;
+  const onError = (error) => {
+    failure = error;
+  };
+  const onClose = (code, signal) => {
+    if (failure === undefined) {
+      failure = new Error(
+        `Vite preview exited before smoke validation (code ${code}, signal ${signal ?? 'none'})`,
+      );
+    }
+  };
+  preview.on('error', onError);
+  preview.on('close', onClose);
+
+  return {
+    assertRunning() {
+      if (failure !== undefined) {
+        throw failure;
+      }
+      if (preview.exitCode !== null || preview.signalCode !== null) {
+        throw new Error(
+          `Vite preview exited before smoke validation (code ${preview.exitCode}, signal ${preview.signalCode ?? 'none'})`,
+        );
+      }
+    },
+    dispose() {
+      preview.off('error', onError);
+      preview.off('close', onClose);
+    },
+  };
+}
+
+/** Waits until the observed preview server responds successfully. */
+async function waitForServer(
+  previewMonitor,
+  targetUrl = url,
+  timeoutMs = 15_000,
+) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    previewMonitor.assertRunning();
+    let response;
     try {
-      const response = await fetch(url);
-      if (response.ok) {
-        return;
-      }
+      response = await fetch(targetUrl);
     } catch {
       // The preview process may still be binding its socket.
     }
+    previewMonitor.assertRunning();
+    if (response?.ok) {
+      return;
+    }
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
-  throw new Error(`Vite preview did not become ready at ${url}`);
+  previewMonitor.assertRunning();
+  throw new Error(`Vite preview did not become ready at ${targetUrl}`);
 }
 
 /** Builds the API demo and verifies that Strelit renders in a real browser. */
@@ -143,10 +185,12 @@ async function main() {
   preview.stderr.on('data', (chunk) => {
     previewOutput += chunk;
   });
+  const previewMonitor = observePreview(preview);
 
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'strelit-smoke-'));
   try {
-    await waitForServer();
+    await waitForServer(previewMonitor);
+    previewMonitor.assertRunning();
     const browser = findBrowser();
     const { stdout, stderr } = await run(
       browser,
@@ -176,6 +220,7 @@ async function main() {
     if (/uncaught|unhandled|error loading/i.test(stderr)) {
       throw new Error(`Browser reported a runtime failure:\n${stderr}`);
     }
+    previewMonitor.assertRunning();
     process.stdout.write(`API demo browser smoke passed with ${browser}.\n`);
   } catch (error) {
     if (previewOutput.length > 0) {
@@ -183,12 +228,17 @@ async function main() {
     }
     throw error;
   } finally {
+    previewMonitor.dispose();
     preview.kill();
     fs.rmSync(profile, { recursive: true, force: true });
   }
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error.stack ?? error.message}\n`);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error) => {
+    process.stderr.write(`${error.stack ?? error.message}\n`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { observePreview, waitForServer };

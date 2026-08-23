@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ConfigurationError,
   type LayoutConfig,
   type SerializableObject,
   minifyResolvedLayoutConfig,
@@ -9,6 +10,13 @@ import {
 import { translateObject } from '../../src/ts/utils/config-minifier';
 
 describe('resolved layout config minifier', function () {
+  it('rejects structurally invalid minified layout data', function () {
+    expect(() => unminifyResolvedLayoutConfig({})).toThrow(ConfigurationError);
+    expect(() => unminifyResolvedLayoutConfig({})).toThrow(
+      'Unminified layout configuration must be resolved',
+    );
+  });
+
   it('preserves unknown compact value tokens while unminifying', function () {
     expect(translateObject({ value: 'a' }, false)).toEqual({ value: 'a' });
     expect(translateObject({ value: 'z' }, false)).toEqual({ value: 'z' });

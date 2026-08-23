@@ -1,5 +1,10 @@
+import { ConfigurationError } from '../errors/external-error';
 import { AssertError, UnreachableCaseError } from '../errors/internal-error';
 import { translateObject as translateMinifiedConfigObject } from '../utils/config-minifier';
+import {
+  maximumConfigDepth,
+  maximumConfigNodes,
+} from '../utils/resource-limits';
 import {
   ComponentType,
   ItemType,
@@ -899,6 +904,116 @@ export function createResolvedOpenPopoutsCopy(
  */
 export type MinifiedLayoutConfig = Record<string, unknown>;
 
+function assertRecord(
+  value: unknown,
+  name: string,
+): asserts value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new ConfigurationError(`${name} must be an object`);
+  }
+}
+
+function assertResolvedLayoutConfigStructure(value: unknown): void {
+  type Frame =
+    | {
+        readonly kind: 'layout';
+        readonly value: unknown;
+        readonly popoutDepth: number;
+      }
+    | {
+        readonly kind: 'item';
+        readonly value: unknown;
+        readonly itemDepth: number;
+      };
+
+  const stack: Frame[] = [{ kind: 'layout', value, popoutDepth: 0 }];
+  let nodes = 0;
+  while (stack.length > 0) {
+    const frame = stack.pop();
+    if (frame === undefined) {
+      break;
+    }
+    nodes++;
+    const depth = frame.kind === 'layout' ? frame.popoutDepth : frame.itemDepth;
+    if (depth > maximumConfigDepth || nodes > maximumConfigNodes) {
+      throw new ConfigurationError(
+        'Unminified layout configuration exceeds resource limits',
+      );
+    }
+    assertRecord(frame.value, `Unminified ${frame.kind} configuration`);
+
+    if (frame.kind === 'layout') {
+      if (frame.value.resolved !== true) {
+        throw new ConfigurationError(
+          'Unminified layout configuration must be resolved',
+        );
+      }
+      if (!Array.isArray(frame.value.openPopouts)) {
+        throw new ConfigurationError(
+          'Unminified layout configuration openPopouts must be an array',
+        );
+      }
+      assertRecord(
+        frame.value.settings,
+        'Unminified layout configuration settings',
+      );
+      assertRecord(
+        frame.value.dimensions,
+        'Unminified layout configuration dimensions',
+      );
+      assertRecord(
+        frame.value.header,
+        'Unminified layout configuration header',
+      );
+      if (frame.value.root !== undefined) {
+        stack.push({ kind: 'item', value: frame.value.root, itemDepth: 0 });
+      }
+      for (
+        let index = frame.value.openPopouts.length - 1;
+        index >= 0;
+        index--
+      ) {
+        stack.push({
+          kind: 'layout',
+          value: frame.value.openPopouts[index],
+          popoutDepth: frame.popoutDepth + 1,
+        });
+      }
+    } else {
+      if (
+        frame.value.type !== ItemType.row &&
+        frame.value.type !== ItemType.column &&
+        frame.value.type !== ItemType.stack &&
+        frame.value.type !== ItemType.component
+      ) {
+        throw new ConfigurationError(
+          'Unminified layout item configuration has an invalid type',
+        );
+      }
+      if (!Array.isArray(frame.value.content)) {
+        throw new ConfigurationError(
+          'Unminified layout item configuration content must be an array',
+        );
+      }
+      if (
+        frame.value.type === ItemType.component &&
+        !Object.prototype.hasOwnProperty.call(frame.value, 'componentType')
+      ) {
+        throw new ConfigurationError(
+          'Unminified component configuration requires componentType',
+        );
+      }
+      for (let index = frame.value.content.length - 1; index >= 0; index--) {
+        stack.push({
+          kind: 'item',
+          value: frame.value.content[index],
+          itemDepth: frame.itemDepth + 1,
+        });
+      }
+    }
+  }
+}
+
 /**
  * Takes a StrelitLayout configuration object and
  * replaces its keys and values recursively with
@@ -922,10 +1037,12 @@ export function minifyResolvedLayoutConfig(
 export function unminifyResolvedLayoutConfig(
   minifiedConfig: MinifiedLayoutConfig,
 ): ResolvedLayoutConfig {
-  return translateMinifiedConfigObject(
+  const unminified = translateMinifiedConfigObject(
     minifiedConfig as unknown as Record<string, unknown>,
     false,
-  ) as unknown as ResolvedLayoutConfig;
+  );
+  assertResolvedLayoutConfigStructure(unminified);
+  return unminified as unknown as ResolvedLayoutConfig;
 }
 
 /**

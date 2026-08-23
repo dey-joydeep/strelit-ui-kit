@@ -14,7 +14,11 @@ import {
   SerializableObject,
   SizeUnit,
 } from '../utils/types';
-import { getUniqueId, setElementDisplayVisibility } from '../utils/utils';
+import {
+  deepCloneValue,
+  getUniqueId,
+  setElementDisplayVisibility,
+} from '../utils/utils';
 import { ComponentItem } from './component-item';
 import { ComponentParentableItem } from './component-parentable-item';
 import { Stack } from './stack';
@@ -38,7 +42,7 @@ export interface ContentItemArea {
   contentItem: ContentItem;
 }
 
-function areComponentTypesEqual(
+function areValidatedComponentTypesEqual(
   left: ComponentType,
   right: ComponentType,
 ): boolean {
@@ -57,7 +61,7 @@ function areComponentTypesEqual(
 
     for (let i = 0; i < left.length; i++) {
       if (
-        !areComponentTypesEqual(
+        !areValidatedComponentTypesEqual(
           left[i] as ComponentType,
           right[i] as ComponentType,
         )
@@ -89,7 +93,7 @@ function areComponentTypesEqual(
       }
 
       if (
-        !areComponentTypesEqual(
+        !areValidatedComponentTypesEqual(
           leftJson[key] as ComponentType,
           rightJson[key] as ComponentType,
         )
@@ -102,6 +106,16 @@ function areComponentTypesEqual(
   }
 
   return false;
+}
+
+function areComponentTypesEqual(
+  left: ComponentType,
+  right: ComponentType,
+): boolean {
+  return areValidatedComponentTypesEqual(
+    deepCloneValue(left) as ComponentType,
+    deepCloneValue(right) as ComponentType,
+  );
 }
 
 /**

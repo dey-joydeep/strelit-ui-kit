@@ -174,6 +174,7 @@ export function translateObject(
             : undefined;
         const startsIndependentSemanticDomain =
           semanticKey === 'root' ||
+          semanticKey === 'componentType' ||
           semanticKey === 'componentState' ||
           semanticKey === 'openPopouts';
         const childDepth = startsIndependentSemanticDomain

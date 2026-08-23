@@ -68,6 +68,7 @@ import {
   SerializableValue,
 } from './utils/types';
 import {
+  deepCloneValue,
   getElementWidthAndHeight,
   removeFromArray,
   setElementHeight,
@@ -161,6 +162,10 @@ function assertResolvedItemConfigWithinLimits(root: ResolvedItemConfig): void {
     }
 
     nodes++;
+    if (isResolvedComponentItemConfig(config)) {
+      deepCloneValue(config.componentType);
+      deepCloneValue(config.componentState);
+    }
     const content = config.content;
     if (content.length > maximumConfigNodes - nodes) {
       throw new ConfigurationError(

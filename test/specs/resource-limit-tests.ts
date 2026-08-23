@@ -6,6 +6,7 @@ import {
   resolveItemConfig,
   resolveLayoutConfig,
   StrelitLayout,
+  type ComponentType,
   type ComponentItemConfig,
   type LayoutConfig,
   type ResolvedItemConfig,
@@ -84,6 +85,43 @@ describe('configuration resource limits', () => {
     );
   });
 
+  it('rejects cyclic and over-depth component types with controlled errors', () => {
+    const cyclic: Record<string, ComponentType> = {};
+    cyclic.self = cyclic;
+
+    expect(() =>
+      resolveComponentItemConfig({
+        type: 'component',
+        componentType: cyclic,
+      }),
+    ).toThrow('Serializable value contains a cycle');
+    expect(() =>
+      resolveComponentItemConfig({
+        type: 'component',
+        componentType: createNestedState(maximumDepth + 1),
+      }),
+    ).toThrow('Serializable value exceeds resource limits');
+  });
+
+  it('bounds component-type lookup input instead of overflowing the stack', () => {
+    const layout = new StrelitLayout();
+    try {
+      layout.registerComponentFactoryFunction('panel', () => undefined);
+      layout.loadComponentAsRoot({
+        type: 'component',
+        componentType: 'panel',
+      });
+      const cyclic: Record<string, ComponentType> = {};
+      cyclic.self = cyclic;
+
+      expect(() => layout.getComponentItemsByType(cyclic)).toThrow(
+        ConfigurationError,
+      );
+    } finally {
+      layout.destroy();
+    }
+  });
+
   it('preserves __proto__ as an own data property without changing prototypes', () => {
     const source = JSON.parse(
       '{"__proto__":{"polluted":true},"safe":1}',
@@ -134,14 +172,15 @@ describe('configuration resource limits', () => {
 
   it('enforces the state budget through config copying and component binding', () => {
     const componentState = createNestedState(maximumDepth + 1);
-    const resolved = resolveComponentItemConfig({
-      type: 'component',
-      componentType: 'panel',
-      componentState,
-    });
-    expect(() => createComponentItemConfigFromResolved(resolved)).toThrow(
-      ConfigurationError,
-    );
+    expect(() =>
+      createComponentItemConfigFromResolved({
+        ...resolveComponentItemConfig({
+          type: 'component',
+          componentType: 'panel',
+        }),
+        componentState,
+      }),
+    ).toThrow(ConfigurationError);
 
     const layout = new StrelitLayout();
     try {
