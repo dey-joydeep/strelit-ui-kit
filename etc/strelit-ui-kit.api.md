@@ -1477,11 +1477,11 @@ export class StrelitLayout extends VirtualLayout {
     fireBeforeVirtualRectingEvent(count: number, containers?: readonly ComponentContainer[]): void;
     getComponentInstantiator(config: ResolvedComponentItemConfig): StrelitLayoutComponentInstantiator | undefined;
     getRegisteredComponentTypeNames(): string[];
-    registerComponentConstructor<TComponent extends ComponentContainerComponent = ComponentContainerComponent>(typeName: string, componentConstructor: StrelitLayoutComponentConstructor<SerializableValue, TComponent>, virtual?: boolean): void;
+    registerComponentConstructor(typeName: string, componentConstructor: StrelitLayoutComponentConstructor, virtual?: boolean): void;
     registerComponentConstructor<TState extends SerializableValue, TComponent extends ComponentContainerComponent = ComponentContainerComponent>(typeName: string, componentConstructor: StrelitLayoutComponentConstructor<TState, TComponent>, stateValidator: StrelitLayoutComponentStateValidator<TState>, virtual?: boolean): void;
     // @deprecated
     registerComponentConstructor<TState extends SerializableValue, TComponent extends ComponentContainerComponent = ComponentContainerComponent>(typeName: string, componentConstructor: StrelitLayoutComponentConstructor<TState, TComponent>, virtual?: boolean): void;
-    registerComponentFactoryFunction<TComponent extends ComponentContainerComponent = ComponentContainerComponent>(typeName: string, componentFactoryFunction: StrelitLayoutComponentFactoryFunction<SerializableValue, TComponent>, virtual?: boolean): void;
+    registerComponentFactoryFunction(typeName: string, componentFactoryFunction: StrelitLayoutComponentFactoryFunction, virtual?: boolean): void;
     registerComponentFactoryFunction<TState extends SerializableValue, TComponent extends ComponentContainerComponent = ComponentContainerComponent>(typeName: string, componentFactoryFunction: StrelitLayoutComponentFactoryFunction<TState, TComponent>, stateValidator: StrelitLayoutComponentStateValidator<TState>, virtual?: boolean): void;
     // @deprecated
     registerComponentFactoryFunction<TState extends SerializableValue, TComponent extends ComponentContainerComponent = ComponentContainerComponent>(typeName: string, componentFactoryFunction: StrelitLayoutComponentFactoryFunction<TState, TComponent>, virtual?: boolean): void;

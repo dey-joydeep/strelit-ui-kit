@@ -180,15 +180,9 @@ export class StrelitLayout extends VirtualLayout {
   }
 
   /** Registers a component constructor that accepts all serializable state. */
-  registerComponentConstructor<
-    TComponent extends ComponentContainerComponent =
-      ComponentContainerComponent,
-  >(
+  registerComponentConstructor(
     typeName: string,
-    componentConstructor: StrelitLayoutComponentConstructor<
-      SerializableValue,
-      TComponent
-    >,
+    componentConstructor: StrelitLayoutComponentConstructor,
     virtual?: boolean,
   ): void;
   /** Registers a typed component constructor with runtime state validation. */
@@ -254,15 +248,9 @@ export class StrelitLayout extends VirtualLayout {
   }
 
   /** Registers a component factory that accepts all serializable state. */
-  registerComponentFactoryFunction<
-    TComponent extends ComponentContainerComponent =
-      ComponentContainerComponent,
-  >(
+  registerComponentFactoryFunction(
     typeName: string,
-    componentFactoryFunction: StrelitLayoutComponentFactoryFunction<
-      SerializableValue,
-      TComponent
-    >,
+    componentFactoryFunction: StrelitLayoutComponentFactoryFunction,
     virtual?: boolean,
   ): void;
   /** Registers a typed component factory with runtime state validation. */

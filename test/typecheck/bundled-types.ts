@@ -98,3 +98,21 @@ bundledLayout.registerComponentConstructor(
       !Array.isArray(state) &&
       typeof state.label === 'string'),
 );
+
+type LegacyState = { legacyId: number };
+class LegacyComponent {
+  constructor(
+    _container: ComponentContainer,
+    readonly state: LegacyState | undefined,
+    readonly virtual: boolean,
+  ) {}
+}
+
+bundledLayout.registerComponentFactoryFunction<LegacyState>(
+  'legacy-explicit-factory-state',
+  (_container, state) => state,
+);
+bundledLayout.registerComponentConstructor<LegacyState>(
+  'legacy-explicit-constructor-state',
+  LegacyComponent,
+);
