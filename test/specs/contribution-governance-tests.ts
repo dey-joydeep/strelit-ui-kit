@@ -1587,6 +1587,45 @@ describe('risk-based PR verification', () => {
     expect(failures).toEqual([]);
   });
 
+  it('requires packaging coverage for .npmignore in the workflow mirror', async () => {
+    const review = [
+      'Review mode: **Independent**',
+      'Reviewer: @reviewer-user',
+      'Review scope: **Whole PR**',
+      'Review pass: **Fresh discovery**',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 0; High 0; Medium 0; Low 0',
+      'Open Critical/High findings: 0',
+      'Closed Critical/High findings: 0',
+      'Review artifact: Whole PR review',
+      'Finding dispositions: No findings',
+      'Residual risks: No known residual risks',
+    ].join('\n');
+    const body = createPullRequestBody('High', review).replace(
+      /## Review Coverage Manifest[\s\S]*?## Domain Discovery Reports/,
+      '## Review Coverage Manifest\n\nPath: .npmignore | Contract: package contents | Domains: Tooling, CI, and verification | Assignments: Tooling, CI, and verification => @reviewer-user | Adjacent: package metadata | Tests: governance policy suite\n\n## Domain Discovery Reports',
+    );
+
+    const failures = await runPullRequestMetadataPolicy(
+      body,
+      [{ filename: '.npmignore', changes: 1 }],
+      [
+        {
+          commit_id: pullRequestHead,
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+      ],
+    );
+
+    expect(failures).toContain(
+      'Coverage manifest path .npmignore must declare exactly these domains: Public API, compatibility, and packaging; Tooling, CI, and verification',
+    );
+  });
+
   it('strictly compiles the documented Vue hook with its usage example', () => {
     const documentation = readFileSync(
       resolve('docs/frameworks/vue/embedding-via-events.md'),

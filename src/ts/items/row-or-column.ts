@@ -385,9 +385,7 @@ export class RowOrColumn extends ContentItem {
     super.removeChild(contentItem, true);
 
     if (!keepChild && this.contentItems.length === 1 && this.isClosable) {
-      const childItem = this.contentItems[0];
-      this.contentItems.length = 0;
-      this._rowOrColumnParent.replaceChild(this, childItem, true);
+      this.collapseToSingleChild();
     } else {
       this.updateSize(false);
       this.emitBaseBubblingEvent('stateChanged');
@@ -397,9 +395,19 @@ export class RowOrColumn extends ContentItem {
   /** @internal */
   checkCollapse(): void {
     if (this.contentItems.length === 1 && this.isClosable) {
-      const childItem = this.contentItems[0];
-      this.contentItems.length = 0;
+      this.collapseToSingleChild();
+    }
+  }
+
+  /** @internal */
+  private collapseToSingleChild(): void {
+    const childItem = this.contentItems[0];
+    this.contentItems.length = 0;
+    try {
       this._rowOrColumnParent.replaceChild(this, childItem, true);
+    } catch (error) {
+      this.contentItems.push(childItem);
+      throw error;
     }
   }
 

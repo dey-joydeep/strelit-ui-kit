@@ -364,6 +364,8 @@ export abstract class ContentItem extends EventEmitter {
        * Optionally destroy the old content item
        */
       if (destroyOldChild) {
+        const newChildParentNode = newChild._element.parentNode;
+        const newChildNextSibling = newChild._element.nextSibling;
         const insertionAnchor = document.createComment(
           'strelit-replace-child-anchor',
         );
@@ -380,6 +382,16 @@ export abstract class ContentItem extends EventEmitter {
           try {
             parentNode.insertBefore(oldChild._element, insertionAnchor);
             newChild._element.remove();
+            if (newChildParentNode !== null) {
+              const insertionPoint =
+                newChildNextSibling?.parentNode === newChildParentNode
+                  ? newChildNextSibling
+                  : null;
+              newChildParentNode.insertBefore(
+                newChild._element,
+                insertionPoint,
+              );
+            }
             insertionAnchor.remove();
           } catch (rollbackError) {
             reportSecondaryCleanupError(

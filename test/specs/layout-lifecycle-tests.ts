@@ -1334,6 +1334,48 @@ describe('layout lifecycle', () => {
     expect(newChild.element.parentNode).toBe(row.element);
   });
 
+  it('restores a surviving child when row collapse teardown fails', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadLayout({
+      root: {
+        type: 'row',
+        content: [
+          {
+            type: 'stack',
+            content: [{ type: 'component', componentType: 'panel' }],
+          },
+          {
+            type: 'stack',
+            content: [{ type: 'component', componentType: 'panel' }],
+          },
+        ],
+      },
+    });
+    const row = layout.rootItem as RowOrColumn;
+    const survivor = row.contentItems[0];
+    const detached = row.contentItems[1];
+    row.removeChild(detached, true);
+    detached.destroy();
+    vi.spyOn(row, 'destroy').mockImplementationOnce(() => {
+      throw new Error('transient row collapse teardown failure');
+    });
+
+    expect(() => row.checkCollapse()).toThrow(
+      'transient row collapse teardown failure',
+    );
+    expect(layout.rootItem).toBe(row);
+    expect(row.contentItems).toEqual([survivor]);
+    expect(survivor.parent).toBe(row);
+    expect(survivor.element.parentNode).toBe(row.element);
+
+    expect(() => row.checkCollapse()).not.toThrow();
+    expect(layout.rootItem).toBe(survivor);
+    expect(survivor.parent).toBe(layout.groundItem);
+    expect(survivor.element.parentNode).toBe(layout.groundItem?.element);
+  });
+
   it('restores body and document inline styles on destroy', () => {
     const documentElement = document.documentElement;
     documentElement.style.cssText =
