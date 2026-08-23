@@ -165,6 +165,14 @@ export class Stack extends ComponentParentableItem {
     return this.parent;
   }
 
+  /** Prevents unsupported direct construction. @public */
+  constructor(_nonConstructible: never, ..._args: never[]);
+  /** @internal */
+  constructor(
+    layoutManager: LayoutManager,
+    config: ResolvedStackItemConfig,
+    parent: ContentItem,
+  );
   /** @internal */
   constructor(
     layoutManager: LayoutManager,
@@ -496,6 +504,14 @@ export class Stack extends ComponentParentableItem {
     const index = this.contentItems.indexOf(componentItem);
     const stackWillBeDeleted = this.contentItems.length === 1;
 
+    if (index === -1) {
+      throw new Error("Can't remove child. ContentItem is not child of Stack");
+    }
+
+    if (!keepChild) {
+      componentItem.destroy();
+    }
+
     if (this._activeComponentItem === componentItem) {
       if (componentItem.focused) {
         componentItem.blur();
@@ -514,7 +530,7 @@ export class Stack extends ComponentParentableItem {
 
     this._header.removeTab(componentItem);
 
-    super.removeChild(componentItem, keepChild);
+    super.removeChild(componentItem, true);
 
     if (!stackWillBeDeleted) {
       this._header.updateClosability();

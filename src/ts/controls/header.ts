@@ -176,6 +176,24 @@ export class Header extends EventEmitter {
     return this._controlsContainerElement;
   }
 
+  /** Prevents unsupported direct construction. @public */
+  constructor(_nonConstructible: never, ..._args: never[]);
+  /** @internal */
+  constructor(
+    layoutManager: LayoutManager,
+    parent: Stack,
+    settings: HeaderSettings,
+    configClosable: boolean,
+    getActiveComponentItemEvent: HeaderGetActiveComponentItemEvent,
+    closeEvent: HeaderCloseEvent,
+    popoutEvent: HeaderPopoutEvent | undefined,
+    maximiseToggleEvent: HeaderMaximiseToggleEvent | undefined,
+    clickEvent: HeaderClickEvent | undefined,
+    touchStartEvent: HeaderTouchStartEvent | undefined,
+    componentRemoveEvent: HeaderComponentRemoveEvent | undefined,
+    componentFocusEvent: HeaderComponentFocusEvent | undefined,
+    componentDragStartEvent: HeaderComponentDragStartEvent | undefined,
+  );
   /** @internal */
   constructor(
     /** @internal */

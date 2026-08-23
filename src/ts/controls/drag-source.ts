@@ -27,6 +27,15 @@ export class DragSource {
   /** @internal */
   private _isDestroying = false;
 
+  /** Prevents unsupported direct construction. @public */
+  constructor(_nonConstructible: never, ..._args: never[]);
+  /** @internal */
+  constructor(
+    layoutManager: LayoutManager,
+    element: HTMLElement,
+    extraAllowableChildTargets: HTMLElement[],
+    itemConfigCallback: () => ComponentItemConfig,
+  );
   /** @internal */
   constructor(
     /** @internal */

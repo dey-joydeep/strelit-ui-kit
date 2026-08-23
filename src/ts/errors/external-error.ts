@@ -18,6 +18,10 @@ export abstract class ExternalError extends Error {
  * @public
  */
 export class ConfigurationError extends ExternalError {
+  /** Prevents unsupported direct construction. @public */
+  constructor(_nonConstructible: never, ..._args: never[]);
+  /** @internal */
+  constructor(message: string, node?: string);
   /** @internal */
   constructor(
     message: string,
@@ -33,6 +37,10 @@ export class ConfigurationError extends ExternalError {
  * @public
  */
 export class PopoutBlockedError extends ExternalError {
+  /** Prevents unsupported direct construction. @public */
+  constructor(_nonConstructible: never, ..._args: never[]);
+  /** @internal */
+  constructor(message: string);
   /** @internal */
   constructor(message: string) {
     super('PopoutBlocked', message);
@@ -44,6 +52,10 @@ export class PopoutBlockedError extends ExternalError {
  * @public
  */
 export class ApiError extends ExternalError {
+  /** Prevents unsupported direct construction. @public */
+  constructor(_nonConstructible: never, ..._args: never[]);
+  /** @internal */
+  constructor(message: string);
   /** @internal */
   constructor(message: string) {
     super('API', message);
@@ -55,6 +67,10 @@ export class ApiError extends ExternalError {
  * @public
  */
 export class BindError extends ExternalError {
+  /** Prevents unsupported direct construction. @public */
+  constructor(_nonConstructible: never, ..._args: never[]);
+  /** @internal */
+  constructor(message: string);
   /** @internal */
   constructor(message: string) {
     super('Bind', message);

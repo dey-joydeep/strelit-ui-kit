@@ -6,6 +6,7 @@
 
 // @public
 export class ApiError extends ExternalError {
+    constructor(_nonConstructible: never, ..._args: never[]);
     // @internal
     constructor(message: string);
 }
@@ -20,17 +21,16 @@ export interface AreaLinkedRect {
 
 // @public
 export class BindError extends ExternalError {
+    constructor(_nonConstructible: never, ..._args: never[]);
     // @internal
     constructor(message: string);
 }
 
 // @public
 export class BrowserPopout extends EventEmitter {
+    constructor(_nonConstructible: never, ..._args: never[]);
     // @internal
-    constructor(
-    _config: ResolvedPopoutLayoutConfig,
-    _initialWindowSize: Rect,
-    _layoutManager: LayoutManager);
+    constructor(config: ResolvedPopoutLayoutConfig, initialWindowSize: Rect, layoutManager: LayoutManager);
     close(): void;
     // @internal (undocumented)
     get closedWithFailedPopIn(): boolean;
@@ -47,14 +47,15 @@ export function checkI18nStringsInitialise(): void;
 
 // @public
 export class ClickBubblingEvent extends EventEmitterBubblingEvent {
+    constructor(_nonConstructible: never, ..._args: never[]);
     // @internal
-    constructor(name: string, target: EventEmitter,
-    _mouseEvent: MouseEvent);
+    constructor(name: string, target: EventEmitter, mouseEvent: MouseEvent);
     get mouseEvent(): MouseEvent;
 }
 
 // @public
 export class ComponentContainer extends EventEmitter {
+    constructor(_nonConstructible: never, ..._args: never[]);
     // Warning: (ae-forgotten-export) The symbol "ComponentContainerUpdateItemConfigEventHandler" needs to be exported by the entry point index.d.ts
     // Warning: (ae-forgotten-export) The symbol "ComponentContainerShowEventHandler" needs to be exported by the entry point index.d.ts
     // Warning: (ae-forgotten-export) The symbol "ComponentContainerHideEventHandler" needs to be exported by the entry point index.d.ts
@@ -62,16 +63,7 @@ export class ComponentContainer extends EventEmitter {
     // Warning: (ae-forgotten-export) The symbol "ComponentContainerBlurEventHandler" needs to be exported by the entry point index.d.ts
     //
     // @internal
-    constructor(
-    _config: ResolvedComponentItemConfig,
-    _parent: ComponentItem,
-    _layoutManager: LayoutManager,
-    _element: HTMLElement,
-    _updateItemConfigEvent: ComponentContainerUpdateItemConfigEventHandler,
-    _showEvent: ComponentContainerShowEventHandler,
-    _hideEvent: ComponentContainerHideEventHandler,
-    _focusEvent: ComponentContainerFocusEventHandler,
-    _blurEvent: ComponentContainerBlurEventHandler);
+    constructor(config: ResolvedComponentItemConfig, parent: ComponentItem, layoutManager: LayoutManager, element: HTMLElement, updateItemConfigEvent: ComponentContainerUpdateItemConfigEventHandler, showEvent: ComponentContainerShowEventHandler, hideEvent: ComponentContainerHideEventHandler, focusEvent: ComponentContainerFocusEventHandler, blurEvent: ComponentContainerBlurEventHandler);
     blur(suppressEvent?: boolean): void;
     close(): void;
     get component(): ComponentContainerComponent | undefined;
@@ -146,9 +138,9 @@ export type ComponentContainerVirtualZIndexChangeRequiredEvent = (this: void, co
 
 // @public
 export class ComponentItem extends ContentItem {
+    constructor(_nonConstructible: never, ..._args: never[]);
     // @internal
-    constructor(layoutManager: LayoutManager, config: ResolvedComponentItemConfig,
-    _parentItem: ComponentParentableItem);
+    constructor(layoutManager: LayoutManager, config: ResolvedComponentItemConfig, parentItem: ComponentParentableItem);
     applyUpdatableConfig(config: ResolvedComponentItemConfig): void;
     blur(suppressEvent?: boolean): void;
     close(): void;
@@ -224,9 +216,9 @@ export function componentTypeToTitle(componentType: ComponentType): string;
 
 // @public
 export class ConfigurationError extends ExternalError {
+    constructor(_nonConstructible: never, ..._args: never[]);
     // @internal
-    constructor(message: string,
-    node?: string | undefined);
+    constructor(message: string, node?: string);
     readonly node?: string | undefined;
 }
 
@@ -432,11 +424,9 @@ export function createStackItemConfigFromResolved(resolvedConfig: ResolvedStackI
 
 // @public
 export class DragSource {
+    constructor(_nonConstructible: never, ..._args: never[]);
     // @internal
-    constructor(
-    _layoutManager: LayoutManager,
-    _element: HTMLElement,
-    _extraAllowableChildTargets: HTMLElement[], _itemConfigCallback: () => ComponentItemConfig);
+    constructor(layoutManager: LayoutManager, element: HTMLElement, extraAllowableChildTargets: HTMLElement[], itemConfigCallback: () => ComponentItemConfig);
     // @internal
     destroy(): void;
 }
@@ -466,10 +456,9 @@ export type EventEmitterBeforeComponentReleaseParams = [component: unknown];
 
 // @public
 export class EventEmitterBubblingEvent {
+    constructor(_nonConstructible: never, ..._args: never[]);
     // @internal
-    constructor(
-    _name: string,
-    _target: EventEmitter);
+    constructor(name: string, target: EventEmitter);
     get isPropagationStopped(): boolean;
     get name(): string;
     stopPropagation(): void;
@@ -580,9 +569,9 @@ export type EventEmitterUnknownParams = unknown[];
 
 // @public
 export class EventHub extends EventEmitter {
+    constructor(_nonConstructible: never, ..._args: never[]);
     // @internal
-    constructor(
-    _layoutManager: LayoutManager);
+    constructor(layoutManager: LayoutManager);
     // @internal
     destroy(): void;
     emit<K extends keyof EventEmitterEventParamsMap>(eventName: K, ...args: EventEmitterEventParamsMap[K]): void;
@@ -631,6 +620,7 @@ export function formatUndefinableSize(size: number | undefined, sizeUnit: SizeUn
 
 // @public
 export class Header extends EventEmitter {
+    constructor(_nonConstructible: never, ..._args: never[]);
     // Warning: (ae-forgotten-export) The symbol "HeaderSettings" needs to be exported by the entry point index.d.ts
     // Warning: (ae-forgotten-export) The symbol "HeaderGetActiveComponentItemEvent" needs to be exported by the entry point index.d.ts
     // Warning: (ae-forgotten-export) The symbol "HeaderCloseEvent" needs to be exported by the entry point index.d.ts
@@ -643,18 +633,7 @@ export class Header extends EventEmitter {
     // Warning: (ae-forgotten-export) The symbol "HeaderComponentDragStartEvent" needs to be exported by the entry point index.d.ts
     //
     // @internal
-    constructor(
-    _layoutManager: LayoutManager,
-    _parent: Stack, settings: HeaderSettings,
-    _configClosable: boolean,
-    _getActiveComponentItemEvent: HeaderGetActiveComponentItemEvent, closeEvent: HeaderCloseEvent,
-    _popoutEvent: HeaderPopoutEvent | undefined,
-    _maximiseToggleEvent: HeaderMaximiseToggleEvent | undefined,
-    _clickEvent: HeaderClickEvent | undefined,
-    _touchStartEvent: HeaderTouchStartEvent | undefined,
-    _componentRemoveEvent: HeaderComponentRemoveEvent | undefined,
-    _componentFocusEvent: HeaderComponentFocusEvent | undefined,
-    _componentDragStartEvent: HeaderComponentDragStartEvent | undefined);
+    constructor(layoutManager: LayoutManager, parent: Stack, settings: HeaderSettings, configClosable: boolean, getActiveComponentItemEvent: HeaderGetActiveComponentItemEvent, closeEvent: HeaderCloseEvent, popoutEvent: HeaderPopoutEvent | undefined, maximiseToggleEvent: HeaderMaximiseToggleEvent | undefined, clickEvent: HeaderClickEvent | undefined, touchStartEvent: HeaderTouchStartEvent | undefined, componentRemoveEvent: HeaderComponentRemoveEvent | undefined, componentFocusEvent: HeaderComponentFocusEvent | undefined, componentDragStartEvent: HeaderComponentDragStartEvent | undefined);
     // @internal (undocumented)
     applyFocusedValue(value: boolean): void;
     get controlsContainerElement(): HTMLElement;
@@ -1045,6 +1024,7 @@ export function parseSize(sizeString: string, allowableSizeUnits: readonly SizeU
 
 // @public
 export class PopoutBlockedError extends ExternalError {
+    constructor(_nonConstructible: never, ..._args: never[]);
     // @internal
     constructor(message: string);
 }
@@ -1358,9 +1338,9 @@ export type RootItemConfig = RowOrColumnItemConfig | StackItemConfig | Component
 
 // @public
 export class RowOrColumn extends ContentItem {
+    constructor(_nonConstructible: never, ..._args: never[]);
     // @internal
-    constructor(isColumn: boolean, layoutManager: LayoutManager, config: ResolvedRowOrColumnItemConfig,
-    _rowOrColumnParent: ContentItem);
+    constructor(isColumn: boolean, layoutManager: LayoutManager, config: ResolvedRowOrColumnItemConfig, rowOrColumnParent: ContentItem);
     addChild(contentItem: ContentItem, index?: number, suspendResize?: boolean): number;
     addComponent(componentType: ComponentType, componentState?: SerializableValue, title?: string, index?: number): number;
     addItem(itemConfig: RowOrColumnItemConfig | StackItemConfig | ComponentItemConfig, index?: number): number;
@@ -1431,6 +1411,7 @@ export interface SizeWithUnit {
 
 // @public
 export class Stack extends ComponentParentableItem {
+    constructor(_nonConstructible: never, ..._args: never[]);
     // @internal
     constructor(layoutManager: LayoutManager, config: ResolvedStackItemConfig, parent: ContentItem);
     addChild(contentItem: ContentItem, index?: number | null, suspendResize?: boolean, focus?: boolean): number;
@@ -1510,9 +1491,9 @@ export type StrelitLayoutComponentFactoryFunction<TState extends SerializableVal
 
 // @public
 export interface StrelitLayoutComponentInstantiator<TState extends SerializableValue = SerializableValue, TComponent extends ComponentContainerComponent = ComponentContainerComponent> {
-    constructor: StrelitLayoutComponentConstructor<TState, TComponent> | undefined;
-    factoryFunction: StrelitLayoutComponentFactoryFunction<TState, TComponent> | undefined;
-    virtual: boolean;
+    readonly constructor: StrelitLayoutComponentConstructor<TState, TComponent> | undefined;
+    readonly factoryFunction: StrelitLayoutComponentFactoryFunction<TState, TComponent> | undefined;
+    readonly virtual: boolean;
 }
 
 // @public
@@ -1529,17 +1510,13 @@ export const StyleConstants: {
 
 // @public
 export class Tab {
+    constructor(_nonConstructible: never, ..._args: never[]);
     // Warning: (ae-forgotten-export) The symbol "TabCloseEvent" needs to be exported by the entry point index.d.ts
     // Warning: (ae-forgotten-export) The symbol "TabFocusEvent" needs to be exported by the entry point index.d.ts
     // Warning: (ae-forgotten-export) The symbol "TabDragStartEvent" needs to be exported by the entry point index.d.ts
     //
     // @internal
-    constructor(
-    _layoutManager: LayoutManager,
-    _componentItem: ComponentItem,
-    _closeEvent: TabCloseEvent | undefined,
-    _focusEvent: TabFocusEvent | undefined,
-    _dragStartEvent: TabDragStartEvent | undefined);
+    constructor(layoutManager: LayoutManager, componentItem: ComponentItem, closeEvent: TabCloseEvent | undefined, focusEvent: TabFocusEvent | undefined, dragStartEvent: TabDragStartEvent | undefined);
     get closeElement(): HTMLElement | undefined;
     get componentItem(): ComponentItem;
     // @internal
@@ -1559,9 +1536,9 @@ export class Tab {
 
 // @public
 export class TouchStartBubblingEvent extends EventEmitterBubblingEvent {
+    constructor(_nonConstructible: never, ..._args: never[]);
     // @internal
-    constructor(name: string, target: EventEmitter,
-    _touchEvent: TouchEvent);
+    constructor(name: string, target: EventEmitter, touchEvent: TouchEvent);
     get touchEvent(): TouchEvent;
 }
 

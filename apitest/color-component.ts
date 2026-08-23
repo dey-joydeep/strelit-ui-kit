@@ -82,7 +82,7 @@ export class ColorComponent extends ComponentBase {
   }
 
   private handleBeforeComponentReleaseEvent(): void {
-    this._inputElement.removeEventListener('change', this._inputChangeListener);
+    this._inputElement.removeEventListener('input', this._inputChangeListener);
     this.rootHtmlElement.removeChild(this._inputElement);
     this.rootHtmlElement.removeChild(this._paraElement);
     this.container.removeEventListener('show', this._showEventListener);

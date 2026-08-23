@@ -332,7 +332,13 @@ function validateReport(report, label = 'checkpoint') {
     }
     rejectUnknownKeys(
       finding,
-      new Set(['severity', 'status', 'summary', 'acceptanceEvidence']),
+      new Set([
+        'severity',
+        'status',
+        'summary',
+        'acceptanceEvidence',
+        'deferralRationale',
+      ]),
       `${label}.finding`,
     );
     if (!['critical', 'high', 'medium', 'low'].includes(finding.severity)) {
@@ -340,7 +346,7 @@ function validateReport(report, label = 'checkpoint') {
         `${label}.finding has invalid severity: ${finding.severity}`,
       );
     }
-    if (!['open', 'closed', 'accepted'].includes(finding.status)) {
+    if (!['open', 'closed', 'accepted', 'deferred'].includes(finding.status)) {
       throw new Error(`${label}.finding has invalid status: ${finding.status}`);
     }
     validateString(finding.summary, `${label}.finding.summary`);
@@ -353,6 +359,16 @@ function validateReport(report, label = 'checkpoint') {
       validateString(
         finding.acceptanceEvidence,
         `${label}.finding.acceptanceEvidence`,
+        4,
+      );
+    }
+    if (finding.status === 'deferred') {
+      if (finding.severity !== 'low') {
+        throw new Error(`${label} can defer only Low findings.`);
+      }
+      validateString(
+        finding.deferralRationale,
+        `${label}.finding.deferralRationale`,
         4,
       );
     }

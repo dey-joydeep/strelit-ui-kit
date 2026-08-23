@@ -90,6 +90,16 @@ export class Tab {
     }
   }
 
+  /** Prevents unsupported direct construction. @public */
+  constructor(_nonConstructible: never, ..._args: never[]);
+  /** @internal */
+  constructor(
+    layoutManager: LayoutManager,
+    componentItem: ComponentItem,
+    closeEvent: TabCloseEvent | undefined,
+    focusEvent: TabFocusEvent | undefined,
+    dragStartEvent: TabDragStartEvent | undefined,
+  );
   /** @internal */
   constructor(
     /** @internal */

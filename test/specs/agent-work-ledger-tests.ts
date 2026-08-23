@@ -30,9 +30,10 @@ interface Checkpoint {
   findingSummary: string;
   findings: Array<{
     severity: 'critical' | 'high' | 'medium' | 'low';
-    status: 'open' | 'closed' | 'accepted';
+    status: 'open' | 'closed' | 'accepted' | 'deferred';
     summary: string;
     acceptanceEvidence?: string;
+    deferralRationale?: string;
   }>;
   uninspected: string[];
   verdict?: 'pass' | 'changes-requested' | 'blocked';
@@ -812,6 +813,30 @@ describe('agent work ledger', () => {
     unit.checkpoint!.findings[0].acceptanceEvidence =
       'https://github.example/acceptance';
     expect(() => ledgerModule.validateLedger(ledger)).not.toThrow();
+    unit.checkpoint!.findings = [
+      {
+        severity: 'low',
+        status: 'deferred',
+        summary: 'Local cleanup can follow later.',
+      },
+    ];
+    expect(() => ledgerModule.validateLedger(ledger)).toThrow(
+      'deferralRationale',
+    );
+    unit.checkpoint!.findings[0].deferralRationale =
+      'No user-visible effect; tracked for the next cleanup slice.';
+    expect(() => ledgerModule.validateLedger(ledger)).not.toThrow();
+    unit.checkpoint!.findings = [
+      {
+        severity: 'medium',
+        status: 'deferred',
+        summary: 'Material defect cannot be deferred.',
+        deferralRationale: 'Would block the current outcome.',
+      },
+    ];
+    expect(() => ledgerModule.validateLedger(ledger)).toThrow(
+      'can defer only Low findings',
+    );
     unit.status = 'pending';
     delete unit.sourceFingerprint;
     delete unit.checkpoint;

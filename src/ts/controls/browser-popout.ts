@@ -77,6 +77,14 @@ export class BrowserPopout extends EventEmitter {
    * @param _initialWindowSize - A map with width, height, top and left
    * @internal
    */
+  /** Prevents unsupported direct construction. @public */
+  constructor(_nonConstructible: never, ..._args: never[]);
+  /** @internal */
+  constructor(
+    config: ResolvedPopoutLayoutConfig,
+    initialWindowSize: Rect,
+    layoutManager: LayoutManager,
+  );
   constructor(
     /** @internal */
     private _config: ResolvedPopoutLayoutConfig,

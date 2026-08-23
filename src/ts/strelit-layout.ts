@@ -69,13 +69,13 @@ export interface StrelitLayoutComponentInstantiator<
   TComponent extends ComponentContainerComponent = ComponentContainerComponent,
 > {
   /** The constructor. */
-  constructor:
+  readonly constructor:
     StrelitLayoutComponentConstructor<TState, TComponent> | undefined;
   /** The factory function. */
-  factoryFunction:
+  readonly factoryFunction:
     StrelitLayoutComponentFactoryFunction<TState, TComponent> | undefined;
   /** The virtual. */
-  virtual: boolean;
+  readonly virtual: boolean;
 }
 
 type AnyStrelitLayoutComponentInstantiator = StrelitLayoutComponentInstantiator<
@@ -248,9 +248,13 @@ export class StrelitLayout extends VirtualLayout {
     config: ResolvedComponentItemConfig,
   ): StrelitLayoutComponentInstantiator | undefined {
     const typeName = resolveComponentTypeName(config);
-    return typeName === undefined
+    if (typeName === undefined) {
+      return undefined;
+    }
+    const instantiator = this._componentTypesMap.get(typeName);
+    return instantiator === undefined
       ? undefined
-      : this._componentTypesMap.get(typeName);
+      : Object.freeze({ ...instantiator });
   }
 
   /** @internal */
@@ -258,7 +262,11 @@ export class StrelitLayout extends VirtualLayout {
     container: ComponentContainer,
     itemConfig: ResolvedComponentItemConfig,
   ): ComponentContainerBindableComponent {
-    const instantiator = this.getComponentInstantiator(itemConfig);
+    const typeName = resolveComponentTypeName(itemConfig);
+    const instantiator =
+      typeName === undefined
+        ? undefined
+        : this._componentTypesMap.get(typeName);
 
     let result: ComponentContainerBindableComponent;
     if (instantiator !== undefined) {

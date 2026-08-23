@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ComponentContainer, StrelitLayout, LayoutConfig } from '../../src';
+import {
+  ComponentContainer,
+  StrelitLayout,
+  LayoutConfig,
+  resolveComponentItemConfig,
+} from '../../src';
 
 describe('component creation events', function () {
   let layout: StrelitLayout;
@@ -62,6 +67,27 @@ describe('component creation events', function () {
     expect(rowCreated).toHaveBeenCalledTimes(1);
     expect(stackCreated).toHaveBeenCalledTimes(1);
     expect(componentCreated).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns an immutable registration snapshot', function () {
+    const config = resolveComponentItemConfig({
+      type: 'component',
+      componentType: 'testComponent',
+    });
+    const registration = layout.getComponentInstantiator(config);
+
+    expect(registration).toBeDefined();
+    expect(Object.isFrozen(registration)).toBe(true);
+    expect(() => {
+      (registration as { factoryFunction: undefined }).factoryFunction =
+        undefined;
+    }).toThrow(TypeError);
+
+    expect(() =>
+      layout.loadLayout({
+        root: { type: 'component', componentType: 'testComponent' },
+      }),
+    ).not.toThrow();
   });
 
   it('exposes replacement metadata while binding the replacement component', function () {

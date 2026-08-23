@@ -8,6 +8,7 @@ import {
   LayoutManager,
   resolveLayoutConfig,
   type ResolvedComponentItemConfig,
+  RowOrColumn,
   StrelitLayout,
   Stack,
   VirtualLayout,
@@ -1160,6 +1161,91 @@ describe('layout lifecycle', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it('preserves stack tabs when component destruction fails and supports retry', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: [
+          { type: 'component', componentType: 'panel' },
+          { type: 'component', componentType: 'panel' },
+        ],
+      },
+    });
+    const stack = layout.rootItem as Stack;
+    const componentItem = stack.contentItems[0] as ComponentItem;
+    vi.spyOn(layout, 'unbindComponent').mockImplementationOnce(() => {
+      throw new Error('component release failed');
+    });
+
+    expect(() => componentItem.close()).toThrow('component release failed');
+    expect(stack.contentItems).toHaveLength(2);
+    expect(layout.container.querySelectorAll('.lm_tab')).toHaveLength(2);
+
+    expect(() => componentItem.close()).not.toThrow();
+    expect(stack.contentItems).toHaveLength(1);
+    expect(layout.container.querySelectorAll('.lm_tab')).toHaveLength(1);
+  });
+
+  it('rejects a foreign stack child before attempting destruction', () => {
+    const layout = new StrelitLayout();
+    const foreignLayout = new StrelitLayout();
+    layouts.push(layout, foreignLayout);
+    for (const candidate of [layout, foreignLayout]) {
+      candidate.registerComponentFactoryFunction('panel', () => undefined);
+      candidate.loadLayout({
+        root: { type: 'component', componentType: 'panel' },
+      });
+    }
+    const stack = layout.rootItem as Stack;
+    const foreignComponent = foreignLayout.rootItem as ComponentItem;
+    const destroy = vi.spyOn(foreignComponent, 'destroy');
+
+    expect(() => stack.removeChild(foreignComponent, false)).toThrow(
+      'ContentItem is not child of Stack',
+    );
+    expect(destroy).not.toHaveBeenCalled();
+    expect(stack.contentItems).toHaveLength(1);
+    expect(foreignLayout.rootItem).toBe(foreignComponent);
+  });
+
+  it('preserves row splitters when child destruction fails and supports retry', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadLayout({
+      root: {
+        type: 'row',
+        content: [
+          {
+            type: 'stack',
+            content: [{ type: 'component', componentType: 'panel' }],
+          },
+          {
+            type: 'stack',
+            content: [{ type: 'component', componentType: 'panel' }],
+          },
+        ],
+      },
+    });
+    const row = layout.rootItem as RowOrColumn;
+    const child = row.contentItems[0];
+    vi.spyOn(layout, 'unbindComponent').mockImplementationOnce(() => {
+      throw new Error('row child release failed');
+    });
+
+    expect(() => row.removeChild(child, false)).toThrow(
+      'row child release failed',
+    );
+    expect(row.contentItems).toHaveLength(2);
+    expect(layout.container.querySelectorAll('.lm_splitter')).toHaveLength(1);
+
+    expect(() => row.removeChild(child, false)).not.toThrow();
+    expect(layout.container.querySelectorAll('.lm_splitter')).toHaveLength(0);
   });
 
   it('restores body and document inline styles on destroy', () => {

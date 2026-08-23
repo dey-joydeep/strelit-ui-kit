@@ -106,6 +106,10 @@ export class EventEmitterBubblingEvent {
     return this._isPropagationStopped;
   }
 
+  /** Prevents unsupported direct construction. @public */
+  constructor(_nonConstructible: never, ..._args: never[]);
+  /** @internal */
+  constructor(name: string, target: EventEmitter);
   /** @internal */
   constructor(
     /** @internal */
@@ -130,6 +134,10 @@ export class ClickBubblingEvent extends EventEmitterBubblingEvent {
     return this._mouseEvent;
   }
 
+  /** Prevents unsupported direct construction. @public */
+  constructor(_nonConstructible: never, ..._args: never[]);
+  /** @internal */
+  constructor(name: string, target: EventEmitter, mouseEvent: MouseEvent);
   /** @internal */
   constructor(
     name: string,
@@ -151,6 +159,10 @@ export class TouchStartBubblingEvent extends EventEmitterBubblingEvent {
     return this._touchEvent;
   }
 
+  /** Prevents unsupported direct construction. @public */
+  constructor(_nonConstructible: never, ..._args: never[]);
+  /** @internal */
+  constructor(name: string, target: EventEmitter, touchEvent: TouchEvent);
   /** @internal */
   constructor(
     name: string,

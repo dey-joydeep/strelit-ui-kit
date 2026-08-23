@@ -59,6 +59,10 @@ export class EventHub extends EventEmitter {
    * @param _layoutManager - the layout manager to synchronize between the windows
    * @internal
    */
+  /** Prevents unsupported direct construction. @public */
+  constructor(_nonConstructible: never, ..._args: never[]);
+  /** @internal */
+  constructor(layoutManager: LayoutManager);
   constructor(
     /** @internal */
     private _layoutManager: LayoutManager,

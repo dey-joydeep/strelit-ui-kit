@@ -90,9 +90,12 @@
             "additionalProperties": false,
             "properties": {
               "severity": { "enum": ["critical", "high", "medium", "low"] },
-              "status": { "enum": ["open", "closed", "accepted"] },
+              "status": {
+                "enum": ["open", "closed", "accepted", "deferred"]
+              },
               "summary": { "type": "string", "minLength": 1 },
-              "acceptanceEvidence": { "type": "string", "minLength": 4 }
+              "acceptanceEvidence": { "type": "string", "minLength": 4 },
+              "deferralRationale": { "type": "string", "minLength": 4 }
             },
             "allOf": [
               {
@@ -100,6 +103,13 @@
                 "then": {
                   "properties": { "severity": { "const": "medium" } },
                   "required": ["acceptanceEvidence"]
+                }
+              },
+              {
+                "if": { "properties": { "status": { "const": "deferred" } } },
+                "then": {
+                  "properties": { "severity": { "const": "low" } },
+                  "required": ["deferralRationale"]
                 }
               }
             ]

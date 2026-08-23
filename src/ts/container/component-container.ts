@@ -198,6 +198,20 @@ export class ComponentContainer extends EventEmitter {
     return this._element;
   }
 
+  /** Prevents unsupported direct construction. @public */
+  constructor(_nonConstructible: never, ..._args: never[]);
+  /** @internal */
+  constructor(
+    config: ResolvedComponentItemConfig,
+    parent: ComponentItem,
+    layoutManager: LayoutManager,
+    element: HTMLElement,
+    updateItemConfigEvent: ComponentContainerUpdateItemConfigEventHandler,
+    showEvent: ComponentContainerShowEventHandler,
+    hideEvent: ComponentContainerHideEventHandler,
+    focusEvent: ComponentContainerFocusEventHandler,
+    blurEvent: ComponentContainerBlurEventHandler,
+  );
   /** @internal */
   constructor(
     /** @internal */

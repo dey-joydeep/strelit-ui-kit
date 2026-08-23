@@ -108,6 +108,15 @@ export class RowOrColumn extends ContentItem {
   /** Deferred resize scheduled after a splitter drag completes. */
   private _resizeFrame: number | undefined;
 
+  /** Prevents unsupported direct construction. @public */
+  constructor(_nonConstructible: never, ..._args: never[]);
+  /** @internal */
+  constructor(
+    isColumn: boolean,
+    layoutManager: LayoutManager,
+    config: ResolvedRowOrColumnItemConfig,
+    rowOrColumnParent: ContentItem,
+  );
   /** @internal */
   constructor(
     isColumn: boolean,
@@ -360,6 +369,10 @@ export class RowOrColumn extends ContentItem {
       );
     }
 
+    if (!keepChild) {
+      contentItem.destroy();
+    }
+
     /**
      * Remove the splitter before the item or after if the item happens
      * to be the first in the row/column
@@ -369,7 +382,7 @@ export class RowOrColumn extends ContentItem {
       this._splitter.splice(splitterIndex, 1);
     }
 
-    super.removeChild(contentItem, keepChild);
+    super.removeChild(contentItem, true);
 
     if (!keepChild && this.contentItems.length === 1 && this.isClosable) {
       const childItem = this.contentItems[0];

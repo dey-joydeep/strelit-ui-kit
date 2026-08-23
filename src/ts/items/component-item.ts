@@ -88,6 +88,14 @@ export class ComponentItem extends ContentItem {
     return this._focused;
   }
 
+  /** Prevents unsupported direct construction. @public */
+  constructor(_nonConstructible: never, ..._args: never[]);
+  /** @internal */
+  constructor(
+    layoutManager: LayoutManager,
+    config: ResolvedComponentItemConfig,
+    parentItem: ComponentParentableItem,
+  );
   /** @internal */
   constructor(
     layoutManager: LayoutManager,
@@ -126,10 +134,10 @@ export class ComponentItem extends ContentItem {
     if (this._isDestroyed && !this._destroyCleanupFailed) {
       return;
     }
+    this._container.destroy();
     if (this._focused) {
       this.layoutManager.setFocusedComponentItem(undefined);
     }
-    this._container.destroy();
     super.destroy();
   }
 
