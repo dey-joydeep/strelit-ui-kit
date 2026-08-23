@@ -12,7 +12,9 @@ import {
   Header,
   PopoutBlockedError,
   RowOrColumn,
+  type SerializableValue,
   Stack,
+  StrelitLayout,
   Tab,
   TouchStartBubblingEvent,
   type AreaLinkedRect,
@@ -55,3 +57,44 @@ new Stack();
 new Tab();
 // @ts-expect-error Direct construction is not a supported public contract.
 new TouchStartBubblingEvent();
+
+declare const bundledLayout: StrelitLayout;
+
+bundledLayout.registerComponentFactoryFunction(
+  'broad-state',
+  (_container, state) => {
+    const serializableState: SerializableValue | undefined = state;
+    void serializableState;
+    return undefined;
+  },
+);
+
+type LabelState = { label: string };
+class ValidatedComponent {
+  constructor(
+    _container: ComponentContainer,
+    readonly state: LabelState | undefined,
+    readonly virtual: boolean,
+  ) {}
+}
+
+bundledLayout.registerComponentFactoryFunction(
+  'validated-state',
+  (_container, state: LabelState | undefined) => state,
+  (state): state is LabelState | undefined =>
+    state === undefined ||
+    (typeof state === 'object' &&
+      state !== null &&
+      !Array.isArray(state) &&
+      typeof state.label === 'string'),
+);
+bundledLayout.registerComponentConstructor(
+  'validated-constructor-state',
+  ValidatedComponent,
+  (state): state is LabelState | undefined =>
+    state === undefined ||
+    (typeof state === 'object' &&
+      state !== null &&
+      !Array.isArray(state) &&
+      typeof state.label === 'string'),
+);

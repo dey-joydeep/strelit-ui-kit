@@ -18,6 +18,35 @@ There are two runtime binding modes:
 
 Component state is cloned before construction, so constructors and factory functions do not receive the original config object by reference.
 
+### Registered State Safety
+
+The default registration overload passes `SerializableValue | undefined` to
+the constructor or factory. Consumers should narrow or validate persisted state
+before using it.
+
+For a narrower callback type, pass a state validator before the optional
+`virtual` flag. Strelit runs the validator before invoking the callback and
+throws a `BindError` when persisted state is incompatible.
+
+```ts
+type PanelState = { label: string };
+
+layout.registerComponentFactoryFunction(
+  'panel',
+  (_container, state: PanelState | undefined) => ({ state }),
+  (state): state is PanelState | undefined =>
+    state === undefined ||
+    (typeof state === 'object' &&
+      state !== null &&
+      !Array.isArray(state) &&
+      typeof state.label === 'string'),
+);
+```
+
+The legacy overload that accepts a narrow callback without a validator remains
+available during the Bridge phase, but it is deprecated and unchecked. Such a
+callback must defensively validate the state it receives.
+
 ## Virtual Components
 
 When a registration is marked `virtual: true`:

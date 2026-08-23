@@ -1477,8 +1477,14 @@ export class StrelitLayout extends VirtualLayout {
     fireBeforeVirtualRectingEvent(count: number, containers?: readonly ComponentContainer[]): void;
     getComponentInstantiator(config: ResolvedComponentItemConfig): StrelitLayoutComponentInstantiator | undefined;
     getRegisteredComponentTypeNames(): string[];
-    registerComponentConstructor<TState extends SerializableValue = SerializableValue, TComponent extends ComponentContainerComponent = ComponentContainerComponent>(typeName: string, componentConstructor: StrelitLayoutComponentConstructor<TState, TComponent>, virtual?: boolean): void;
-    registerComponentFactoryFunction<TState extends SerializableValue = SerializableValue, TComponent extends ComponentContainerComponent = ComponentContainerComponent>(typeName: string, componentFactoryFunction: StrelitLayoutComponentFactoryFunction<TState, TComponent>, virtual?: boolean): void;
+    registerComponentConstructor<TComponent extends ComponentContainerComponent = ComponentContainerComponent>(typeName: string, componentConstructor: StrelitLayoutComponentConstructor<SerializableValue, TComponent>, virtual?: boolean): void;
+    registerComponentConstructor<TState extends SerializableValue, TComponent extends ComponentContainerComponent = ComponentContainerComponent>(typeName: string, componentConstructor: StrelitLayoutComponentConstructor<TState, TComponent>, stateValidator: StrelitLayoutComponentStateValidator<TState>, virtual?: boolean): void;
+    // @deprecated
+    registerComponentConstructor<TState extends SerializableValue, TComponent extends ComponentContainerComponent = ComponentContainerComponent>(typeName: string, componentConstructor: StrelitLayoutComponentConstructor<TState, TComponent>, virtual?: boolean): void;
+    registerComponentFactoryFunction<TComponent extends ComponentContainerComponent = ComponentContainerComponent>(typeName: string, componentFactoryFunction: StrelitLayoutComponentFactoryFunction<SerializableValue, TComponent>, virtual?: boolean): void;
+    registerComponentFactoryFunction<TState extends SerializableValue, TComponent extends ComponentContainerComponent = ComponentContainerComponent>(typeName: string, componentFactoryFunction: StrelitLayoutComponentFactoryFunction<TState, TComponent>, stateValidator: StrelitLayoutComponentStateValidator<TState>, virtual?: boolean): void;
+    // @deprecated
+    registerComponentFactoryFunction<TState extends SerializableValue, TComponent extends ComponentContainerComponent = ComponentContainerComponent>(typeName: string, componentFactoryFunction: StrelitLayoutComponentFactoryFunction<TState, TComponent>, virtual?: boolean): void;
     // @internal (undocumented)
     unbindComponent(container: ComponentContainer, virtual: boolean, component: ComponentContainerComponent | undefined): void;
 }
@@ -1495,6 +1501,9 @@ export interface StrelitLayoutComponentInstantiator<TState extends SerializableV
     readonly factoryFunction: StrelitLayoutComponentFactoryFunction<TState, TComponent> | undefined;
     readonly virtual: boolean;
 }
+
+// @public
+export type StrelitLayoutComponentStateValidator<TState extends SerializableValue> = (state: SerializableValue | undefined) => state is TState | undefined;
 
 // @public
 export interface StrelitLayoutVirtualComponent {

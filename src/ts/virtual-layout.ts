@@ -93,6 +93,13 @@ export class VirtualLayout extends LayoutManager {
   /** @internal */
   private _creationTimeoutPassed = false; // remove when constructor is determinate
   /** @internal */
+  private _documentReadyListener: (() => void) | undefined;
+  /** @internal */
+  private _windowLoadListener: (() => void) | undefined;
+  /** @internal */
+  private _creationTimeout:
+    ReturnType<typeof globalThis.setTimeout> | undefined;
+  /** @internal */
   private _popInButtonElement: HTMLElement | undefined;
   /** @internal */
   private _popInButtonClickListener: (() => void) | undefined;
@@ -147,6 +154,10 @@ export class VirtualLayout extends LayoutManager {
 
   /** Performs the destroy operation. */
   override destroy(): void {
+    this.clearDeferredInit();
+    if (window.__strelitInstance === this) {
+      window.__strelitInstance = undefined;
+    }
     if (this._popInButtonElement !== undefined) {
       if (this._popInButtonClickListener !== undefined) {
         this._popInButtonElement.removeEventListener(
@@ -158,10 +169,12 @@ export class VirtualLayout extends LayoutManager {
       this._popInButtonElement.remove();
       this._popInButtonElement = undefined;
     }
-    super.destroy();
-
-    this.bindComponentEvent = undefined;
-    this.unbindComponentEvent = undefined;
+    try {
+      super.destroy();
+    } finally {
+      this.bindComponentEvent = undefined;
+      this.unbindComponentEvent = undefined;
+    }
   }
 
   /** Initializes the layout after binding handlers have been assigned. */
@@ -177,15 +190,19 @@ export class VirtualLayout extends LayoutManager {
       !this._bindComponentEventHandlerPassedInConstructor &&
       (document.readyState === 'loading' || document.body === null)
     ) {
-      document.addEventListener(
-        'DOMContentLoaded',
-        () => {
+      if (this._documentReadyListener === undefined) {
+        this._documentReadyListener = () => {
+          this.clearDocumentReadyListener();
           if (!this.isDestroyed) {
             this.init();
           }
-        },
-        { passive: true },
-      );
+        };
+        document.addEventListener(
+          'DOMContentLoaded',
+          this._documentReadyListener,
+          { passive: true, once: true },
+        );
+      }
       return;
     }
 
@@ -201,17 +218,19 @@ export class VirtualLayout extends LayoutManager {
     ) {
       this._creationTimeoutPassed = true;
       if (document.readyState !== 'complete') {
-        window.addEventListener(
-          'load',
-          () => {
-            if (!this.isDestroyed) {
-              this.init();
-            }
-          },
-          { passive: true },
-        );
+        this._windowLoadListener = () => {
+          this.clearWindowLoadListener();
+          if (!this.isDestroyed) {
+            this.init();
+          }
+        };
+        window.addEventListener('load', this._windowLoadListener, {
+          passive: true,
+          once: true,
+        });
       } else {
-        setTimeout(() => {
+        this._creationTimeout = globalThis.setTimeout(() => {
+          this._creationTimeout = undefined;
           if (!this.isDestroyed) {
             this.init();
           }
@@ -230,6 +249,35 @@ export class VirtualLayout extends LayoutManager {
     }
 
     super.init();
+  }
+
+  /** @internal */
+  private clearDeferredInit(): void {
+    this.clearDocumentReadyListener();
+    this.clearWindowLoadListener();
+    if (this._creationTimeout !== undefined) {
+      globalThis.clearTimeout(this._creationTimeout);
+      this._creationTimeout = undefined;
+    }
+  }
+
+  /** @internal */
+  private clearDocumentReadyListener(): void {
+    if (this._documentReadyListener !== undefined) {
+      document.removeEventListener(
+        'DOMContentLoaded',
+        this._documentReadyListener,
+      );
+      this._documentReadyListener = undefined;
+    }
+  }
+
+  /** @internal */
+  private clearWindowLoadListener(): void {
+    if (this._windowLoadListener !== undefined) {
+      window.removeEventListener('load', this._windowLoadListener);
+      this._windowLoadListener = undefined;
+    }
   }
 
   /**

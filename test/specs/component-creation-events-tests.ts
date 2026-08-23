@@ -90,6 +90,35 @@ describe('component creation events', function () {
     ).not.toThrow();
   });
 
+  it('validates typed persisted state before invoking a registered factory', function () {
+    type LabelState = { label: string };
+    const factory = vi.fn(
+      (_container: ComponentContainer, _state: LabelState | undefined) =>
+        undefined,
+    );
+    layout.registerComponentFactoryFunction(
+      'validatedComponent',
+      factory,
+      (state): state is LabelState | undefined =>
+        state === undefined ||
+        (typeof state === 'object' &&
+          state !== null &&
+          !Array.isArray(state) &&
+          typeof state.label === 'string'),
+    );
+
+    expect(() =>
+      layout.loadLayout({
+        root: {
+          type: 'component',
+          componentType: 'validatedComponent',
+          componentState: 'not a label state',
+        },
+      }),
+    ).toThrow('Component state rejected by validator: validatedComponent');
+    expect(factory).not.toHaveBeenCalled();
+  });
+
   it('exposes replacement metadata while binding the replacement component', function () {
     const replacementState = { source: 'replacement' };
     const observedMetadata: unknown[] = [];

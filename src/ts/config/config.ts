@@ -583,8 +583,8 @@ export interface ComponentItemConfig extends HeaderedItemConfig {
   /**
    * The type of the component.
    * `componentType` must be of type `string` if it is registered with any of the following functions:
-   * * {@link StrelitLayout.registerComponentConstructor}
-   * * {@link StrelitLayout.registerComponentFactoryFunction}
+   * * `StrelitLayout.registerComponentConstructor()`
+   * * `StrelitLayout.registerComponentFactoryFunction()`
    */
   componentType?: ComponentType;
   /**

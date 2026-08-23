@@ -77,7 +77,7 @@ import {
 /** @internal */
 declare global {
   interface Window {
-    __strelitInstance: LayoutManager;
+    __strelitInstance?: LayoutManager;
   }
 }
 

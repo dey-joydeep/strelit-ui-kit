@@ -6,8 +6,106 @@ describe('virtual layout popout bootstrap', () => {
   const originalUrl = document.location.href;
 
   afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
     history.replaceState({}, '', originalUrl);
     localStorage.clear();
+    window.__strelitInstance = undefined;
+  });
+
+  it('removes a deferred DOM-ready listener when destroyed', () => {
+    vi.spyOn(document, 'readyState', 'get').mockReturnValue('loading');
+    const addEventListener = vi.spyOn(document, 'addEventListener');
+    const removeEventListener = vi.spyOn(document, 'removeEventListener');
+    const layout = new publicApi.VirtualLayout(
+      undefined,
+      undefined,
+      undefined,
+      true,
+    );
+
+    layout.init();
+    const listener = addEventListener.mock.calls.find(
+      ([eventName]) => eventName === 'DOMContentLoaded',
+    )?.[1];
+    expect(listener).toBeTypeOf('function');
+
+    layout.destroy();
+    expect(removeEventListener).toHaveBeenCalledWith(
+      'DOMContentLoaded',
+      listener,
+    );
+  });
+
+  it('removes a deferred subwindow load listener when destroyed', async () => {
+    const storageKey = 'strelit-window-load-cleanup-test';
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify(minifyResolvedLayoutConfig(resolveLayoutConfig({}))),
+    );
+    history.replaceState({}, '', `/?strelit-window=${storageKey}`);
+    vi.resetModules();
+    vi.spyOn(document, 'readyState', 'get').mockReturnValue('interactive');
+    const addEventListener = vi.spyOn(window, 'addEventListener');
+    const removeEventListener = vi.spyOn(window, 'removeEventListener');
+    const { VirtualLayout } = await import('../../src/ts/virtual-layout');
+    const layout = new VirtualLayout(undefined, undefined, undefined, true);
+
+    layout.init();
+    const listener = addEventListener.mock.calls.find(
+      ([eventName]) => eventName === 'load',
+    )?.[1];
+    expect(listener).toBeTypeOf('function');
+
+    layout.destroy();
+    expect(removeEventListener).toHaveBeenCalledWith('load', listener);
+  });
+
+  it('cancels deferred subwindow creation when destroyed', async () => {
+    const storageKey = 'strelit-window-timeout-cleanup-test';
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify(minifyResolvedLayoutConfig(resolveLayoutConfig({}))),
+    );
+    history.replaceState({}, '', `/?strelit-window=${storageKey}`);
+    vi.resetModules();
+    vi.spyOn(document, 'readyState', 'get').mockReturnValue('complete');
+    vi.useFakeTimers();
+    const setTimeout = vi.spyOn(globalThis, 'setTimeout');
+    const clearTimeout = vi.spyOn(globalThis, 'clearTimeout');
+    const { VirtualLayout } = await import('../../src/ts/virtual-layout');
+    const layout = new VirtualLayout(undefined, undefined, undefined, true);
+
+    layout.init();
+    const timeout = setTimeout.mock.results.at(-1)?.value;
+    expect(timeout).toBeDefined();
+
+    layout.destroy();
+    expect(clearTimeout).toHaveBeenCalledWith(timeout);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('clears only its own window bridge reference on destroy', () => {
+    const layout = new publicApi.VirtualLayout(
+      undefined,
+      undefined,
+      undefined,
+      true,
+    );
+    window.__strelitInstance = layout;
+    layout.destroy();
+    expect(window.__strelitInstance).toBeUndefined();
+
+    const replacementOwner = new publicApi.VirtualLayout(
+      undefined,
+      undefined,
+      undefined,
+      true,
+    );
+    const replacement = {} as publicApi.LayoutManager;
+    window.__strelitInstance = replacement;
+    replacementOwner.destroy();
+    expect(window.__strelitInstance).toBe(replacement);
   });
 
   it('does not expose internal virtual-layout construction helpers', () => {

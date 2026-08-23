@@ -61,6 +61,14 @@ export type StrelitLayoutComponentFactoryFunction<
 ) => TComponent | undefined | void;
 
 /**
+ * Validates persisted component state before a typed component callback runs.
+ * @public
+ */
+export type StrelitLayoutComponentStateValidator<
+  TState extends SerializableValue,
+> = (state: SerializableValue | undefined) => state is TState | undefined;
+
+/**
  * Defines the strelit layout component instantiator contract.
  * @public
  */
@@ -83,6 +91,15 @@ type AnyStrelitLayoutComponentInstantiator = StrelitLayoutComponentInstantiator<
   ComponentContainerComponent
 >;
 
+type StrelitLayoutComponentStateValidationFunction = (
+  state: SerializableValue | undefined,
+) => boolean;
+
+interface RegisteredStrelitLayoutComponentInstantiator extends AnyStrelitLayoutComponentInstantiator {
+  readonly stateValidator:
+    StrelitLayoutComponentStateValidationFunction | undefined;
+}
+
 /**
  * Provides strelit layout behavior.
  * @public
@@ -91,7 +108,7 @@ export class StrelitLayout extends VirtualLayout {
   /** @internal */
   private _componentTypesMap = new Map<
     string,
-    AnyStrelitLayoutComponentInstantiator
+    RegisteredStrelitLayoutComponentInstantiator
   >();
   /** @internal */
   private _registeredComponentMap = new Map<
@@ -162,16 +179,47 @@ export class StrelitLayout extends VirtualLayout {
     this.init();
   }
 
-  /**
-   * Register a new component type with the layout manager.
-   */
+  /** Registers a component constructor that accepts all serializable state. */
   registerComponentConstructor<
-    TState extends SerializableValue = SerializableValue,
+    TComponent extends ComponentContainerComponent =
+      ComponentContainerComponent,
+  >(
+    typeName: string,
+    componentConstructor: StrelitLayoutComponentConstructor<
+      SerializableValue,
+      TComponent
+    >,
+    virtual?: boolean,
+  ): void;
+  /** Registers a typed component constructor with runtime state validation. */
+  registerComponentConstructor<
+    TState extends SerializableValue,
     TComponent extends ComponentContainerComponent =
       ComponentContainerComponent,
   >(
     typeName: string,
     componentConstructor: StrelitLayoutComponentConstructor<TState, TComponent>,
+    stateValidator: StrelitLayoutComponentStateValidator<TState>,
+    virtual?: boolean,
+  ): void;
+  /**
+   * Registers a narrow component constructor without runtime state validation.
+   * @deprecated Accept SerializableValue and validate it, or pass a state validator before the virtual flag.
+   */
+  registerComponentConstructor<
+    TState extends SerializableValue,
+    TComponent extends ComponentContainerComponent =
+      ComponentContainerComponent,
+  >(
+    typeName: string,
+    componentConstructor: StrelitLayoutComponentConstructor<TState, TComponent>,
+    virtual?: boolean,
+  ): void;
+  registerComponentConstructor(
+    typeName: string,
+    componentConstructor: StrelitLayoutComponentConstructor<never>,
+    stateValidatorOrVirtual:
+      StrelitLayoutComponentStateValidationFunction | boolean = false,
     virtual = false,
   ): void {
     if (typeof componentConstructor !== 'function') {
@@ -188,19 +236,38 @@ export class StrelitLayout extends VirtualLayout {
       );
     }
 
+    const stateValidator =
+      typeof stateValidatorOrVirtual === 'function'
+        ? stateValidatorOrVirtual
+        : undefined;
+    const resolvedVirtual =
+      typeof stateValidatorOrVirtual === 'boolean'
+        ? stateValidatorOrVirtual
+        : virtual;
     this._componentTypesMap.set(typeName, {
       constructor:
         componentConstructor as unknown as StrelitLayoutComponentConstructor,
       factoryFunction: undefined,
-      virtual,
+      virtual: resolvedVirtual,
+      stateValidator,
     });
   }
 
-  /**
-   * Register a new component with the layout manager.
-   */
+  /** Registers a component factory that accepts all serializable state. */
   registerComponentFactoryFunction<
-    TState extends SerializableValue = SerializableValue,
+    TComponent extends ComponentContainerComponent =
+      ComponentContainerComponent,
+  >(
+    typeName: string,
+    componentFactoryFunction: StrelitLayoutComponentFactoryFunction<
+      SerializableValue,
+      TComponent
+    >,
+    virtual?: boolean,
+  ): void;
+  /** Registers a typed component factory with runtime state validation. */
+  registerComponentFactoryFunction<
+    TState extends SerializableValue,
     TComponent extends ComponentContainerComponent =
       ComponentContainerComponent,
   >(
@@ -209,6 +276,30 @@ export class StrelitLayout extends VirtualLayout {
       TState,
       TComponent
     >,
+    stateValidator: StrelitLayoutComponentStateValidator<TState>,
+    virtual?: boolean,
+  ): void;
+  /**
+   * Registers a narrow component factory without runtime state validation.
+   * @deprecated Accept SerializableValue and validate it, or pass a state validator before the virtual flag.
+   */
+  registerComponentFactoryFunction<
+    TState extends SerializableValue,
+    TComponent extends ComponentContainerComponent =
+      ComponentContainerComponent,
+  >(
+    typeName: string,
+    componentFactoryFunction: StrelitLayoutComponentFactoryFunction<
+      TState,
+      TComponent
+    >,
+    virtual?: boolean,
+  ): void;
+  registerComponentFactoryFunction(
+    typeName: string,
+    componentFactoryFunction: StrelitLayoutComponentFactoryFunction<never>,
+    stateValidatorOrVirtual:
+      StrelitLayoutComponentStateValidationFunction | boolean = false,
     virtual = false,
   ): void {
     if (typeof componentFactoryFunction !== 'function') {
@@ -223,11 +314,20 @@ export class StrelitLayout extends VirtualLayout {
       );
     }
 
+    const stateValidator =
+      typeof stateValidatorOrVirtual === 'function'
+        ? stateValidatorOrVirtual
+        : undefined;
+    const resolvedVirtual =
+      typeof stateValidatorOrVirtual === 'boolean'
+        ? stateValidatorOrVirtual
+        : virtual;
     this._componentTypesMap.set(typeName, {
       constructor: undefined,
       factoryFunction:
         componentFactoryFunction as unknown as StrelitLayoutComponentFactoryFunction,
-      virtual,
+      virtual: resolvedVirtual,
+      stateValidator,
     });
   }
 
@@ -254,7 +354,11 @@ export class StrelitLayout extends VirtualLayout {
     const instantiator = this._componentTypesMap.get(typeName);
     return instantiator === undefined
       ? undefined
-      : Object.freeze({ ...instantiator });
+      : Object.freeze({
+          constructor: instantiator.constructor,
+          factoryFunction: instantiator.factoryFunction,
+          virtual: instantiator.virtual,
+        });
   }
 
   /** @internal */
@@ -279,6 +383,15 @@ export class StrelitLayout extends VirtualLayout {
         componentState = deepCloneValue(
           itemConfig.componentState,
         ) as SerializableValue;
+      }
+
+      if (
+        instantiator.stateValidator !== undefined &&
+        !instantiator.stateValidator(componentState)
+      ) {
+        throw new BindError(
+          `Component state rejected by validator: ${String(typeName)}`,
+        );
       }
 
       let component: ComponentContainerComponent | undefined;
