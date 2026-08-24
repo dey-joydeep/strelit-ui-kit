@@ -135,7 +135,7 @@ export function deepCloneValue(value: unknown): unknown {
     depth: number,
   ): { clone: unknown; frame?: CloneFrame } {
     visitedNodes++;
-    if (depth > maximumConfigDepth || visitedNodes > maximumConfigNodes) {
+    if (visitedNodes > maximumConfigNodes) {
       throw new ConfigurationError(
         'Serializable value exceeds resource limits',
       );
@@ -161,6 +161,11 @@ export function deepCloneValue(value: unknown): unknown {
     }
     if (typeof source !== 'object') {
       throw new ConfigurationError('Value is not serializable');
+    }
+    if (depth > maximumConfigDepth) {
+      throw new ConfigurationError(
+        'Serializable value exceeds resource limits',
+      );
     }
     if (active.has(source)) {
       throw new ConfigurationError('Serializable value contains a cycle');

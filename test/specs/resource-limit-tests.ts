@@ -68,6 +68,7 @@ describe('configuration resource limits', () => {
   });
 
   it('rejects component state beyond the depth and node budgets', () => {
+    expect(() => deepCloneValue(createNestedState(maximumDepth))).not.toThrow();
     expect(() => deepCloneValue(createNestedState(maximumDepth + 1))).toThrow(
       ConfigurationError,
     );
