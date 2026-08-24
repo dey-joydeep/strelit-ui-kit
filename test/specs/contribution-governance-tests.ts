@@ -422,6 +422,19 @@ describe('contribution governance workflow', () => {
     expect(docsIndex).toContain('./contributing/ai-change-quality-rubric.md');
   });
 
+  it('documents component cleanup at the replacement-safe release boundary', () => {
+    const componentBindingSkill = readFileSync(
+      resolve('.agents/skills/strelit-component-binding/SKILL.md'),
+      'utf8',
+    );
+
+    expect(componentBindingSkill).toContain(
+      "container.on('beforeComponentRelease'",
+    );
+    expect(componentBindingSkill).toContain('replaceComponent()');
+    expect(componentBindingSkill).not.toContain("container.on('destroy'");
+  });
+
   it('documents definitive PR verification after ledger synthesis', () => {
     const verificationGuide = readFileSync(
       resolve('docs/contributing/verification-pipeline.md'),

@@ -21,8 +21,8 @@ layout.registerComponentFactoryFunction(
     element.classList.add('my-panel-content');
     container.element.appendChild(element);
 
-    // Clean up DOM listeners when container destroys
-    container.on('destroy', () => {
+    // Release this binding both on replacement and final destruction.
+    container.on('beforeComponentRelease', () => {
       element.remove();
     });
   },
@@ -47,4 +47,7 @@ container.stateRequestEvent = () => {
 For modern declarative frameworks:
 
 - Use **Virtual Components** (`VirtualLayout` mode) so framework component wrappers stay mounted inside framework portals/teleports.
-- Always clean up event subscriptions inside `container.on('destroy')` to prevent detached DOM tree leaks.
+- Clean up component-owned DOM and subscriptions in
+  `container.on('beforeComponentRelease')` or the layout's
+  `unbindComponentEvent`. `replaceComponent()` releases the current binding
+  without destroying the reusable container, so `destroy` alone is too late.
