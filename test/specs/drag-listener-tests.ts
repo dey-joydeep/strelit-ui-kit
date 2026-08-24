@@ -47,6 +47,34 @@ describe('DragListener iframe handling', () => {
     listener.destroy();
   });
 
+  it('rolls back global drag state when dragStart throws', () => {
+    const handle = document.createElement('div');
+    const iframe = document.createElement('iframe');
+    iframe.style.setProperty('pointer-events', 'auto');
+    document.body.append(handle, iframe);
+    elements.push(handle, iframe);
+    const listener = new DragListener(handle, []);
+    const dragStop = vi.fn();
+    listener.on('dragStart', () => {
+      throw new Error('drag start failed');
+    });
+    listener.on('dragStop', dragStop);
+
+    expect(() =>
+      (
+        listener as unknown as {
+          startDrag(): void;
+        }
+      ).startDrag(),
+    ).toThrow('drag start failed');
+
+    expect(document.body.classList.contains('lm_dragging')).toBe(false);
+    expect(handle.classList.contains('lm_dragging')).toBe(false);
+    expect(iframe.style.getPropertyValue('pointer-events')).toBe('auto');
+    expect(dragStop).toHaveBeenCalledOnce();
+    listener.destroy();
+  });
+
   it('ends an active drag when the pointer is cancelled', () => {
     const handle = document.createElement('div');
     const iframe = document.createElement('iframe');

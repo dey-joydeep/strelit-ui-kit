@@ -1,4 +1,5 @@
 import { DomConstants } from './dom-constants';
+import { reportSecondaryCleanupError } from './error-reporting';
 import { EventEmitter } from './event-emitter';
 
 /** @internal */
@@ -241,7 +242,16 @@ export class DragListener extends EventEmitter {
     for (const { element } of this._iframePointerEvents) {
       element.style.setProperty('pointer-events', 'none');
     }
-    this.emit('dragStart', this._nOriginalX, this._nOriginalY);
+    try {
+      this.emit('dragStart', this._nOriginalX, this._nOriginalY);
+    } catch (error) {
+      try {
+        this.processDragStop();
+      } catch (cleanupError) {
+        reportSecondaryCleanupError('drag start', cleanupError);
+      }
+      throw error;
+    }
   }
 
   private getPointerCoordinates(event: PointerEvent) {

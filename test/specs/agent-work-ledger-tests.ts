@@ -943,6 +943,40 @@ describe('agent work ledger', () => {
     });
   });
 
+  it('reports both source and destination paths for dirty and committed renames', () => {
+    withTemporaryRepository((repository) => {
+      const sourcePath = 'src/rename-source.ts';
+      const destinationPath = 'src/rename-destination.ts';
+      writeFileSync(join(repository, sourcePath), 'export const value = 1;\n');
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Add rename source.'], {
+        cwd: repository,
+      });
+      const before = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+
+      execFileSync('git', ['mv', sourcePath, destinationPath], {
+        cwd: repository,
+      });
+      expect(ledgerModule.currentSourceState(repository).workingPaths).toEqual(
+        expect.arrayContaining([sourcePath, destinationPath]),
+      );
+      execFileSync('git', ['commit', '-am', 'Rename source.'], {
+        cwd: repository,
+      });
+      const after = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+
+      expect(ledgerModule.gitChangedPaths(before, after, repository)).toEqual(
+        expect.arrayContaining([sourcePath, destinationPath]),
+      );
+    });
+  });
+
   it('reports actionable pending scope and rejects a linked ledger file', () => {
     withTemporaryRepository((repository) => {
       initialize(repository);

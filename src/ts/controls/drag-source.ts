@@ -11,6 +11,7 @@ import { ComponentItem } from '../items/component-item';
 import { GroundItem } from '../items/ground-item';
 import { LayoutManager } from '../layout-manager';
 import { DragListener } from '../utils/drag-listener';
+import { reportSecondaryCleanupError } from '../utils/error-reporting';
 
 /**
  * Allows for any DOM item to create a component on drag
@@ -117,13 +118,31 @@ export class DragSource {
     if (this._dragListener === null) {
       throw new UnexpectedNullError('DSODSD66746');
     } else {
-      const dragProxyElement = this._layoutManager.startComponentDrag(
-        x,
-        y,
-        this._dragListener,
-        componentItem,
-        this._dummyGroundContentItem,
-      );
+      let dragProxyElement: HTMLElement;
+      try {
+        dragProxyElement = this._layoutManager.startComponentDrag(
+          x,
+          y,
+          this._dragListener,
+          componentItem,
+          this._dummyGroundContentItem,
+        );
+      } catch (error) {
+        try {
+          const parent = componentItem.parent;
+          if (parent !== null && parent.contentItems.includes(componentItem)) {
+            parent.removeChild(componentItem);
+          } else {
+            componentItem.destroy();
+          }
+        } catch (cleanupError) {
+          reportSecondaryCleanupError(
+            'external component drag start',
+            cleanupError,
+          );
+        }
+        throw error;
+      }
 
       const transitionIndicator = this._layoutManager.transitionIndicator;
       if (transitionIndicator === null) {

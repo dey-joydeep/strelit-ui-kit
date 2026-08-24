@@ -187,7 +187,7 @@ function gitPaths(args, cwd) {
 function currentSourceState(cwd = process.cwd()) {
   const head = gitOutput(['rev-parse', 'HEAD'], cwd);
   const trackedPaths = gitPaths(
-    ['diff', '--name-only', '--find-renames', 'HEAD'],
+    ['diff', '--name-only', '--no-renames', 'HEAD'],
     cwd,
   );
   const untrackedPaths = gitPaths(
@@ -1105,7 +1105,7 @@ function validatePullRequestGate(
 function gitChangedPaths(fromHead, toHead, cwd) {
   try {
     return gitPaths(
-      ['diff', '--name-only', '--find-renames', `${fromHead}..${toHead}`],
+      ['diff', '--name-only', '--no-renames', `${fromHead}..${toHead}`],
       cwd,
     );
   } catch {

@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ComponentItem, StrelitLayout, LayoutConfig } from '../../src';
+import {
+  ComponentContainer,
+  ComponentItem,
+  StrelitLayout,
+  LayoutConfig,
+} from '../../src';
 import { DragProxy } from '../../src/ts/controls/drag-proxy';
 import { DragListener } from '../../src/ts/utils/drag-listener';
 import TestTools from './test-tools';
@@ -78,6 +83,52 @@ describe('drag source', function () {
 
     expect(destroySpy).toHaveBeenCalledOnce();
   });
+
+  it('releases an external component when drag proxy construction fails', function () {
+    dragSourceElement = document.createElement('div');
+    const dragSource = layout.newDragSource(dragSourceElement, () => ({
+      type: 'component',
+      componentType: TestTools.TEST_COMPONENT_NAME,
+    }));
+    const destroyContainer = vi.spyOn(ComponentContainer.prototype, 'destroy');
+    vi.spyOn(layout, 'calculateItemAreas').mockImplementationOnce(() => {
+      throw new Error('item area calculation failed');
+    });
+    const internals = dragSource as unknown as {
+      _dummyGroundContentItem: {
+        contentItems: Array<{ contentItems: unknown[] }>;
+      };
+      onDragStart(x: number, y: number): void;
+    };
+    const originalChildCount =
+      internals._dummyGroundContentItem.contentItems.length;
+
+    expect(() => internals.onDragStart(0, 0)).toThrow(
+      'item area calculation failed',
+    );
+
+    expect(internals._dummyGroundContentItem.contentItems).toHaveLength(
+      originalChildCount,
+    );
+    expect(countComponentItems(internals._dummyGroundContentItem)).toBe(0);
+    expect(destroyContainer).toHaveBeenCalledOnce();
+    expect(TestTools.getDragProxy()).toBeNull();
+  });
+
+  function countComponentItems(item: {
+    contentItems: Array<{ contentItems: unknown[] }>;
+  }): number {
+    let result = 0;
+    for (const child of item.contentItems) {
+      if (child instanceof ComponentItem) {
+        result++;
+      }
+      result += countComponentItems(
+        child as { contentItems: Array<{ contentItems: unknown[] }> },
+      );
+    }
+    return result;
+  }
 
   it('does not recreate an external drag listener during layout destruction', function () {
     dragSourceElement = document.createElement('div');
