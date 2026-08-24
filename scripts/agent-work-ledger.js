@@ -40,6 +40,7 @@ const validStatuses = new Set([
 ]);
 const validReviewScopes = new Set(['domain', 'whole-pr']);
 const validReviewPasses = new Set(['fresh-discovery', 'finding-closure']);
+const validRecoveryIntents = new Set(['continue', 'status', 'summary']);
 
 function parseArguments(args) {
   const [command = 'status', ...rest] = args;
@@ -67,6 +68,16 @@ function requireOption(options, name) {
     throw new Error(`Missing required option: --${name}`);
   }
   return value.trim();
+}
+
+function requireRecoveryIntent(options) {
+  const intent = requireOption(options, 'intent').toLowerCase();
+  if (!validRecoveryIntents.has(intent)) {
+    throw new Error(
+      `Invalid recovery intent: ${intent}; expected continue, status, or summary.`,
+    );
+  }
+  return intent;
 }
 
 function splitList(value) {
@@ -228,6 +239,17 @@ function readLedger(root, cwd) {
 function writeLedger(fileName, ledger, now = new Date()) {
   const nextLedger = { ...ledger, updatedAt: now.toISOString() };
   validateLedger(nextLedger);
+  if (existsSync(fileName)) {
+    const previousLedger = readJson(fileName, 'ledger');
+    validateLedger(previousLedger);
+    const semanticCandidate = {
+      ...nextLedger,
+      updatedAt: previousLedger.updatedAt,
+    };
+    if (JSON.stringify(previousLedger) === JSON.stringify(semanticCandidate)) {
+      return previousLedger;
+    }
+  }
   mkdirSync(dirname(fileName), { recursive: true });
   const temporary = `${fileName}.${process.pid}.tmp`;
   try {
@@ -1484,7 +1506,10 @@ function execute(command, options, cwd = process.cwd(), now = new Date()) {
     unit.status = 'interrupted';
     delete unit.owner;
     delete unit.startedAt;
-  } else if (command === 'recover') {
+  } else if (command === 'recover' || command === 'enter') {
+    if (command === 'enter') {
+      requireRecoveryIntent(options);
+    }
     const sourceState = currentSourceState(cwd);
     if (typeof options.head === 'string' && options.head !== sourceState.head) {
       throw new Error(
@@ -1579,6 +1604,17 @@ function summarize(ledger) {
     currentHead: ledger.currentHead,
     status: ledger.status,
     units: counts,
+    readyUnits: ledger.units
+      .filter(
+        (unit) =>
+          ['pending', 'interrupted', 'invalidated'].includes(unit.status) &&
+          unit.dependencies.every((dependency) =>
+            ['completed', 'carried-forward'].includes(
+              findUnit(ledger, dependency).status,
+            ),
+          ),
+      )
+      .map((unit) => unit.id),
     work: ledger.units.map((unit) => ({
       id: unit.id,
       kind: unit.kind,
@@ -1606,6 +1642,15 @@ function main() {
         `${JSON.stringify(currentSourceState(), null, 2)}\n`,
       );
       return;
+    }
+    if (command === 'enter') {
+      const intent = requireRecoveryIntent(options);
+      if (!existsSync(ledgerPath(root))) {
+        process.stdout.write(
+          `${JSON.stringify({ status: 'no-active-ledger', intent, readyUnits: [] })}\n`,
+        );
+        return;
+      }
     }
     if (command === 'validate' && !existsSync(ledgerPath(root))) {
       process.stdout.write('{"status":"no-active-ledger"}\n');

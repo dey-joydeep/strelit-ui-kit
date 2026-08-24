@@ -69,7 +69,9 @@ synthesis units for the exact current source fingerprint.
 At the start of every session:
 
 1. Inspect `git status --short` and the current head.
-2. If the active ledger exists, run `npm run agent:ledger -- recover`.
+2. If the active ledger exists, run exactly one recovery command: use
+   `agent:ledger -- enter` at a post-interruption control-prompt boundary;
+   otherwise use `npm run agent:ledger -- recover`.
 3. Validate the ledger with `npm run verify:agent-ledger`.
 4. Resume `interrupted`, `pending`, and `invalidated` units in dependency order.
 5. Do not redispatch completed units unless recovery invalidated them.
@@ -79,6 +81,40 @@ or working-tree fingerprint changed, the CLI obtains the changed paths from
 Git and the before/after dirty-path inventories. If the comparison is not
 available, it fails closed by invalidating all review, verification, and
 synthesis evidence. Invalidation propagates through unit dependencies.
+
+### Recovery Entry After Interruption
+
+If an agent or tool reports a terminal interruption, including cancellation,
+connection loss, process failure, or a usage limit, the coordinator immediately
+records `agent:ledger -- interrupt --unit <id>` when it remains available. If
+the coordinator is also interrupted, the next user control prompt is the
+recovery boundary; the user does not need to identify the failed unit or
+reconstruct its state.
+
+Before responding to `continue`, `status`, `brief summary`, or equivalent
+wording after an interruption, run exactly one recovery entry:
+
+```powershell
+npm run agent:ledger -- enter --intent continue
+npm run agent:ledger -- enter --intent status
+npm run agent:ledger -- enter --intent summary
+```
+
+At this boundary, `enter` replaces the ordinary startup `recover`; do not run
+both commands for the same prompt.
+
+The command performs normal source-aware recovery and returns `readyUnits` in
+ledger order. A continue entry resumes those units in dependency order. A
+status or summary entry reports the recovered state and does not create or
+dispatch replacement work unless an earlier standing instruction already
+requires continued execution. If no active ledger exists, the command reports
+`no-active-ledger` with an empty ready list. Repeating the command is
+idempotent: completed evidence remains complete and already interrupted units
+remain resumable.
+
+Recovery does not bypass unavailable external capacity. A unit remains
+interrupted until an eligible agent can resume it, while unrelated ready work
+may continue.
 
 A completed ledger remains complete during later startup recovery and may be
 replaced by the next `init`. Recovery never resurrects it as active work.
@@ -127,6 +163,7 @@ npm run agent:ledger -- checkpoint --unit runtime-popouts --report .tmp/runtime-
 npm run agent:ledger -- complete --unit runtime-popouts --report .tmp/runtime-popouts-report.json
 npm run agent:ledger -- interrupt --unit runtime-popouts
 npm run agent:ledger -- recover
+npm run agent:ledger -- enter --intent continue
 npm run agent:ledger -- finish
 npm run agent:ledger -- status
 npm run verify:agent-ledger

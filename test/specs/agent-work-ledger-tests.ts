@@ -147,7 +147,10 @@ interface LedgerModule {
       executedCommands?: string[];
     },
   ): Ledger;
-  summarize(ledger: Ledger): { work: Array<Record<string, unknown>> };
+  summarize(ledger: Ledger): {
+    readyUnits: string[];
+    work: Array<Record<string, unknown>>;
+  };
 }
 
 const require = createRequire(import.meta.url);
@@ -364,6 +367,206 @@ describe('agent work ledger', () => {
         status: 'interrupted',
       });
       expect(recovered.units[0].owner).toBeUndefined();
+    });
+  });
+
+  it.each(['continue', 'status', 'summary'])(
+    'enters recovery for a %s control prompt and exposes dependency-ready work',
+    (intent) => {
+      withTemporaryRepository((repository) => {
+        initialize(repository);
+        addReview(repository);
+        ledgerModule.execute(
+          'add',
+          {
+            unit: 'synthesis',
+            kind: 'synthesis',
+            paths: 'src/ts/layout-manager.ts',
+            contracts: 'synthesize recovered review evidence',
+            dependencies: 'runtime-review',
+            commands: 'npm test',
+          },
+          repository,
+        );
+        ledgerModule.execute(
+          'start',
+          { unit: 'runtime-review', owner: 'agent-1' },
+          repository,
+        );
+
+        const recovered = ledgerModule.execute(
+          'enter',
+          { intent },
+          repository,
+          new Date('2026-08-13T01:00:00.000Z'),
+        );
+        const summary = ledgerModule.summarize(recovered);
+
+        expect(recovered.units[0]).toMatchObject({
+          id: 'runtime-review',
+          status: 'interrupted',
+        });
+        expect(summary.readyUnits).toEqual(['runtime-review']);
+        expect(recovered.units[1]).toMatchObject({
+          id: 'synthesis',
+          status: 'pending',
+        });
+
+        const repeated = ledgerModule.execute(
+          'enter',
+          { intent },
+          repository,
+          new Date('2026-08-13T02:00:00.000Z'),
+        );
+        expect(ledgerModule.summarize(repeated).readyUnits).toEqual([
+          'runtime-review',
+        ]);
+        expect(repeated.updatedAt).toBe(recovered.updatedAt);
+      });
+    },
+  );
+
+  it('rejects an unknown recovery intent without changing the ledger', () => {
+    withTemporaryRepository((repository) => {
+      initialize(repository);
+      addReview(repository);
+      const fileName = join(repository, '.tmp', 'agent-work', 'active.json');
+      const before = readFileSync(fileName, 'utf8');
+
+      expect(() =>
+        ledgerModule.execute(
+          'enter',
+          { intent: 'restart-everything' },
+          repository,
+        ),
+      ).toThrow('Invalid recovery intent');
+      expect(readFileSync(fileName, 'utf8')).toBe(before);
+    });
+  });
+
+  it('reports an empty recovery entry when no active ledger exists', () => {
+    withTemporaryRepository((repository) => {
+      const output = execFileSync(
+        process.execPath,
+        [
+          resolve('scripts/agent-work-ledger.js'),
+          'enter',
+          '--intent',
+          'status',
+          '--root',
+          '.tmp/missing-ledger',
+        ],
+        { cwd: repository, encoding: 'utf8' },
+      );
+
+      expect(JSON.parse(output)).toEqual({
+        status: 'no-active-ledger',
+        intent: 'status',
+        readyUnits: [],
+      });
+    });
+  });
+
+  it('enters active recovery through the CLI with stable ready-unit ordering', () => {
+    withTemporaryRepository((repository) => {
+      initialize(repository);
+      addReview(repository);
+      ledgerModule.execute(
+        'start',
+        { unit: 'runtime-review', owner: 'agent-1' },
+        repository,
+      );
+      ledgerModule.execute(
+        'complete',
+        { unit: 'runtime-review', report: writeReport(repository) },
+        repository,
+      );
+      ledgerModule.execute(
+        'add',
+        {
+          unit: 'docs-review',
+          kind: 'review',
+          paths: 'README.md',
+          contracts: 'preserve unaffected review evidence',
+          commands: 'npm test',
+        },
+        repository,
+      );
+      ledgerModule.execute(
+        'start',
+        { unit: 'docs-review', owner: 'agent-2' },
+        repository,
+      );
+      ledgerModule.execute(
+        'complete',
+        {
+          unit: 'docs-review',
+          report: writeReport(repository, { inspectedPaths: ['README.md'] }),
+        },
+        repository,
+      );
+      for (const unit of ['z-ready', 'a-ready']) {
+        ledgerModule.execute(
+          'add',
+          {
+            unit,
+            kind: 'implementation',
+            paths: 'src/ts/layout-manager.ts',
+            contracts: `resume ${unit} in ledger order`,
+          },
+          repository,
+        );
+      }
+      ledgerModule.execute(
+        'add',
+        {
+          unit: 'blocked-synthesis',
+          kind: 'synthesis',
+          paths: 'src/ts/layout-manager.ts',
+          contracts: 'wait for recovered review evidence',
+          dependencies: 'runtime-review',
+        },
+        repository,
+      );
+      writeFileSync(
+        join(repository, 'src', 'ts', 'layout-manager.ts'),
+        'changed\n',
+      );
+
+      const output = execFileSync(
+        process.execPath,
+        [
+          resolve('scripts/agent-work-ledger.js'),
+          'enter',
+          '--intent',
+          'continue',
+        ],
+        { cwd: repository, encoding: 'utf8' },
+      );
+      const summary = JSON.parse(output) as { readyUnits: string[] };
+      const ledger = JSON.parse(
+        readFileSync(
+          join(repository, '.tmp', 'agent-work', 'active.json'),
+          'utf8',
+        ),
+      ) as Ledger;
+
+      expect(summary.readyUnits).toEqual([
+        'runtime-review',
+        'z-ready',
+        'a-ready',
+      ]);
+      expect(ledger.workingPaths).toContain('src/ts/layout-manager.ts');
+      expect(
+        ledger.units.find(({ id }) => id === 'runtime-review')?.status,
+      ).toBe('invalidated');
+      expect(ledger.units.find(({ id }) => id === 'docs-review')?.status).toBe(
+        'carried-forward',
+      );
+      expect(
+        ledger.units.find(({ id }) => id === 'blocked-synthesis')?.status,
+      ).toBe('invalidated');
+      expect(summary.readyUnits).not.toContain('blocked-synthesis');
     });
   });
 
@@ -1523,9 +1726,16 @@ describe('agent work ledger', () => {
 
     expect(rootPolicy).toContain('npm run agent:ledger -- recover');
     expect(rootPolicy).toContain(
+      'npm run agent:ledger -- enter --intent <continue|status|summary>',
+    );
+    expect(rootPolicy).toContain(
       'docs/contributing/autonomous-task-recovery.md',
     );
     expect(recoveryPolicy).toContain('selectively invalidates');
+    expect(recoveryPolicy).toContain('next user control prompt');
+    expect(recoveryPolicy).toContain(
+      'npm run agent:ledger -- enter --intent continue',
+    );
     expect(recoveryPolicy).toContain(
       '`Error`, `null`, `undefined`, partial success',
     );

@@ -11,13 +11,23 @@ deeper `AGENTS.md` files, such as `scripts/AGENTS.md`, add scoped requirements.
 
 1. Work from the repository root: `E:\workspace\project-golden-layout\strelit-ui-kit`
 2. Check `git status --short` before editing or committing
-3. If `.tmp/agent-work/active.json` exists, run `npm run agent:ledger -- recover`
-   and resume its pending, interrupted, or invalidated units before creating
-   duplicate work
+3. If `.tmp/agent-work/active.json` exists, run exactly one recovery command:
+   use `agent:ledger -- enter` for a post-interruption control prompt, otherwise
+   use `npm run agent:ledger -- recover`; resume ready work before creating
+   duplicates
 4. Confirm Node/npm compatibility before running toolchain commands
 5. Prefer existing repo scripts over ad-hoc commands
 6. Read `docs/architecture/product-evolution-policy.md` and apply its active phase
 7. Keep the modernization direction intact unless the user explicitly changes it
+
+After an agent, subagent, process, tool call, or usage window is interrupted,
+treat the next user control prompt as a recovery entry. Prompts such as
+`continue`, `status`, `brief summary`, and equivalent wording MUST run
+`npm run agent:ledger -- enter --intent <continue|status|summary>` before
+reporting or dispatching more work. Use the returned `readyUnits` rather than
+creating replacement work. A status or summary entry reports the recovered
+state without dispatching unless an earlier standing instruction requires
+continued execution; a continue entry resumes ready units in dependency order.
 
 ## Autonomous Task Recovery
 
