@@ -195,6 +195,30 @@ describe('Layout configuration resolution and defaults', function () {
     ).toBe(false);
   });
 
+  it.each([
+    { settings: { tabControlOffset: 'broken' } },
+    { settings: { reorderEnabled: 'false' } },
+    { settings: { responsiveMode: 'sometimes' } },
+    { dimensions: 'broken' },
+    { header: { show: 'center' } },
+    { header: { minimise: false } },
+    {
+      root: { type: 'component', componentType: 'panel', isClosable: 'false' },
+    },
+    { root: { type: 'component', componentType: 'panel', reorderEnabled: 1 } },
+    { root: { type: 'component', componentType: 'panel', title: false } },
+    { root: { type: 'component', componentType: 'panel', size: 50 } },
+    {
+      openPopouts: [
+        { parentId: 1, indexInParent: '0', window: { left: '10' } },
+      ],
+    },
+  ])('rejects malformed primitive configuration %#', (config) => {
+    expect(() => resolveLayoutConfig(config as never)).toThrow(
+      ConfigurationError,
+    );
+  });
+
   it('applies popout defaults when optional runtime fields are omitted', () => {
     const popout = {
       root: { type: 'component', componentType: 'panel' },

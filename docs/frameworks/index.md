@@ -8,26 +8,11 @@ With the traditional [**embedding via events**](../binding-components/index.md#e
 
 ## Angular
 
-An example Angular application using Strelit Layout is available. The source can be installed by cloning the repository:\
-[https://github.com/strelit-ui-kit/strelit-ui-kit-ng-app](https://github.com/strelit-ui-kit/strelit-ui-kit-ng-app)
-
-After installing the source, the app can be built and started with the standard build and start scripts.
-
-This example demonstrates how Strelit Layout can be used with Angular using either [**embedding via events**](../binding-components/index.md#embedding-via-events) or [**virtual via events**](../binding-components/index.md#virtual-via-events) component binding.
+Use [**virtual via events**](../binding-components/index.md#virtual-via-events) binding so Angular retains ownership of component creation and DOM placement. Register the bind and unbind handlers at the layout host component, create Angular components through the application's normal component APIs, and return the host element through the virtual binding contract.
 
 ## Vue
 
-An example Vue application using Strelit Layout is available at:\
-[vue3-strelit-ui-kit-virtualcomponent](https://github.com/chyj4747/vue3-strelit-ui-kit-virtualcomponent)
-
-This demo shows the basic usage of Strelit Layout's virtual component (virtual via events binding). It also shows:
-
-- add component,
-- save layout config,
-- load layout config,
-- and a little bit more.
-
-Strelit Layout is integrated into Vue 3 components in this demo so they can be reused in other projects.
+Use [**virtual via events**](../binding-components/index.md#virtual-via-events) binding so Vue retains ownership of component instances and their host elements. The same layout APIs, including `loadLayout()` and `addComponent()`, can then operate on the component types handled by the Vue binding layer.
 
 ### Using Vue with 'embedding via events' component binding
 

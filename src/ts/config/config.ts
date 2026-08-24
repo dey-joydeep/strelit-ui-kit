@@ -59,6 +59,92 @@ function assertContentArray(
   }
 }
 
+function assertOptionalConfigObject(value: unknown, name: string): void {
+  if (
+    value !== undefined &&
+    (value === null || typeof value !== 'object' || Array.isArray(value))
+  ) {
+    throw new ConfigurationError(`${name} must be an object`);
+  }
+}
+
+function resolveBoolean(
+  value: unknown,
+  defaultValue: boolean,
+  name: string,
+): boolean {
+  if (value === undefined) return defaultValue;
+  if (typeof value !== 'boolean') {
+    throw new ConfigurationError(`${name} must be a boolean`);
+  }
+  return value;
+}
+
+function resolveFiniteNumber(
+  value: unknown,
+  defaultValue: number,
+  name: string,
+): number {
+  if (value === undefined) return defaultValue;
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new ConfigurationError(`${name} must be a finite number`);
+  }
+  return value;
+}
+
+function resolveString(
+  value: unknown,
+  defaultValue: string,
+  name: string,
+): string {
+  if (value === undefined) return defaultValue;
+  if (typeof value !== 'string') {
+    throw new ConfigurationError(`${name} must be a string`);
+  }
+  return value;
+}
+
+function resolveNullableString(
+  value: unknown,
+  defaultValue: string | null,
+  name: string,
+): string | null {
+  if (value === undefined || value === null) {
+    return value === undefined ? defaultValue : null;
+  }
+  return resolveString(value, '', name);
+}
+
+function resolveStringOrFalse(
+  value: unknown,
+  defaultValue: string | false | undefined,
+  name: string,
+): string | false | undefined {
+  if (value === undefined) return defaultValue;
+  if (value !== false && typeof value !== 'string') {
+    throw new ConfigurationError(`${name} must be a string or false`);
+  }
+  return value;
+}
+
+function resolveSideOrFalse(
+  value: unknown,
+  defaultValue: Side | false | undefined,
+  name: string,
+): Side | false | undefined {
+  if (value === undefined) return defaultValue;
+  if (
+    value !== false &&
+    value !== Side.top &&
+    value !== Side.right &&
+    value !== Side.bottom &&
+    value !== Side.left
+  ) {
+    throw new ConfigurationError(`${name} must be a side or false`);
+  }
+  return value;
+}
+
 /** User-facing configuration shared by every layout item. @public */
 export interface ItemConfig {
   /**
@@ -253,7 +339,7 @@ function resolveItemConfigContentWithBudget(
  * @public
  */
 export function resolveItemConfigId(id: string | undefined): string {
-  return id ?? resolvedItemConfigDefaults.id;
+  return resolveString(id, resolvedItemConfigDefaults.id, 'ItemConfig.id');
 }
 
 /**
@@ -261,12 +347,16 @@ export function resolveItemConfigId(id: string | undefined): string {
  * @public
  */
 export function resolveItemConfigSize(size: string | undefined): SizeWithUnit {
-  return size === undefined
-    ? {
-        size: resolvedItemConfigDefaults.size,
-        sizeUnit: resolvedItemConfigDefaults.sizeUnit,
-      }
-    : parseSize(size, [SizeUnit.Percent, SizeUnit.Fractional]);
+  if (size === undefined) {
+    return {
+      size: resolvedItemConfigDefaults.size,
+      sizeUnit: resolvedItemConfigDefaults.sizeUnit,
+    };
+  }
+  if (typeof size !== 'string') {
+    throw new ConfigurationError('ItemConfig.size must be a string');
+  }
+  return parseSize(size, [SizeUnit.Percent, SizeUnit.Fractional]);
 }
 
 /**
@@ -276,12 +366,16 @@ export function resolveItemConfigSize(size: string | undefined): SizeWithUnit {
 export function resolveItemConfigMinSize(
   minSize: string | undefined,
 ): UndefinableSizeWithUnit {
-  return minSize === undefined
-    ? {
-        size: resolvedItemConfigDefaults.minSize,
-        sizeUnit: resolvedItemConfigDefaults.minSizeUnit,
-      }
-    : parseSize(minSize, [SizeUnit.Pixel]);
+  if (minSize === undefined) {
+    return {
+      size: resolvedItemConfigDefaults.minSize,
+      sizeUnit: resolvedItemConfigDefaults.minSizeUnit,
+    };
+  }
+  if (typeof minSize !== 'string') {
+    throw new ConfigurationError('ItemConfig.minSize must be a string');
+  }
+  return parseSize(minSize, [SizeUnit.Pixel]);
 }
 
 /**
@@ -365,14 +459,45 @@ export function resolveHeaderedItemConfigHeader(
   if (header === undefined) {
     return undefined;
   } else {
+    assertOptionalConfigObject(header, 'HeaderedItemConfig.header');
     const result: ResolvedHeaderedItemConfigHeader = {
-      show: header.show,
-      popout: header.popout,
-      dock: header.dock,
-      maximise: header.maximise,
-      close: header.close,
-      minimise: header.minimise,
-      tabDropdown: header.tabDropdown,
+      show: resolveSideOrFalse(
+        header.show,
+        undefined,
+        'HeaderedItemConfig.header.show',
+      ),
+      popout: resolveStringOrFalse(
+        header.popout,
+        undefined,
+        'HeaderedItemConfig.header.popout',
+      ),
+      dock: resolveStringOrFalse(
+        header.dock,
+        undefined,
+        'HeaderedItemConfig.header.dock',
+      ),
+      maximise: resolveStringOrFalse(
+        header.maximise,
+        undefined,
+        'HeaderedItemConfig.header.maximise',
+      ),
+      close:
+        header.close === undefined
+          ? undefined
+          : resolveString(header.close, '', 'HeaderedItemConfig.header.close'),
+      minimise:
+        header.minimise === undefined
+          ? undefined
+          : resolveString(
+              header.minimise,
+              '',
+              'HeaderedItemConfig.header.minimise',
+            ),
+      tabDropdown: resolveStringOrFalse(
+        header.tabDropdown,
+        undefined,
+        'HeaderedItemConfig.header.tabDropdown',
+      ),
     };
     return result;
   }
@@ -392,7 +517,11 @@ export function resolveHeaderedItemConfigIdAndMaximised(
 } {
   return {
     id: resolveItemConfigId(config.id),
-    maximised: config.maximised ?? false,
+    maximised: resolveBoolean(
+      config.maximised,
+      false,
+      'HeaderedItemConfig.maximised',
+    ),
   };
 }
 
@@ -463,7 +592,11 @@ function resolveStackItemConfigWithBudget(
     minSizeUnit,
     id,
     maximised,
-    isClosable: itemConfig.isClosable ?? resolvedItemConfigDefaults.isClosable,
+    isClosable: resolveBoolean(
+      itemConfig.isClosable,
+      resolvedItemConfigDefaults.isClosable,
+      'StackItemConfig.isClosable',
+    ),
     activeItemIndex:
       content.length === 0
         ? undefined
@@ -633,7 +766,7 @@ function resolveComponentItemConfigWithDefault(
     if (itemConfig.title === undefined || itemConfig.title === '') {
       title = componentTypeToTitle(componentType);
     } else {
-      title = itemConfig.title;
+      title = resolveString(itemConfig.title, '', 'ComponentItemConfig.title');
     }
     const { size, sizeUnit } = resolveItemConfigSize(itemConfig.size);
     const { size: minSize, sizeUnit: minSizeUnit } = resolveItemConfigMinSize(
@@ -648,9 +781,16 @@ function resolveComponentItemConfigWithDefault(
       minSizeUnit,
       id,
       maximised,
-      isClosable:
-        itemConfig.isClosable ?? resolvedItemConfigDefaults.isClosable,
-      reorderEnabled: itemConfig.reorderEnabled ?? reorderEnabledDefault,
+      isClosable: resolveBoolean(
+        itemConfig.isClosable,
+        resolvedItemConfigDefaults.isClosable,
+        'ComponentItemConfig.isClosable',
+      ),
+      reorderEnabled: resolveBoolean(
+        itemConfig.reorderEnabled,
+        reorderEnabledDefault,
+        'ComponentItemConfig.reorderEnabled',
+      ),
       title,
       header: resolveHeaderedItemConfigHeader(itemConfig.header),
       componentType,
@@ -788,7 +928,11 @@ function resolveRowOrColumnItemConfigWithBudget(
     minSize,
     minSizeUnit,
     id: resolveItemConfigId(itemConfig.id),
-    isClosable: itemConfig.isClosable ?? resolvedItemConfigDefaults.isClosable,
+    isClosable: resolveBoolean(
+      itemConfig.isClosable,
+      resolvedItemConfigDefaults.isClosable,
+      'RowOrColumnItemConfig.isClosable',
+    ),
   };
   return result;
 }
@@ -1188,39 +1332,72 @@ export interface LayoutConfigHeader {
 export function resolveLayoutConfigSettings(
   settings: LayoutConfigSettings | undefined,
 ): ResolvedLayoutConfigSettings {
+  assertOptionalConfigObject(settings, 'LayoutConfig.settings');
   const result: ResolvedLayoutConfigSettings = {
-    constrainDragToContainer:
-      settings?.constrainDragToContainer ??
+    constrainDragToContainer: resolveBoolean(
+      settings?.constrainDragToContainer,
       resolvedLayoutConfigSettingsDefaults.constrainDragToContainer,
-    reorderEnabled:
-      settings?.reorderEnabled ??
+      'LayoutConfig.settings.constrainDragToContainer',
+    ),
+    reorderEnabled: resolveBoolean(
+      settings?.reorderEnabled,
       resolvedLayoutConfigSettingsDefaults.reorderEnabled,
-    popoutWholeStack:
-      settings?.popoutWholeStack ??
+      'LayoutConfig.settings.reorderEnabled',
+    ),
+    popoutWholeStack: resolveBoolean(
+      settings?.popoutWholeStack,
       resolvedLayoutConfigSettingsDefaults.popoutWholeStack,
-    blockedPopoutsThrowError:
-      settings?.blockedPopoutsThrowError ??
+      'LayoutConfig.settings.popoutWholeStack',
+    ),
+    blockedPopoutsThrowError: resolveBoolean(
+      settings?.blockedPopoutsThrowError,
       resolvedLayoutConfigSettingsDefaults.blockedPopoutsThrowError,
-    closePopoutsOnUnload:
-      settings?.closePopoutsOnUnload ??
+      'LayoutConfig.settings.blockedPopoutsThrowError',
+    ),
+    closePopoutsOnUnload: resolveBoolean(
+      settings?.closePopoutsOnUnload,
       resolvedLayoutConfigSettingsDefaults.closePopoutsOnUnload,
-    responsiveMode:
-      settings?.responsiveMode ??
-      resolvedLayoutConfigSettingsDefaults.responsiveMode,
-    tabOverlapAllowance:
-      settings?.tabOverlapAllowance ??
+      'LayoutConfig.settings.closePopoutsOnUnload',
+    ),
+    responsiveMode: resolveResponsiveMode(settings?.responsiveMode),
+    tabOverlapAllowance: resolveFiniteNumber(
+      settings?.tabOverlapAllowance,
       resolvedLayoutConfigSettingsDefaults.tabOverlapAllowance,
-    reorderOnTabMenuClick:
-      settings?.reorderOnTabMenuClick ??
+      'LayoutConfig.settings.tabOverlapAllowance',
+    ),
+    reorderOnTabMenuClick: resolveBoolean(
+      settings?.reorderOnTabMenuClick,
       resolvedLayoutConfigSettingsDefaults.reorderOnTabMenuClick,
-    tabControlOffset:
-      settings?.tabControlOffset ??
+      'LayoutConfig.settings.reorderOnTabMenuClick',
+    ),
+    tabControlOffset: resolveFiniteNumber(
+      settings?.tabControlOffset,
       resolvedLayoutConfigSettingsDefaults.tabControlOffset,
-    popInOnClose:
-      settings?.popInOnClose ??
+      'LayoutConfig.settings.tabControlOffset',
+    ),
+    popInOnClose: resolveBoolean(
+      settings?.popInOnClose,
       resolvedLayoutConfigSettingsDefaults.popInOnClose,
+      'LayoutConfig.settings.popInOnClose',
+    ),
   };
   return result;
+}
+
+function resolveResponsiveMode(value: unknown): ResponsiveMode {
+  if (value === undefined) {
+    return resolvedLayoutConfigSettingsDefaults.responsiveMode;
+  }
+  if (
+    value !== ResponsiveMode.none &&
+    value !== ResponsiveMode.always &&
+    value !== ResponsiveMode.onload
+  ) {
+    throw new ConfigurationError(
+      'LayoutConfig.settings.responsiveMode is invalid',
+    );
+  }
+  return value;
 }
 
 /**
@@ -1230,6 +1407,7 @@ export function resolveLayoutConfigSettings(
 export function resolveLayoutConfigDimensions(
   dimensions: LayoutConfigDimensions | undefined,
 ): ResolvedLayoutConfigDimensions {
+  assertOptionalConfigObject(dimensions, 'LayoutConfig.dimensions');
   const { size: defaultMinItemHeight, sizeUnit: defaultMinItemHeightUnit } =
     resolveDefaultMinItemHeight(dimensions);
   const { size: defaultMinItemWidth, sizeUnit: defaultMinItemWidthUnit } =
@@ -1343,15 +1521,43 @@ function resolveDefaultMinItemWidth(
 export function resolveLayoutConfigHeader(
   header: LayoutConfigHeader | undefined,
 ): ResolvedLayoutConfigHeader {
+  assertOptionalConfigObject(header, 'LayoutConfig.header');
   const result: ResolvedLayoutConfigHeader = {
-    show: header?.show ?? resolvedLayoutConfigHeaderDefaults.show,
-    popout: header?.popout ?? resolvedLayoutConfigHeaderDefaults.popout,
-    dock: header?.popin ?? resolvedLayoutConfigHeaderDefaults.dock,
-    maximise: header?.maximise ?? resolvedLayoutConfigHeaderDefaults.maximise,
-    close: header?.close ?? resolvedLayoutConfigHeaderDefaults.close,
-    minimise: header?.minimise ?? resolvedLayoutConfigHeaderDefaults.minimise,
-    tabDropdown:
-      header?.tabDropdown ?? resolvedLayoutConfigHeaderDefaults.tabDropdown,
+    show: resolveSideOrFalse(
+      header?.show,
+      resolvedLayoutConfigHeaderDefaults.show,
+      'LayoutConfig.header.show',
+    ) as Side | false,
+    popout: resolveStringOrFalse(
+      header?.popout,
+      resolvedLayoutConfigHeaderDefaults.popout,
+      'LayoutConfig.header.popout',
+    ) as string | false,
+    dock: resolveString(
+      header?.popin,
+      resolvedLayoutConfigHeaderDefaults.dock,
+      'LayoutConfig.header.popin',
+    ),
+    maximise: resolveStringOrFalse(
+      header?.maximise,
+      resolvedLayoutConfigHeaderDefaults.maximise,
+      'LayoutConfig.header.maximise',
+    ) as string | false,
+    close: resolveStringOrFalse(
+      header?.close,
+      resolvedLayoutConfigHeaderDefaults.close,
+      'LayoutConfig.header.close',
+    ) as string | false,
+    minimise: resolveString(
+      header?.minimise,
+      resolvedLayoutConfigHeaderDefaults.minimise,
+      'LayoutConfig.header.minimise',
+    ),
+    tabDropdown: resolveStringOrFalse(
+      header?.tabDropdown,
+      resolvedLayoutConfigHeaderDefaults.tabDropdown,
+      'LayoutConfig.header.tabDropdown',
+    ) as string | false,
   };
   return result;
 }
@@ -1566,13 +1772,41 @@ export interface PopoutLayoutConfigWindow {
 export function resolvePopoutLayoutConfigWindow(
   window: PopoutLayoutConfigWindow | undefined,
 ): ResolvedPopoutLayoutConfigWindow {
+  assertOptionalConfigObject(window, 'PopoutLayoutConfig.window');
   const defaults = resolvedPopoutLayoutConfigWindowDefaults;
   return {
-    width: window?.width ?? defaults.width,
-    height: window?.height ?? defaults.height,
-    left: window?.left ?? defaults.left,
-    top: window?.top ?? defaults.top,
+    width: resolveNullableFiniteNumber(
+      window?.width,
+      defaults.width,
+      'PopoutLayoutConfig.window.width',
+    ),
+    height: resolveNullableFiniteNumber(
+      window?.height,
+      defaults.height,
+      'PopoutLayoutConfig.window.height',
+    ),
+    left: resolveNullableFiniteNumber(
+      window?.left,
+      defaults.left,
+      'PopoutLayoutConfig.window.left',
+    ),
+    top: resolveNullableFiniteNumber(
+      window?.top,
+      defaults.top,
+      'PopoutLayoutConfig.window.top',
+    ),
   };
+}
+
+function resolveNullableFiniteNumber(
+  value: unknown,
+  defaultValue: number | null,
+  name: string,
+): number | null {
+  if (value === undefined || value === null) {
+    return value === undefined ? defaultValue : null;
+  }
+  return resolveFiniteNumber(value, 0, name);
 }
 
 /**
@@ -1628,8 +1862,16 @@ function resolvePopoutLayoutConfigWithBudget(
     dimensions: resolveLayoutConfigDimensions(popoutConfig.dimensions),
     settings,
     header: resolveLayoutConfigHeader(popoutConfig.header),
-    parentId: popoutConfig.parentId ?? null,
-    indexInParent: popoutConfig.indexInParent ?? null,
+    parentId: resolveNullableString(
+      popoutConfig.parentId,
+      null,
+      'PopoutLayoutConfig.parentId',
+    ),
+    indexInParent: resolveNullableFiniteNumber(
+      popoutConfig.indexInParent,
+      null,
+      'PopoutLayoutConfig.indexInParent',
+    ),
     window: resolvePopoutLayoutConfigWindow(popoutConfig.window),
     resolved: true,
   };
