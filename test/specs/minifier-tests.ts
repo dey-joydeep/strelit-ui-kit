@@ -17,6 +17,40 @@ describe('resolved layout config minifier', function () {
     );
   });
 
+  it('rejects partial resolved structures with ConfigurationError', function () {
+    const resolved = resolveLayoutConfig({
+      root: { type: 'component', componentType: 'panel' },
+      openPopouts: [
+        {
+          root: { type: 'component', componentType: 'popout-panel' },
+          parentId: null,
+          indexInParent: null,
+        },
+      ],
+    });
+    const malformedConfigs: unknown[] = [
+      { ...resolved, settings: {} },
+      { ...resolved, dimensions: {} },
+      { ...resolved, header: {} },
+      { ...resolved, root: { ...resolved.root, size: undefined } },
+      {
+        ...resolved,
+        openPopouts: [{ ...resolved.openPopouts[0], window: undefined }],
+      },
+      {
+        ...resolved,
+        openPopouts: [{ ...resolved.openPopouts[0], parentId: undefined }],
+      },
+    ];
+
+    for (const malformed of malformedConfigs) {
+      const minified = minifyResolvedLayoutConfig(malformed as never);
+      expect(() => unminifyResolvedLayoutConfig(minified)).toThrow(
+        ConfigurationError,
+      );
+    }
+  });
+
   it('preserves unknown compact value tokens while unminifying', function () {
     expect(translateObject({ value: 'a' }, false)).toEqual({ value: 'a' });
     expect(translateObject({ value: 'z' }, false)).toEqual({ value: 'z' });
@@ -66,6 +100,23 @@ describe('resolved layout config minifier', function () {
     const minified = minifyResolvedLayoutConfig(resolved);
 
     expect(unminifyResolvedLayoutConfig(minified)).toEqual(resolved);
+  });
+
+  it('preserves supported signed popout and tab positioning values', function () {
+    const resolved = resolveLayoutConfig({
+      settings: { tabOverlapAllowance: -2, tabControlOffset: -3 },
+      openPopouts: [
+        {
+          parentId: 'parent',
+          indexInParent: -1,
+          window: { left: -100, top: -50 },
+        },
+      ],
+    });
+
+    expect(
+      unminifyResolvedLayoutConfig(minifyResolvedLayoutConfig(resolved)),
+    ).toEqual(resolved);
   });
 
   it('accepts the representation boundary and rejects the next level', function () {

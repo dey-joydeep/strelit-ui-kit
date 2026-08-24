@@ -913,6 +913,214 @@ function assertRecord(
   }
 }
 
+function assertBoolean(value: unknown, name: string): void {
+  if (typeof value !== 'boolean') {
+    throw new ConfigurationError(`${name} must be a boolean`);
+  }
+}
+
+function assertFiniteNumber(
+  value: unknown,
+  name: string,
+  minimum = Number.NEGATIVE_INFINITY,
+): void {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < minimum) {
+    throw new ConfigurationError(`${name} must be a finite number`);
+  }
+}
+
+function assertStringOrFalse(value: unknown, name: string): void {
+  if (value !== false && typeof value !== 'string') {
+    throw new ConfigurationError(`${name} must be a string or false`);
+  }
+}
+
+function assertSideOrFalse(value: unknown, name: string): void {
+  if (
+    value !== false &&
+    value !== Side.top &&
+    value !== Side.right &&
+    value !== Side.bottom &&
+    value !== Side.left
+  ) {
+    throw new ConfigurationError(`${name} must be a side or false`);
+  }
+}
+
+function assertSizeUnit(value: unknown, name: string): void {
+  if (
+    value !== SizeUnit.Pixel &&
+    value !== SizeUnit.Percent &&
+    value !== SizeUnit.Fractional &&
+    value !== SizeUnit.Em
+  ) {
+    throw new ConfigurationError(`${name} has an invalid size unit`);
+  }
+}
+
+function assertResolvedSettings(value: unknown): void {
+  const name = 'Unminified layout configuration settings';
+  assertRecord(value, name);
+  for (const property of [
+    'constrainDragToContainer',
+    'reorderEnabled',
+    'popoutWholeStack',
+    'blockedPopoutsThrowError',
+    'closePopoutsOnUnload',
+    'reorderOnTabMenuClick',
+    'popInOnClose',
+  ]) {
+    assertBoolean(value[property], `${name}.${property}`);
+  }
+  if (
+    value.responsiveMode !== ResponsiveMode.none &&
+    value.responsiveMode !== ResponsiveMode.always &&
+    value.responsiveMode !== ResponsiveMode.onload
+  ) {
+    throw new ConfigurationError(`${name}.responsiveMode is invalid`);
+  }
+  assertFiniteNumber(value.tabOverlapAllowance, `${name}.tabOverlapAllowance`);
+  assertFiniteNumber(value.tabControlOffset, `${name}.tabControlOffset`);
+}
+
+function assertResolvedDimensions(value: unknown): void {
+  const name = 'Unminified layout configuration dimensions';
+  assertRecord(value, name);
+  for (const property of [
+    'borderWidth',
+    'borderGrabWidth',
+    'defaultMinItemHeight',
+    'defaultMinItemWidth',
+    'headerHeight',
+    'dragProxyWidth',
+    'dragProxyHeight',
+  ]) {
+    assertFiniteNumber(value[property], `${name}.${property}`, 0);
+  }
+  assertSizeUnit(
+    value.defaultMinItemHeightUnit,
+    `${name}.defaultMinItemHeightUnit`,
+  );
+  assertSizeUnit(
+    value.defaultMinItemWidthUnit,
+    `${name}.defaultMinItemWidthUnit`,
+  );
+}
+
+function assertResolvedHeader(value: unknown): void {
+  const name = 'Unminified layout configuration header';
+  assertRecord(value, name);
+  assertSideOrFalse(value.show, `${name}.show`);
+  assertStringOrFalse(value.popout, `${name}.popout`);
+  if (typeof value.dock !== 'string') {
+    throw new ConfigurationError(`${name}.dock must be a string`);
+  }
+  assertStringOrFalse(value.maximise, `${name}.maximise`);
+  if (typeof value.minimise !== 'string') {
+    throw new ConfigurationError(`${name}.minimise must be a string`);
+  }
+  assertStringOrFalse(value.close, `${name}.close`);
+  assertStringOrFalse(value.tabDropdown, `${name}.tabDropdown`);
+}
+
+function assertResolvedPopoutFields(value: Record<string, unknown>): void {
+  const name = 'Unminified popout configuration';
+  if (value.parentId !== null && typeof value.parentId !== 'string') {
+    throw new ConfigurationError(`${name}.parentId must be a string or null`);
+  }
+  if (
+    value.indexInParent !== null &&
+    (typeof value.indexInParent !== 'number' ||
+      !Number.isFinite(value.indexInParent))
+  ) {
+    throw new ConfigurationError(
+      `${name}.indexInParent must be a finite number or null`,
+    );
+  }
+  assertRecord(value.window, `${name}.window`);
+  for (const property of ['width', 'height', 'left', 'top']) {
+    const field = value.window[property];
+    if (field !== null) {
+      assertFiniteNumber(field, `${name}.window.${property}`);
+    }
+  }
+}
+
+function assertOptionalHeaderedItemHeader(value: unknown): void {
+  if (value === undefined) {
+    return;
+  }
+  const name = 'Unminified headered item configuration header';
+  assertRecord(value, name);
+  if (value.show !== undefined) {
+    assertSideOrFalse(value.show, `${name}.show`);
+  }
+  for (const property of ['popout', 'dock', 'maximise', 'tabDropdown']) {
+    const field = value[property];
+    if (field !== undefined) {
+      assertStringOrFalse(field, `${name}.${property}`);
+    }
+  }
+  for (const property of ['close', 'minimise']) {
+    const field = value[property];
+    if (field !== undefined && typeof field !== 'string') {
+      throw new ConfigurationError(`${name}.${property} must be a string`);
+    }
+  }
+}
+
+function assertResolvedItemFields(
+  value: Record<string, unknown>,
+): asserts value is Record<string, unknown> & { content: unknown[] } {
+  const name = 'Unminified layout item configuration';
+  if (!Array.isArray(value.content)) {
+    throw new ConfigurationError(`${name}.content must be an array`);
+  }
+  assertFiniteNumber(value.size, `${name}.size`, 0);
+  assertSizeUnit(value.sizeUnit, `${name}.sizeUnit`);
+  if (value.minSize !== undefined) {
+    assertFiniteNumber(value.minSize, `${name}.minSize`, 0);
+  }
+  assertSizeUnit(value.minSizeUnit, `${name}.minSizeUnit`);
+  if (typeof value.id !== 'string') {
+    throw new ConfigurationError(`${name}.id must be a string`);
+  }
+  assertBoolean(value.isClosable, `${name}.isClosable`);
+
+  if (value.type === ItemType.stack || value.type === ItemType.component) {
+    assertBoolean(value.maximised, `${name}.maximised`);
+    assertOptionalHeaderedItemHeader(value.header);
+  }
+  if (value.type === ItemType.stack) {
+    if (value.content.length === 0) {
+      if (value.activeItemIndex !== undefined) {
+        throw new ConfigurationError(
+          `${name}.activeItemIndex must be undefined for an empty stack`,
+        );
+      }
+    } else if (
+      typeof value.activeItemIndex !== 'number' ||
+      !Number.isInteger(value.activeItemIndex) ||
+      value.activeItemIndex < 0 ||
+      value.activeItemIndex >= value.content.length
+    ) {
+      throw new ConfigurationError(
+        `${name}.activeItemIndex must be an in-range integer`,
+      );
+    }
+  } else if (value.type === ItemType.component) {
+    if (value.content.length !== 0) {
+      throw new ConfigurationError(
+        `${name}.content must be empty for a component`,
+      );
+    }
+    assertBoolean(value.reorderEnabled, `${name}.reorderEnabled`);
+    if (typeof value.title !== 'string') {
+      throw new ConfigurationError(`${name}.title must be a string`);
+    }
+  }
+}
+
 function assertResolvedLayoutConfigStructure(value: unknown): void {
   type Frame =
     | {
@@ -953,18 +1161,12 @@ function assertResolvedLayoutConfigStructure(value: unknown): void {
           'Unminified layout configuration openPopouts must be an array',
         );
       }
-      assertRecord(
-        frame.value.settings,
-        'Unminified layout configuration settings',
-      );
-      assertRecord(
-        frame.value.dimensions,
-        'Unminified layout configuration dimensions',
-      );
-      assertRecord(
-        frame.value.header,
-        'Unminified layout configuration header',
-      );
+      assertResolvedSettings(frame.value.settings);
+      assertResolvedDimensions(frame.value.dimensions);
+      assertResolvedHeader(frame.value.header);
+      if (frame.popoutDepth > 0) {
+        assertResolvedPopoutFields(frame.value);
+      }
       if (frame.value.root !== undefined) {
         stack.push({ kind: 'item', value: frame.value.root, itemDepth: 0 });
       }
@@ -990,11 +1192,7 @@ function assertResolvedLayoutConfigStructure(value: unknown): void {
           'Unminified layout item configuration has an invalid type',
         );
       }
-      if (!Array.isArray(frame.value.content)) {
-        throw new ConfigurationError(
-          'Unminified layout item configuration content must be an array',
-        );
-      }
+      assertResolvedItemFields(frame.value);
       if (
         frame.value.type === ItemType.component &&
         !Object.prototype.hasOwnProperty.call(frame.value, 'componentType')
