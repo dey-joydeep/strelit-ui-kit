@@ -43,21 +43,26 @@ a high-risk pull request, use this final sequence:
 
 1. Complete implementation, focused checks, self-review, and finding closure.
 2. Commit the candidate so the final review targets an immutable full SHA.
-3. Run `npm run verify:pr` against that candidate.
-4. Complete the path-and-domain coverage manifest required by `AGENTS.md`.
-5. For a large high-risk pull request, complete independent domain discovery
+3. Complete the path-and-domain coverage manifest required by `AGENTS.md`.
+4. For a large high-risk pull request, complete independent domain discovery
    across at least two unused reviewer contexts.
-6. Validate and disposition every finding, fixing confirmed defects and
+5. Validate and disposition every finding, fixing confirmed defects and
    rerunning affected checks. A Medium-risk acceptance must link to an existing
    current-PR comment from the PR author that records the accepted count and
    rationale.
-7. Freeze the resulting SHA and rerun `npm run verify:pr` if the head changed.
+6. If the head changed, freeze the new SHA and repeat coverage and domain
+   discovery for every invalidated path-domain assignment.
+7. Run the ordered pipeline, API demo build, and API browser smoke against the
+   exact SHA, then record the completed verification unit in the ledger.
 8. For a large high-risk pull request, obtain an unused independent synthesis
    review over the whole PR and exact frozen SHA. For other high-risk pull
    requests, obtain the normal independent fresh whole-PR review.
-9. Obtain approval on that same SHA from the synthesis reviewer for a large
-   high-risk pull request or from the declared fresh-discovery reviewer
-   otherwise.
+9. Finish the ledger and run `npm run verify:pr`. This definitive command reruns
+   required verification and rejects incomplete coverage, verification, or
+   synthesis evidence.
+10. Obtain approval on that same SHA from the synthesis reviewer for a large
+    high-risk pull request or from the declared fresh-discovery reviewer
+    otherwise.
 
 Any new commit invalidates synthesis and approval. New external findings reopen
 the gate until validated and dispositioned. Once the unchanged SHA has complete

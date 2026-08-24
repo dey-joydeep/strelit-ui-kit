@@ -413,6 +413,48 @@ describe('Component State Saving & Initial State', function () {
     expect(roots[1].style.zIndex).not.toBe('');
   });
 
+  it('preserves maximised presentation when a replacement release observer throws', function () {
+    const rootHtmlElement = document.createElement('div');
+    const oldComponent = { rootHtmlElement };
+    layout.registerComponentFactoryFunction(
+      'oldComponent',
+      () => oldComponent,
+      true,
+    );
+    layout.registerComponentFactoryFunction(
+      'newComponent',
+      () => ({ rootHtmlElement: document.createElement('div') }),
+      true,
+    );
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: [{ type: 'component', componentType: 'oldComponent' }],
+      },
+    });
+    const stack = layout.rootItem as Stack;
+    stack.maximise();
+    const item = layout.getComponentItemsByType('oldComponent')[0];
+    const maximisedZIndex = rootHtmlElement.style.zIndex;
+    const releaseObserver = () => {
+      throw new Error('release observer failed');
+    };
+    item.container.on('beforeComponentRelease', releaseObserver);
+
+    expect(() =>
+      item.container.replaceComponent({
+        type: 'component',
+        componentType: 'newComponent',
+      }),
+    ).toThrow('release observer failed');
+
+    expect(layout.maximisedStack).toBe(stack);
+    expect(item.componentType).toBe('oldComponent');
+    expect(item.container.component).toBe(oldComponent);
+    expect(rootHtmlElement.style.zIndex).toBe(maximisedZIndex);
+    item.container.off('beforeComponentRelease', releaseObserver);
+  });
+
   it('restores maximised presentation when replacement metadata rollback also fails', function () {
     const roots: HTMLElement[] = [];
     const oldComponents: object[] = [];

@@ -5,6 +5,7 @@ describe('DragListener iframe handling', () => {
   const elements: HTMLElement[] = [];
 
   afterEach(() => {
+    vi.useRealTimers();
     for (const element of elements.splice(0)) {
       element.remove();
     }
@@ -158,6 +159,42 @@ describe('DragListener iframe handling', () => {
     );
     expect(listener.isTracking).toBe(false);
     expect(dragStop).toHaveBeenCalledOnce();
+    listener.destroy();
+  });
+
+  it('transfers delayed-drag ownership without orphaning the previous timer', () => {
+    vi.useFakeTimers();
+    const handle = document.createElement('div');
+    const iframe = document.createElement('iframe');
+    document.body.append(handle, iframe);
+    elements.push(handle, iframe);
+    const listener = new DragListener(handle, []);
+    const dragStart = vi.fn();
+    listener.on('dragStart', dragStart);
+
+    for (const pointerId of [1, 2]) {
+      handle.dispatchEvent(
+        new PointerEvent('pointerdown', {
+          bubbles: true,
+          isPrimary: true,
+          pointerId,
+          pointerType: 'touch',
+        }),
+      );
+    }
+    document.dispatchEvent(
+      new PointerEvent('pointerup', {
+        bubbles: true,
+        pointerId: 2,
+        pointerType: 'touch',
+      }),
+    );
+    vi.runAllTimers();
+
+    expect(listener.isTracking).toBe(false);
+    expect(dragStart).not.toHaveBeenCalled();
+    expect(document.body.classList.contains('lm_dragging')).toBe(false);
+    expect(iframe.style.getPropertyValue('pointer-events')).toBe('');
     listener.destroy();
   });
 });

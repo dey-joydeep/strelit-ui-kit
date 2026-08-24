@@ -422,6 +422,22 @@ describe('contribution governance workflow', () => {
     expect(docsIndex).toContain('./contributing/ai-change-quality-rubric.md');
   });
 
+  it('documents definitive PR verification after ledger synthesis', () => {
+    const verificationGuide = readFileSync(
+      resolve('docs/contributing/verification-pipeline.md'),
+      'utf8',
+    );
+    const synthesis = verificationGuide.indexOf(
+      'obtain an unused independent synthesis',
+    );
+    const definitiveVerification = verificationGuide.indexOf(
+      'Finish the ledger and run `npm run verify:pr`',
+    );
+
+    expect(synthesis).toBeGreaterThan(-1);
+    expect(definitiveVerification).toBeGreaterThan(synthesis);
+  });
+
   it('binds compatibility decisions to an explicit product-evolution phase', () => {
     const agents = readFileSync(resolve('AGENTS.md'), 'utf8');
     const skill = readFileSync(

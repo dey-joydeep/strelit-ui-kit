@@ -113,6 +113,7 @@ export class DragListener extends EventEmitter {
     coordinates: DragListenerPointerCoordinates,
     pointerId: number,
   ) {
+    this.processDragStop();
     this._nOriginalX = coordinates.x;
     this._nOriginalY = coordinates.y;
     this._activePointerId = pointerId;

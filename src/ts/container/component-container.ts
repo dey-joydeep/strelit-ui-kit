@@ -804,10 +804,10 @@ export class ComponentContainer extends EventEmitter {
 
   /** @internal */
   private releaseComponent() {
+    this.emit('beforeComponentRelease', this._boundComponent.component);
     if (this._stackMaximised) {
       this.exitStackMaximised();
     }
-    this.emit('beforeComponentRelease', this._boundComponent.component);
     this.layoutManager.unbindComponent(
       this,
       this._boundComponent.virtual,

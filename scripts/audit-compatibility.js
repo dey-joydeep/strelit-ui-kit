@@ -215,11 +215,17 @@ const testFileTargets = new Map([
   ['query-helpers-tests.ts', 'query-helpers-tests.ts'],
 ]);
 
-/** Parses validate, check, and intentional snapshot-write modes. */
-function parseArguments() {
-  const check = process.argv.includes('--check');
-  const validate = process.argv.includes('--validate');
-  const write = process.argv.includes('--write') || (!check && !validate);
+/** Parses exactly one validate, check, or intentional snapshot-write mode. */
+function parseArguments(args = process.argv.slice(2)) {
+  const supportedModes = new Set(['--check', '--validate', '--write']);
+  if (args.length !== 1 || !supportedModes.has(args[0])) {
+    throw new Error(
+      'Compatibility audit requires exactly one mode: --check, --validate, or --write',
+    );
+  }
+  const check = args[0] === '--check';
+  const validate = args[0] === '--validate';
+  const write = args[0] === '--write';
   return { check, validate, write };
 }
 
@@ -820,6 +826,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  parseArguments,
   validateExactInventory,
   validateInventoryDigest,
   validatePreservedApiTargets,

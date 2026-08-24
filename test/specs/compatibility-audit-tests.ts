@@ -3,6 +3,11 @@ import { describe, expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
 const compatibilityAudit = require('../../scripts/audit-compatibility.js') as {
+  parseArguments(args: string[]): {
+    check: boolean;
+    validate: boolean;
+    write: boolean;
+  };
   validateExactInventory(
     label: string,
     actualEntries: Record<string, unknown>[],
@@ -38,6 +43,24 @@ const validatePreservedApiTargets = (
 ) => compatibilityAudit.validatePreservedApiTargets(entries, currentApi);
 
 describe('compatibility audit validation', () => {
+  it('requires exactly one supported audit mode', () => {
+    expect(compatibilityAudit.parseArguments(['--validate'])).toEqual({
+      check: false,
+      validate: true,
+      write: false,
+    });
+    for (const args of [
+      [],
+      ['--unknown'],
+      ['--validate', '--unknown'],
+      ['--validate', '--write'],
+    ]) {
+      expect(() => compatibilityAudit.parseArguments(args)).toThrow(
+        'requires exactly one mode',
+      );
+    }
+  });
+
   it('rejects replacement entries that only preserve the inventory count', () => {
     expect(() =>
       validateExactInventory(
