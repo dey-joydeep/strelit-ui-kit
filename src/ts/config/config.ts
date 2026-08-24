@@ -793,7 +793,9 @@ function resolveComponentItemConfigWithDefault(
       title,
       header: resolveHeaderedItemConfigHeader(itemConfig.header),
       componentType,
-      componentState: itemConfig.componentState,
+      componentState: deepCloneValue(
+        itemConfig.componentState,
+      ) as SerializableValue,
     };
     return result;
   }

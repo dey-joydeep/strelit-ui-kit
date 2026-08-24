@@ -108,6 +108,54 @@ describe('BrowserPopout functionality (item.popout())', function () {
     );
   });
 
+  it('uses cached popout configuration when the child becomes cross-origin during save', function () {
+    let childAccessThrows = false;
+    const mockWindow = {
+      closed: false,
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      document: {
+        createElement: () => document.createElement('div'),
+        body: document.createElement('body'),
+        head: document.createElement('head'),
+        write: vi.fn(),
+        close: vi.fn(),
+      },
+      location: { href: '' },
+    } as unknown as Window;
+    Object.defineProperty(mockWindow, '__strelitInstance', {
+      configurable: true,
+      get: () => {
+        if (childAccessThrows) {
+          throw new DOMException('Blocked by origin policy', 'SecurityError');
+        }
+        return undefined;
+      },
+    });
+    vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+    layout.loadLayout({
+      openPopouts: [
+        {
+          root: {
+            type: 'component',
+            id: 'cached-cross-origin-popout',
+            componentType: 'testComponent',
+          },
+        },
+      ],
+    });
+    childAccessThrows = true;
+
+    try {
+      expect(layout.saveLayout().openPopouts[0].root?.id).toBe(
+        'cached-cross-origin-popout',
+      );
+    } finally {
+      childAccessThrows = false;
+    }
+  });
+
   it('retains a real popout for retry when its child becomes inaccessible', function () {
     let childAccessThrows = false;
     const nativeClose = vi.fn(() => {

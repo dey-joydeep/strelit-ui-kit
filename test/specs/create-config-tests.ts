@@ -117,6 +117,26 @@ describe('Layout configuration resolution and defaults', function () {
     expect(resolved.dimensions.defaultMinItemWidth).toBe(35);
   });
 
+  it('clones component state while resolving configuration', function () {
+    const componentState = { nested: { value: 'initial' } };
+    const resolved = resolveLayoutConfig({
+      root: {
+        type: 'component',
+        componentType: 'stateful',
+        componentState,
+      },
+    });
+
+    componentState.nested.value = 'mutated';
+
+    expect(resolved.root?.type).toBe('component');
+    expect(
+      resolved.root?.type === 'component'
+        ? resolved.root.componentState
+        : undefined,
+    ).toEqual({ nested: { value: 'initial' } });
+  });
+
   it.each([
     'borderWidth',
     'borderGrabWidth',
