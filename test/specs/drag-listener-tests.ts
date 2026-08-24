@@ -197,4 +197,46 @@ describe('DragListener iframe handling', () => {
     expect(iframe.style.getPropertyValue('pointer-events')).toBe('');
     listener.destroy();
   });
+
+  it('does not resume pointer tracking after dragStop destroys the listener', () => {
+    vi.useFakeTimers();
+    const handle = document.createElement('div');
+    document.body.append(handle);
+    elements.push(handle);
+    const listener = new DragListener(handle, []);
+    const dragStart = vi.fn();
+    listener.on('dragStart', dragStart);
+    listener.on('dragStop', () => listener.destroy());
+
+    handle.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        isPrimary: true,
+        pointerId: 1,
+        pointerType: 'touch',
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        clientX: 20,
+        clientY: 20,
+        pointerId: 1,
+        pointerType: 'touch',
+      }),
+    );
+    handle.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        isPrimary: true,
+        pointerId: 2,
+        pointerType: 'touch',
+      }),
+    );
+    vi.runAllTimers();
+
+    expect(listener.isTracking).toBe(false);
+    expect(dragStart).toHaveBeenCalledOnce();
+    expect(document.body.classList.contains('lm_dragging')).toBe(false);
+  });
 });

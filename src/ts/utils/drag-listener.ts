@@ -20,6 +20,7 @@ export class DragListener extends EventEmitter {
   private _nOriginalX: number;
   private _nOriginalY: number;
   private _dragging: boolean;
+  private _destroyed = false;
   private _pointerTracking = false;
   private _activePointerId: number | undefined;
   private _iframePointerEvents: {
@@ -85,6 +86,10 @@ export class DragListener extends EventEmitter {
   }
 
   destroy(): void {
+    if (this._destroyed) {
+      return;
+    }
+    this._destroyed = true;
     this.cancelDrag();
     this.checkRemovePointerTrackingEventListeners();
 
@@ -114,6 +119,9 @@ export class DragListener extends EventEmitter {
     pointerId: number,
   ) {
     this.processDragStop();
+    if (this._destroyed) {
+      return;
+    }
     this._nOriginalX = coordinates.x;
     this._nOriginalY = coordinates.y;
     this._activePointerId = pointerId;
