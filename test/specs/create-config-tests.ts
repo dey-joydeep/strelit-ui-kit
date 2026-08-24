@@ -200,6 +200,8 @@ describe('Layout configuration resolution and defaults', function () {
     { settings: { reorderEnabled: 'false' } },
     { settings: { responsiveMode: 'sometimes' } },
     { dimensions: 'broken' },
+    { dimensions: { defaultMinItemHeight: 10 } },
+    { dimensions: { defaultMinItemWidth: false } },
     { header: { show: 'center' } },
     { header: { minimise: false } },
     {
@@ -208,6 +210,7 @@ describe('Layout configuration resolution and defaults', function () {
     { root: { type: 'component', componentType: 'panel', reorderEnabled: 1 } },
     { root: { type: 'component', componentType: 'panel', title: false } },
     { root: { type: 'component', componentType: 'panel', size: 50 } },
+    { root: { type: 'stack', content: [], activeItemIndex: '0' } },
     {
       openPopouts: [
         { parentId: 1, indexInParent: '0', window: { left: '10' } },

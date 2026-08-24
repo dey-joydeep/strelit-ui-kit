@@ -572,11 +572,10 @@ function resolveStackItemConfigWithBudget(
   );
   const configuredActiveItemIndex = itemConfig.activeItemIndex;
   if (
-    content.length > 0 &&
     configuredActiveItemIndex !== undefined &&
     (!Number.isInteger(configuredActiveItemIndex) ||
       configuredActiveItemIndex < 0 ||
-      configuredActiveItemIndex >= content.length)
+      (content.length > 0 && configuredActiveItemIndex >= content.length))
   ) {
     throw new ConfigurationError(
       'StackItemConfig.activeItemIndex must be an in-range integer',
@@ -1496,6 +1495,11 @@ function resolveDefaultMinItemHeight(
       sizeUnit: resolvedLayoutConfigDimensionsDefaults.defaultMinItemHeightUnit,
     };
   } else {
+    if (typeof height !== 'string') {
+      throw new ConfigurationError(
+        'LayoutConfig.dimensions.defaultMinItemHeight must be a string',
+      );
+    }
     return parseSize(height, [SizeUnit.Pixel]);
   }
 }
@@ -1510,6 +1514,11 @@ function resolveDefaultMinItemWidth(
       sizeUnit: resolvedLayoutConfigDimensionsDefaults.defaultMinItemWidthUnit,
     };
   } else {
+    if (typeof width !== 'string') {
+      throw new ConfigurationError(
+        'LayoutConfig.dimensions.defaultMinItemWidth must be a string',
+      );
+    }
     return parseSize(width, [SizeUnit.Pixel]);
   }
 }
