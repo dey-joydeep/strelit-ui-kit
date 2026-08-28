@@ -257,11 +257,13 @@ export class ComponentContainer extends EventEmitter {
       return;
     }
     let firstError: unknown;
+    let hasError = false;
     const attempt = (action: () => void) => {
       try {
         action();
       } catch (error) {
-        firstError ??= error;
+        if (!hasError) firstError = error;
+        hasError = true;
       }
     };
     if (this._stackMaximised) {
@@ -295,7 +297,7 @@ export class ComponentContainer extends EventEmitter {
       attempt(() => this.emit('destroy'));
     }
     this._destroyed = true;
-    if (firstError !== undefined) {
+    if (hasError) {
       throw firstError;
     }
   }

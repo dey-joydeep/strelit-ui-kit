@@ -236,6 +236,7 @@ describe('Layout configuration resolution and defaults', function () {
         { parentId: 1, indexInParent: '0', window: { left: '10' } },
       ],
     },
+    { openPopouts: [{ indexInParent: 0.5 }] },
   ])('rejects malformed primitive configuration %#', (config) => {
     expect(() => resolveLayoutConfig(config as never)).toThrow(
       ConfigurationError,
@@ -254,6 +255,25 @@ describe('Layout configuration resolution and defaults', function () {
       indexInParent: null,
       window: { width: null, height: null, left: null, top: null },
     });
+  });
+
+  it.each([-2, 0, 3, null])(
+    'preserves supported popout indexInParent value %s',
+    (indexInParent) => {
+      const resolved = resolveLayoutConfig({
+        openPopouts: [{ indexInParent }],
+      });
+
+      expect(resolved.openPopouts[0].indexInParent).toBe(indexInParent);
+    },
+  );
+
+  it('preserves fractional popout window coordinates', () => {
+    const window = { width: 640.5, height: 480.25, left: -100.5, top: 50.75 };
+
+    const resolved = resolveLayoutConfig({ openPopouts: [{ window }] });
+
+    expect(resolved.openPopouts[0].window).toEqual(window);
   });
 
   it('maps resolved dock header labels back to public popin labels', () => {

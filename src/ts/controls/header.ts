@@ -330,11 +330,13 @@ export class Header extends EventEmitter {
     }
     this._isDestroyed = true;
     let firstError: unknown;
+    let hasError = false;
     const attempt = (action: () => void) => {
       try {
         action();
       } catch (error) {
-        firstError ??= error;
+        if (!hasError) firstError = error;
+        hasError = true;
       }
     };
     if (!this._destroyEventEmitted) {
@@ -372,7 +374,7 @@ export class Header extends EventEmitter {
         this._elementRemoved = true;
       });
     }
-    if (firstError !== undefined) {
+    if (hasError) {
       this._destroyCleanupFailed = true;
       throw firstError;
     }

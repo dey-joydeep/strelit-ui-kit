@@ -102,6 +102,57 @@ describe('Component State Saving & Initial State', function () {
     expect(unbindComponent).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    ['undefined', undefined, false],
+    ['null', null, true],
+  ] as const)(
+    'preserves `throw %s` from component release while continuing cleanup',
+    (_label, thrownValue, failUnbind) => {
+      layout.registerComponentFactoryFunction('component', () => undefined);
+      layout.loadLayout({
+        root: { type: 'component', componentType: 'component' },
+      });
+      const item = layout.getComponentItemsByType('component')[0];
+      const releaseObserver = vi.fn(() => {
+        throw thrownValue;
+      });
+      const laterReleaseObserver = vi.fn();
+      item.container.on('beforeComponentRelease', releaseObserver);
+      item.container.on('beforeComponentRelease', laterReleaseObserver);
+      const unbindComponent = vi.spyOn(layout, 'unbindComponent');
+      if (failUnbind) {
+        unbindComponent.mockImplementationOnce(() => {
+          throw new Error('later unbind failed');
+        });
+      }
+      const destroyObserver = vi.fn();
+      item.container.on('destroy', destroyObserver);
+
+      let didThrow = false;
+      let caughtValue: unknown;
+      try {
+        item.container.destroy();
+      } catch (error) {
+        didThrow = true;
+        caughtValue = error;
+      }
+
+      expect(didThrow).toBe(true);
+      expect(caughtValue).toBe(thrownValue);
+      expect(releaseObserver).toHaveBeenCalledOnce();
+      expect(laterReleaseObserver).toHaveBeenCalledOnce();
+      expect(unbindComponent).toHaveBeenCalledOnce();
+      expect(destroyObserver).toHaveBeenCalledTimes(failUnbind ? 0 : 1);
+      expect(item.container.stateRequestEvent).toBeUndefined();
+
+      expect(() => item.container.destroy()).not.toThrow();
+      expect(releaseObserver).toHaveBeenCalledOnce();
+      expect(laterReleaseObserver).toHaveBeenCalledOnce();
+      expect(unbindComponent).toHaveBeenCalledTimes(failUnbind ? 2 : 1);
+      expect(destroyObserver).toHaveBeenCalledOnce();
+    },
+  );
+
   it('emits container destroy only after a failed unbind is retried', function () {
     layout.registerComponentFactoryFunction('component', () => undefined);
     layout.loadLayout({

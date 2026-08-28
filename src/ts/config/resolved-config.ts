@@ -1031,10 +1031,10 @@ function assertResolvedPopoutFields(value: Record<string, unknown>): void {
   if (
     value.indexInParent !== null &&
     (typeof value.indexInParent !== 'number' ||
-      !Number.isFinite(value.indexInParent))
+      !Number.isInteger(value.indexInParent))
   ) {
     throw new ConfigurationError(
-      `${name}.indexInParent must be a finite number or null`,
+      `${name}.indexInParent must be an integer or null`,
     );
   }
   assertRecord(value.window, `${name}.window`);
@@ -1092,6 +1092,15 @@ function assertResolvedItemFields(
     assertOptionalHeaderedItemHeader(value.header);
   }
   if (value.type === ItemType.stack) {
+    for (let index = 0; index < value.content.length; index++) {
+      const child = value.content[index];
+      assertRecord(child, `${name}.content[${index}]`);
+      if (child.type !== ItemType.component) {
+        throw new ConfigurationError(
+          `${name}.content must contain only components`,
+        );
+      }
+    }
     if (value.content.length === 0) {
       if (value.activeItemIndex !== undefined) {
         throw new ConfigurationError(

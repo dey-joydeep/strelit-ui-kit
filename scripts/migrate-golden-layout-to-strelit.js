@@ -1553,6 +1553,161 @@ function transformSourceContent(content, filePath) {
     return false;
   }
 
+  function getStaticSourcePropertyName(property) {
+    if (property.name === undefined) {
+      return undefined;
+    }
+    const name = property.name;
+    if (
+      ts.isIdentifier(name) ||
+      ts.isStringLiteral(name) ||
+      ts.isNoSubstitutionTemplateLiteral(name)
+    ) {
+      return name.text;
+    }
+    if (!ts.isComputedPropertyName(name)) {
+      return undefined;
+    }
+    const expression = unwrapComparableExpression(name.expression);
+    return ts.isStringLiteral(expression) ||
+      ts.isNoSubstitutionTemplateLiteral(expression)
+      ? expression.text
+      : undefined;
+  }
+
+  function getSourcePropertyValue(property) {
+    if (ts.isPropertyAssignment(property)) {
+      return property.initializer;
+    }
+    if (ts.isShorthandPropertyAssignment(property)) {
+      return property.name;
+    }
+    return undefined;
+  }
+
+  function unwrapComparableExpression(expression) {
+    let current = expression;
+    while (
+      ts.isParenthesizedExpression(current) ||
+      ts.isAsExpression(current) ||
+      ts.isSatisfiesExpression(current) ||
+      ts.isTypeAssertionExpression(current) ||
+      ts.isNonNullExpression(current)
+    ) {
+      current = current.expression;
+    }
+    return current;
+  }
+
+  function getComparableSourceValue(property) {
+    const propertyValue = getSourcePropertyValue(property);
+    if (propertyValue === undefined) {
+      return undefined;
+    }
+    const expression = unwrapComparableExpression(propertyValue);
+    if (
+      ts.isStringLiteral(expression) ||
+      ts.isNoSubstitutionTemplateLiteral(expression)
+    ) {
+      return { kind: 'string', value: expression.text };
+    }
+    if (ts.isNumericLiteral(expression)) {
+      return { kind: 'number', value: Number(expression.text) };
+    }
+    if (ts.isBigIntLiteral(expression)) {
+      return { kind: 'bigint', value: expression.text };
+    }
+    if (
+      expression.kind === ts.SyntaxKind.TrueKeyword ||
+      expression.kind === ts.SyntaxKind.FalseKeyword ||
+      expression.kind === ts.SyntaxKind.NullKeyword
+    ) {
+      return { kind: 'keyword', value: expression.kind };
+    }
+    if (ts.isIdentifier(expression)) {
+      const symbol = ts.isShorthandPropertyAssignment(property)
+        ? checker.getShorthandAssignmentValueSymbol(property)
+        : checker.getSymbolAtLocation(expression);
+      return {
+        kind: 'identifier',
+        value: symbol ?? expression.text,
+      };
+    }
+    return undefined;
+  }
+
+  function haveEquivalentSourceValues(left, right) {
+    const leftValue = getComparableSourceValue(left);
+    const rightValue = getComparableSourceValue(right);
+    return (
+      leftValue !== undefined &&
+      rightValue !== undefined &&
+      leftValue.kind === rightValue.kind &&
+      leftValue.value === rightValue.value
+    );
+  }
+
+  const redundantComponentNameProperties = new Set();
+  const componentIdentityConflicts = new Set();
+
+  function collectComponentIdentityConflicts(node) {
+    if (manualOnly.nodes.has(node)) {
+      return;
+    }
+    if (
+      ts.isObjectLiteralExpression(node) &&
+      isProvenLayoutItemObjectLiteral(node)
+    ) {
+      const componentNameProperties = node.properties.filter(
+        (property) =>
+          (ts.isPropertyAssignment(property) ||
+            ts.isShorthandPropertyAssignment(property)) &&
+          getStaticSourcePropertyName(property) === 'componentName',
+      );
+      const componentTypeProperties = node.properties.filter(
+        (property) =>
+          property.name !== undefined &&
+          getStaticSourcePropertyName(property) === 'componentType',
+      );
+      if (
+        componentNameProperties.length > 0 &&
+        componentTypeProperties.length > 0
+      ) {
+        const modernProperty =
+          componentTypeProperties.length === 1
+            ? componentTypeProperties[0]
+            : undefined;
+        const allValuesMatch =
+          modernProperty !== undefined &&
+          componentNameProperties.every((legacyProperty) =>
+            haveEquivalentSourceValues(legacyProperty, modernProperty),
+          );
+        if (allValuesMatch) {
+          for (const property of componentNameProperties) {
+            redundantComponentNameProperties.add(property);
+          }
+        } else {
+          const location = sourceFile.getLineAndCharacterOfPosition(
+            node.getStart(sourceFile),
+          );
+          componentIdentityConflicts.add(
+            `source layout item at line ${location.line + 1}, column ${location.character + 1} defines conflicting componentType and componentName values; component selection requires manual review`,
+          );
+        }
+      }
+    }
+    ts.forEachChild(node, collectComponentIdentityConflicts);
+  }
+
+  collectComponentIdentityConflicts(sourceFile);
+  if (componentIdentityConflicts.size > 0) {
+    return {
+      transformed: content,
+      applied: [],
+      manualReviews: [...sourceManualReviews, ...componentIdentityConflicts],
+    };
+  }
+
   function resolveImportName(exportName) {
     const importedName = importedNames.get(exportName);
     if (importedName !== undefined && !nonImportBindings.has(importedName)) {
@@ -1599,8 +1754,40 @@ function transformSourceContent(content, filePath) {
     applied.push(name);
   }
 
+  function removeRedundantObjectProperty(property) {
+    const propertyEnd = property.getEnd();
+    const scanner = ts.createScanner(
+      ts.ScriptTarget.Latest,
+      false,
+      sourceFile.languageVariant,
+      normalized,
+      undefined,
+      propertyEnd,
+    );
+    let token = scanner.scan();
+    while (
+      token >= ts.SyntaxKind.FirstTriviaToken &&
+      token <= ts.SyntaxKind.LastTriviaToken
+    ) {
+      token = scanner.scan();
+    }
+    const hasFollowingComma = token === ts.SyntaxKind.CommaToken;
+    edits.push({
+      start: property.getStart(sourceFile),
+      end: hasFollowingComma ? scanner.getTextPos() : propertyEnd,
+      text: hasFollowingComma
+        ? normalized.slice(propertyEnd, scanner.getTokenPos())
+        : '',
+    });
+    applied.push('redundant config property');
+  }
+
   function visit(node) {
     if (manualOnly.nodes.has(node)) {
+      return;
+    }
+    if (redundantComponentNameProperties.has(node)) {
+      removeRedundantObjectProperty(node);
       return;
     }
     const numericPropertyMigration = getNumericPropertyMigration(
@@ -2369,6 +2556,16 @@ function transformLayoutItem(item, itemPath, manualReviews, sourceVersion) {
 function collectBlockingLayoutItemAmbiguities(item, itemPath, manualReviews) {
   if (!isRecord(item)) {
     return;
+  }
+
+  if (
+    item.componentType !== undefined &&
+    item.componentName !== undefined &&
+    item.componentType !== item.componentName
+  ) {
+    manualReviews.add(
+      `${itemPath} defines differing componentType and componentName values; component selection requires manual review`,
+    );
   }
 
   if (Array.isArray(item.id)) {

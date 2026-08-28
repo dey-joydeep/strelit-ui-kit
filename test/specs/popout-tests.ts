@@ -1229,7 +1229,6 @@ describe('BrowserPopout functionality (item.popout())', function () {
 
   it.each([
     { index: -3, expectedIds: ['returned', 'host'] },
-    { index: 0.5, expectedIds: ['returned', 'host'] },
     { index: 99, expectedIds: ['host', 'returned'] },
   ])(
     'normalizes configured pop-in index $index before binding',
@@ -1303,6 +1302,34 @@ describe('BrowserPopout functionality (item.popout())', function () {
       expect(closeWindow).toHaveBeenCalledOnce();
     },
   );
+
+  it('rejects a fractional configured pop-in index during layout resolution', () => {
+    expect(() =>
+      layout.loadLayout({
+        root: {
+          type: 'stack',
+          content: [
+            {
+              type: 'component',
+              id: 'host',
+              componentType: 'testComponent',
+            },
+          ],
+        },
+        openPopouts: [
+          {
+            root: {
+              type: 'component',
+              id: 'returned',
+              componentType: 'testComponent',
+            },
+            parentId: 'return-parent',
+            indexInParent: 0.5,
+          },
+        ],
+      }),
+    ).toThrow('PopoutLayoutConfig.indexInParent must be an integer or null');
+  });
 
   it('allows pop-in to retry after insertion fails', function () {
     let attempts = 0;

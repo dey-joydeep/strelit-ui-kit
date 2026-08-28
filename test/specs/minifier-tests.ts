@@ -51,6 +51,52 @@ describe('resolved layout config minifier', function () {
     }
   });
 
+  it.each(['row', 'column', 'stack'] as const)(
+    'rejects a structural %s child in an unminified resolved stack',
+    (type) => {
+      const resolved = resolveLayoutConfig({
+        root: {
+          type: 'stack',
+          content: [{ type: 'component', componentType: 'panel' }],
+        },
+      });
+      const structuralChild = resolveLayoutConfig({
+        root: { type, content: [] },
+      }).root;
+      if (resolved.root?.type !== 'stack' || structuralChild === undefined) {
+        throw new Error('Expected resolved stack and structural child');
+      }
+      const malformed = {
+        ...resolved,
+        root: { ...resolved.root, content: [structuralChild] },
+      };
+
+      expect(() =>
+        unminifyResolvedLayoutConfig(
+          minifyResolvedLayoutConfig(malformed as never),
+        ),
+      ).toThrow(
+        'Unminified layout item configuration.content must contain only components',
+      );
+    },
+  );
+
+  it('rejects a fractional popout index when unminifying', function () {
+    const resolved = resolveLayoutConfig({ openPopouts: [{}] });
+    const malformed = {
+      ...resolved,
+      openPopouts: [{ ...resolved.openPopouts[0], indexInParent: 0.5 }],
+    };
+
+    expect(() =>
+      unminifyResolvedLayoutConfig(
+        minifyResolvedLayoutConfig(malformed as never),
+      ),
+    ).toThrow(
+      'Unminified popout configuration.indexInParent must be an integer or null',
+    );
+  });
+
   it('preserves unknown compact value tokens while unminifying', function () {
     expect(translateObject({ value: 'a' }, false)).toEqual({ value: 'a' });
     expect(translateObject({ value: 'z' }, false)).toEqual({ value: 'z' });
@@ -109,7 +155,12 @@ describe('resolved layout config minifier', function () {
         {
           parentId: 'parent',
           indexInParent: -1,
-          window: { left: -100, top: -50 },
+          window: {
+            width: 640.5,
+            height: 480.25,
+            left: -100.5,
+            top: -50.75,
+          },
         },
       ],
     });

@@ -162,11 +162,13 @@ export class RowOrColumn extends ContentItem {
     }
 
     let firstError: unknown;
+    let hasError = false;
     const attempt = (action: () => void) => {
       try {
         action();
       } catch (error) {
-        firstError ??= error;
+        if (!hasError) firstError = error;
+        hasError = true;
       }
     };
     if (this._resizeFrame !== undefined) {
@@ -191,7 +193,7 @@ export class RowOrColumn extends ContentItem {
       this._resizeFrame = undefined;
     }
     attempt(() => super.destroy());
-    if (firstError !== undefined) {
+    if (hasError) {
       this._destroyCleanupFailed = true;
       throw firstError;
     }

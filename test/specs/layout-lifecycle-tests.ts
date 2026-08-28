@@ -627,6 +627,71 @@ describe('layout lifecycle', () => {
     closed = true;
   });
 
+  it.each([
+    ['undefined', undefined, false],
+    ['null', null, true],
+  ] as const)(
+    'retries ContentItem child cleanup after `throw %s` and preserves the first failure',
+    (_label, thrownValue, failLaterCleanup) => {
+      const layout = new StrelitLayout();
+      layouts.push(layout);
+      layout.registerComponentFactoryFunction('panel', () => undefined);
+      layout.loadComponentAsRoot({
+        type: 'component',
+        componentType: 'panel',
+      });
+      const groundItem = layout.groundItem;
+      const rootItem = layout.rootItem;
+      if (groundItem === undefined || rootItem === undefined) {
+        throw new Error('Expected ground and root items');
+      }
+      const beforeItemDestroyed = vi.fn();
+      const itemDestroyed = vi.fn();
+      const laterCleanup = () => {
+        throw new Error('later cleanup failed');
+      };
+      groundItem.on('beforeItemDestroyed', beforeItemDestroyed);
+      if (failLaterCleanup) {
+        groundItem.on('beforeItemDestroyed', laterCleanup);
+      }
+      groundItem.on('itemDestroyed', itemDestroyed);
+      const childDestroy = vi
+        .spyOn(rootItem, 'destroy')
+        .mockImplementationOnce(() => {
+          throw thrownValue;
+        })
+        .mockImplementationOnce(() => undefined);
+
+      let didThrow = false;
+      let caughtValue: unknown;
+      try {
+        groundItem.destroy();
+      } catch (error) {
+        didThrow = true;
+        caughtValue = error;
+      }
+
+      expect(didThrow).toBe(true);
+      expect(caughtValue).toBe(thrownValue);
+      expect(groundItem.contentItems).toEqual([rootItem]);
+      expect(beforeItemDestroyed).toHaveBeenCalledOnce();
+      expect(itemDestroyed).toHaveBeenCalledOnce();
+      expect(groundItem.element.isConnected).toBe(false);
+
+      expect(() => groundItem.destroy()).not.toThrow();
+      expect(childDestroy).toHaveBeenCalledTimes(2);
+      expect(groundItem.contentItems).toHaveLength(0);
+      expect(beforeItemDestroyed).toHaveBeenCalledOnce();
+      expect(itemDestroyed).toHaveBeenCalledOnce();
+
+      childDestroy.mockRestore();
+      if (failLaterCleanup) {
+        groundItem.off('beforeItemDestroyed', laterCleanup);
+      }
+      rootItem.destroy();
+    },
+  );
+
   it('retries stack cleanup without repeating destruction events', () => {
     const layout = new StrelitLayout();
     layouts.push(layout);
@@ -666,6 +731,135 @@ describe('layout lifecycle', () => {
     expect(laterHeaderDestroy).toHaveBeenCalledOnce();
     expect(stack.header.element.isConnected).toBe(false);
   });
+
+  it.each([
+    ['undefined', undefined, false],
+    ['null', null, true],
+  ] as const)(
+    'preserves `throw %s` from header teardown while continuing cleanup',
+    (_label, thrownValue, failTabsCleanup) => {
+      const layout = new StrelitLayout();
+      layouts.push(layout);
+      layout.registerComponentFactoryFunction('panel', () => undefined);
+      layout.loadLayout({
+        root: {
+          type: 'stack',
+          content: [{ type: 'component', componentType: 'panel' }],
+        },
+      });
+      const root = layout.rootItem;
+      if (root === undefined || !root.isStack) {
+        throw new Error('Expected a stack root');
+      }
+      const header = (root as Stack).header;
+      const destroyObserver = vi.fn(() => {
+        throw thrownValue;
+      });
+      const laterDestroyObserver = vi.fn();
+      header.on('destroy', destroyObserver);
+      header.on('destroy', laterDestroyObserver);
+      const tabsContainer = (
+        header as unknown as { _tabsContainer: { destroy(): void } }
+      )._tabsContainer;
+      const tabsDestroy = vi.spyOn(tabsContainer, 'destroy');
+      if (failTabsCleanup) {
+        tabsDestroy.mockImplementationOnce(() => {
+          throw new Error('later tabs cleanup failed');
+        });
+      }
+
+      let didThrow = false;
+      let caughtValue: unknown;
+      try {
+        header.destroy();
+      } catch (error) {
+        didThrow = true;
+        caughtValue = error;
+      }
+
+      expect(didThrow).toBe(true);
+      expect(caughtValue).toBe(thrownValue);
+      expect(destroyObserver).toHaveBeenCalledOnce();
+      expect(laterDestroyObserver).toHaveBeenCalledOnce();
+      expect(tabsDestroy).toHaveBeenCalledOnce();
+      expect(header.element.isConnected).toBe(false);
+
+      expect(() => header.destroy()).not.toThrow();
+      expect(destroyObserver).toHaveBeenCalledOnce();
+      expect(laterDestroyObserver).toHaveBeenCalledOnce();
+      expect(tabsDestroy).toHaveBeenCalledTimes(failTabsCleanup ? 2 : 1);
+    },
+  );
+
+  it.each([
+    ['undefined', undefined, false],
+    ['null', null, true],
+  ] as const)(
+    'preserves `throw %s` from row splitter teardown while continuing cleanup',
+    (_label, thrownValue, failLaterSplitter) => {
+      const layout = new StrelitLayout();
+      layouts.push(layout);
+      layout.registerComponentFactoryFunction('panel', () => undefined);
+      layout.loadLayout({
+        root: {
+          type: 'row',
+          content: Array.from({ length: 3 }, () => ({
+            type: 'component' as const,
+            componentType: 'panel',
+          })),
+        },
+      });
+      const root = layout.rootItem;
+      if (root === undefined || !root.isRow) {
+        throw new Error('Expected a row root');
+      }
+      const row = root as RowOrColumn;
+      const splitters = (row as unknown as { _splitter: { destroy(): void }[] })
+        ._splitter;
+      const firstSplitterDestroy = vi
+        .spyOn(splitters[0], 'destroy')
+        .mockImplementationOnce(() => {
+          throw thrownValue;
+        });
+      const laterSplitterDestroy = vi.spyOn(splitters[1], 'destroy');
+      if (failLaterSplitter) {
+        laterSplitterDestroy.mockImplementationOnce(() => {
+          throw new Error('later splitter cleanup failed');
+        });
+      }
+      const beforeItemDestroyed = vi.fn();
+      const itemDestroyed = vi.fn();
+      row.on('beforeItemDestroyed', beforeItemDestroyed);
+      row.on('itemDestroyed', itemDestroyed);
+
+      let didThrow = false;
+      let caughtValue: unknown;
+      try {
+        row.destroy();
+      } catch (error) {
+        didThrow = true;
+        caughtValue = error;
+      }
+
+      expect(didThrow).toBe(true);
+      expect(caughtValue).toBe(thrownValue);
+      expect(firstSplitterDestroy).toHaveBeenCalledOnce();
+      expect(laterSplitterDestroy).toHaveBeenCalledOnce();
+      const beforeEventCount = beforeItemDestroyed.mock.calls.length;
+      const destroyedEventCount = itemDestroyed.mock.calls.length;
+      expect(beforeEventCount).toBeGreaterThan(0);
+      expect(destroyedEventCount).toBeGreaterThan(0);
+      expect(row.contentItems).toHaveLength(0);
+
+      expect(() => row.destroy()).not.toThrow();
+      expect(firstSplitterDestroy).toHaveBeenCalledTimes(2);
+      expect(laterSplitterDestroy).toHaveBeenCalledTimes(
+        failLaterSplitter ? 2 : 1,
+      );
+      expect(beforeItemDestroyed).toHaveBeenCalledTimes(beforeEventCount);
+      expect(itemDestroyed).toHaveBeenCalledTimes(destroyedEventCount);
+    },
+  );
 
   it('continues stack teardown when the active component blur fails', () => {
     const layout = new StrelitLayout();

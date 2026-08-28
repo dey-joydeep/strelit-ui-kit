@@ -559,11 +559,13 @@ export abstract class ContentItem extends EventEmitter {
     }
     this._isDestroyed = true;
     let firstError: unknown;
+    let hasError = false;
     const attempt = (action: () => void) => {
       try {
         action();
       } catch (error) {
-        firstError ??= error;
+        if (!hasError) firstError = error;
+        hasError = true;
       }
     };
     for (const [name, frame] of Object.entries(
@@ -598,7 +600,7 @@ export abstract class ContentItem extends EventEmitter {
       this._itemDestroyedEmitted = true;
       attempt(() => this.emitBaseBubblingEvent('itemDestroyed'));
     }
-    if (firstError !== undefined) {
+    if (hasError) {
       this._destroyCleanupFailed = true;
       throw firstError;
     }

@@ -963,6 +963,135 @@ const misaligned = '\x41lm_goldenlayout \u006cm_goldenlayout';
     expect(migrated).toContain('"Alm_goldenlayout lm_strelit"');
   });
 
+  it.each([
+    {
+      form: 'identifier properties in dry-run mode',
+      arguments: [] as string[],
+      declarations: '',
+      properties: `componentName: 'legacy-editor', componentType: 'modern-editor'`,
+    },
+    {
+      form: 'a shorthand property in write mode',
+      arguments: ['--write'],
+      declarations: `const componentName = 'legacy-editor';\n`,
+      properties: `componentName, componentType: 'modern-editor'`,
+    },
+    {
+      form: 'computed string properties in write mode',
+      arguments: ['--write'],
+      declarations: '',
+      properties: `['componentName']: 'legacy-editor', ['componentType']: 'modern-editor'`,
+    },
+    {
+      form: 'an as-const computed componentType property in write mode',
+      arguments: ['--write'],
+      declarations: '',
+      properties: `componentName: 'legacy-editor', ['componentType' as const]: 'modern-editor'`,
+    },
+    {
+      form: 'an as-const computed componentName property in dry-run mode',
+      arguments: [],
+      declarations: '',
+      properties: `['componentName' as const]: 'legacy-editor', componentType: 'modern-editor'`,
+    },
+  ])(
+    'preserves a source file with conflicting component identities for $form',
+    ({ arguments: migrationArguments, declarations, properties }) => {
+      const source = `import type { LayoutConfig } from 'golden-layout';
+${declarations}const layout: LayoutConfig = {
+  root: {
+    type: 'row',
+    content: [
+      { type: 'component', ${properties} },
+      { type: 'component', componentName: 'migratable-sibling' },
+    ],
+  },
+};
+`;
+      const filePath = createFixture(source);
+
+      const output = execFileSync(
+        process.execPath,
+        [migrationScript, '--target', filePath, ...migrationArguments],
+        { encoding: 'utf8' },
+      );
+
+      expect(readFileSync(filePath, 'utf8')).toBe(source);
+      expect(output).toContain(
+        'componentType and componentName values; component selection requires manual review',
+      );
+      expect(output).not.toContain('would update');
+      expect(output).not.toContain('update consumer.ts');
+      expect(output).toContain(
+        migrationArguments.includes('--write')
+          ? 'Updated 0 file(s).'
+          : 'Matched 0 file(s).',
+      );
+
+      const secondOutput = execFileSync(
+        process.execPath,
+        [migrationScript, '--target', filePath, ...migrationArguments],
+        { encoding: 'utf8' },
+      );
+      expect(readFileSync(filePath, 'utf8')).toBe(source);
+      expect(secondOutput).toBe(output);
+    },
+  );
+
+  it.each([
+    {
+      form: 'literal values',
+      declarations: '',
+      properties: `componentName: 'editor', componentType: "editor"`,
+      expectedProperty: `componentType: "editor"`,
+      removedProperty: 'componentName:',
+    },
+    {
+      form: 'a shorthand value',
+      declarations: `const componentName = 'editor';\n`,
+      properties: `componentName, componentType: componentName`,
+      expectedProperty: 'componentType: componentName',
+      removedProperty: '  componentName, componentType',
+    },
+    {
+      form: 'computed string properties',
+      declarations: '',
+      properties: `['componentName']: 'editor', ['componentType']: 'editor'`,
+      expectedProperty: `['componentType']: 'editor'`,
+      removedProperty: `['componentName']`,
+    },
+    {
+      form: 'as-const computed string properties',
+      declarations: '',
+      properties: `['componentName' as const]: 'editor', ['componentType' as const]: 'editor'`,
+      expectedProperty: `['componentType' as const]: 'editor'`,
+      removedProperty: `['componentName' as const]`,
+    },
+  ])(
+    'removes a redundant componentName alias for $form',
+    ({ declarations, properties, expectedProperty, removedProperty }) => {
+      const filePath =
+        createFixture(`import type { ComponentItemConfig } from 'golden-layout';
+${declarations}const item: ComponentItemConfig = {
+  type: 'component',
+  ${properties},
+};
+`);
+
+      const output = migrate(filePath);
+      const migrated = readFileSync(filePath, 'utf8');
+
+      expect(output).toContain('Updated 1 file(s).');
+      expect(migrated).toContain(expectedProperty);
+      expect(migrated).not.toContain(removedProperty);
+      expect(migrated.match(/componentType/g)).toHaveLength(1);
+
+      const secondOutput = migrate(filePath);
+      expect(readFileSync(filePath, 'utf8')).toBe(migrated);
+      expect(secondOutput).toContain('Updated 0 file(s).');
+    },
+  );
+
   it('adds helpers only to the matching Strelit import declaration', () => {
     const esmPath = createFixture(`
 import { unrelated } from './other';
@@ -1382,6 +1511,93 @@ const config: DragSource.ComponentItemConfig = {
       `dimensions.${dimension} could not be converted safely and was preserved`,
     );
     expect(readFileSync(filePath, 'utf8')).toBe(source);
+  });
+
+  it.each([
+    {
+      mode: 'write',
+      arguments: ['--from', 'v1', '--write'],
+      source: {
+        root: {
+          type: 'component',
+          componentType: 'modern-editor',
+          componentName: 'legacy-editor',
+        },
+      },
+      itemPath: '$.root',
+    },
+    {
+      mode: 'dry run with a migratable sibling',
+      arguments: ['--from', 'v1'],
+      source: {
+        root: {
+          type: 'row',
+          content: [
+            {
+              type: 'component',
+              componentType: 'modern-editor',
+              componentName: 'legacy-editor',
+            },
+            {
+              type: 'component',
+              componentName: 'preview',
+              width: 40,
+            },
+          ],
+        },
+      },
+      itemPath: '$.root.content[0]',
+    },
+  ])(
+    'preserves differing component identities for manual review in $mode mode',
+    ({ arguments: migrationArguments, source: layout, itemPath }) => {
+      const source = JSON.stringify(layout);
+      const filePath = createFixture(source, 'layout.json');
+
+      const output = execFileSync(
+        process.execPath,
+        [migrationScript, '--target', filePath, ...migrationArguments],
+        { encoding: 'utf8' },
+      );
+
+      expect(readFileSync(filePath, 'utf8')).toBe(source);
+      expect(output).toContain(
+        `${itemPath} defines differing componentType and componentName values; component selection requires manual review`,
+      );
+      expect(output).not.toContain('would update');
+      expect(output).toContain(
+        migrationArguments.includes('--write')
+          ? 'Updated 0 file(s).'
+          : 'Matched 0 file(s).',
+      );
+
+      const secondOutput = execFileSync(
+        process.execPath,
+        [migrationScript, '--target', filePath, ...migrationArguments],
+        { encoding: 'utf8' },
+      );
+      expect(readFileSync(filePath, 'utf8')).toBe(source);
+      expect(secondOutput).toBe(output);
+    },
+  );
+
+  it('removes a redundant matching componentName alias', () => {
+    const filePath = createFixture(
+      JSON.stringify({
+        root: {
+          type: 'component',
+          componentType: 'editor',
+          componentName: 'editor',
+        },
+      }),
+      'layout.json',
+    );
+
+    migrate(filePath, ['--from', 'v1']);
+
+    expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({
+      root: { type: 'component', componentType: 'editor' },
+    });
   });
 
   it('preserves a saved layout with multiple roots for manual review', () => {

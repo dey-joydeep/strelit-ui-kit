@@ -1820,6 +1820,18 @@ function resolveNullableFiniteNumber(
   return resolveFiniteNumber(value, 0, name);
 }
 
+function resolveNullableInteger(
+  value: unknown,
+  defaultValue: number | null,
+  name: string,
+): number | null {
+  const result = resolveNullableFiniteNumber(value, defaultValue, name);
+  if (result !== null && !Number.isInteger(result)) {
+    throw new ConfigurationError(`${name} must be an integer or null`);
+  }
+  return result;
+}
+
 /**
  * Creates popout layout config window from resolved.
  * @public
@@ -1878,7 +1890,7 @@ function resolvePopoutLayoutConfigWithBudget(
       null,
       'PopoutLayoutConfig.parentId',
     ),
-    indexInParent: resolveNullableFiniteNumber(
+    indexInParent: resolveNullableInteger(
       popoutConfig.indexInParent,
       null,
       'PopoutLayoutConfig.indexInParent',
