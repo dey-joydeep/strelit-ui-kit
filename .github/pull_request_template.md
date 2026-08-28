@@ -106,6 +106,33 @@ durable evidence here.
 If Accepted Medium findings is nonzero, link an existing comment on this PR
 authored by the PR author. That comment must state `Accepted Medium findings: N`
 and `Rationale: ...` with the same accepted count.
+
+Finding dispositions must use exactly one line with semicolon-separated records:
+`Finding dispositions: <Severity> <unique-ID> => <Status>: <evidence>`.
+IDs are case-insensitively unique across the review. Critical and High allow
+`Open` or `Closed`; Medium allows `Open`, `Closed`, or `Accepted`; Low allows
+`Open`, `Closed`, or `Deferred`. Evidence is one or more comma-separated
+repository paths (optionally with a line), HTTP(S) URLs, `#123` issue references,
+7-40-character commit SHAs, or `artifact:name` references. The severity counts
+and the open/closed/accepted totals must reconcile with every record.
+
+No-findings example:
+Findings: Critical 0; High 0; Medium 0; Low 0
+Open Critical/High findings: 0
+Closed Critical/High findings: 0
+Open Medium findings: 0
+Closed Medium findings: 0
+Accepted Medium findings: 0
+Finding dispositions: No findings
+
+Findings example:
+Findings: Critical 0; High 1; Medium 1; Low 1
+Open Critical/High findings: 0
+Closed Critical/High findings: 1
+Open Medium findings: 0
+Closed Medium findings: 1
+Accepted Medium findings: 0
+Finding dispositions: High H-1 => Closed: test/specs/contribution-governance-tests.ts; Medium M-1 => Closed: https://github.test/reviews/M-1; Low L-1 => Deferred: artifact:review/L-1
 -->
 
 ## Review Coverage Manifest

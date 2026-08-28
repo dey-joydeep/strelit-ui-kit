@@ -29,6 +29,268 @@ function normalizeFileNames(fileNames) {
   );
 }
 
+function reviewFieldValues(review, label) {
+  const prefix = `${label}:`;
+  return review
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(
+      (line) =>
+        line.slice(0, prefix.length).localeCompare(prefix, undefined, {
+          sensitivity: 'accent',
+        }) === 0,
+    )
+    .map((line) => line.slice(prefix.length).trim());
+}
+
+function canonicalReviewCount(review, label) {
+  const values = reviewFieldValues(review, label);
+  return values.length === 1 && /^(?:0|[1-9]\d*)$/.test(values[0])
+    ? Number(values[0])
+    : undefined;
+}
+
+const evidencePlaceholder =
+  /^(?:n\/a|none|pending|todo|tbd|not applicable|done)\.?$/i;
+
+function isIdentifiableHttpUrl(reference) {
+  if (!/^https?:\/\/\S+$/i.test(reference)) {
+    return false;
+  }
+  try {
+    const url = new URL(reference);
+    return (
+      (url.protocol === 'http:' || url.protocol === 'https:') &&
+      url.hostname.length > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isSafeRepositoryEvidencePath(reference) {
+  const pathMatch = reference.match(/^(.*?)(?::([1-9]\d*))?$/);
+  const repositoryPath = pathMatch?.[1] ?? '';
+  const segments = repositoryPath.split('/');
+  if (
+    repositoryPath.length === 0 ||
+    evidencePlaceholder.test(repositoryPath) ||
+    segments.some(
+      (segment) =>
+        segment === '' ||
+        /^\.+$/.test(segment) ||
+        !/^[A-Za-z0-9._-]+$/.test(segment),
+    )
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function isIdentifiableEvidenceReference(reference) {
+  const markdownLink = reference.match(
+    /^\[([^\]\r\n]+)\]\((https?:\/\/\S+)\)$/i,
+  );
+  const renderedLink = reference.match(/^(.+?) \((https?:\/\/\S+)\)$/i);
+  const linkedEvidence = markdownLink ?? renderedLink;
+  return (
+    isIdentifiableHttpUrl(reference) ||
+    (linkedEvidence !== null &&
+      !evidencePlaceholder.test(linkedEvidence[1]) &&
+      isIdentifiableHttpUrl(linkedEvidence[2])) ||
+    /^#[1-9]\d*$/.test(reference) ||
+    /^[0-9a-f]{7,40}$/i.test(reference) ||
+    isSafeRepositoryEvidencePath(reference) ||
+    /^artifact:[A-Za-z0-9][A-Za-z0-9._/#-]*$/i.test(reference)
+  );
+}
+
+function validateFindingDispositionEvidence(
+  review,
+  requireStatusReconciliation = true,
+) {
+  const errors = [];
+  const findingsValues = reviewFieldValues(review, 'Findings');
+  if (findingsValues.length !== 1) {
+    errors.push('A quality review must provide exactly one Findings line.');
+    return errors;
+  }
+  const findingsMatch = findingsValues[0].match(
+    /^Critical (0|[1-9]\d*); High (0|[1-9]\d*); Medium (0|[1-9]\d*); Low (0|[1-9]\d*)$/,
+  );
+  if (findingsMatch === null) {
+    errors.push(
+      'Findings must report canonical nonnegative counts for Critical, High, Medium, and Low severities.',
+    );
+    return errors;
+  }
+
+  const severities = ['Critical', 'High', 'Medium', 'Low'];
+  const reportedBySeverity = new Map(
+    severities.map((severity, index) => [
+      severity,
+      Number(findingsMatch[index + 1]),
+    ]),
+  );
+  const totalReported = [...reportedBySeverity.values()].reduce(
+    (total, count) => total + count,
+    0,
+  );
+  const dispositionValues = reviewFieldValues(review, 'Finding dispositions');
+  if (dispositionValues.length !== 1) {
+    errors.push(
+      'A quality review must provide exactly one Finding dispositions line.',
+    );
+    return errors;
+  }
+
+  const dispositionValue = dispositionValues[0];
+  const noFindingsDisposition = /^No findings(?: recorded)?\.?$/i.test(
+    dispositionValue,
+  );
+  if (noFindingsDisposition) {
+    if (totalReported !== 0) {
+      errors.push(
+        'Finding dispositions may state "No findings" only when all reported finding totals are zero.',
+      );
+      return errors;
+    }
+  }
+
+  const records = noFindingsDisposition
+    ? []
+    : dispositionValue.split(';').map((record) => record.trim());
+  const parsedRecords = [];
+  const identifiers = new Set();
+  let invalidRecord = false;
+  for (const record of records) {
+    const match = record.match(
+      /^(Critical|High|Medium|Low) ([A-Za-z0-9][A-Za-z0-9._/#-]*)\s*=>\s*(Open|Closed|Accepted|Deferred):\s*(.+)$/i,
+    );
+    if (match === null) {
+      invalidRecord = true;
+      continue;
+    }
+    const severity =
+      severities.find(
+        (candidate) => candidate.toLowerCase() === match[1].toLowerCase(),
+      ) ?? match[1];
+    const identifier = match[2].toLowerCase();
+    const disposition = match[3].toLowerCase();
+    const evidence = match[4].trim();
+    const evidenceReferences = evidence
+      .split(',')
+      .map((reference) => reference.trim());
+    const identifiableEvidence =
+      evidenceReferences.length > 0 &&
+      evidenceReferences.every(isIdentifiableEvidenceReference);
+    if (identifiers.has(identifier)) {
+      errors.push(`Finding disposition ID must be unique: ${match[2]}.`);
+    }
+    identifiers.add(identifier);
+    if (!identifiableEvidence) {
+      errors.push(
+        `Finding disposition ${match[2]} evidence must contain only comma-separated repository paths, URLs, issues, commits, or artifacts.`,
+      );
+    }
+    const allowedDispositions = {
+      Critical: ['open', 'closed'],
+      High: ['open', 'closed'],
+      Medium: ['open', 'closed', 'accepted'],
+      Low: ['open', 'closed', 'deferred'],
+    };
+    if (!allowedDispositions[severity].includes(disposition)) {
+      errors.push(
+        `Finding disposition ${match[2]} uses invalid ${match[3]} status for ${severity} severity.`,
+      );
+    }
+    parsedRecords.push({ disposition, severity });
+  }
+  if (invalidRecord) {
+    errors.push(
+      'Each finding disposition must use "<Severity> <ID> => <Disposition>: <evidence>" and entries must be separated by semicolons.',
+    );
+  }
+
+  const actualBySeverity = new Map(
+    severities.map((severity) => [
+      severity,
+      parsedRecords.filter((record) => record.severity === severity).length,
+    ]),
+  );
+  if (
+    severities.some(
+      (severity) =>
+        actualBySeverity.get(severity) !== reportedBySeverity.get(severity),
+    )
+  ) {
+    errors.push(
+      'Finding disposition records must reconcile with reported finding totals by severity.',
+    );
+  }
+
+  const criticalHighRecords = parsedRecords.filter(
+    (record) => record.severity === 'Critical' || record.severity === 'High',
+  );
+  const openCriticalHigh = canonicalReviewCount(
+    review,
+    'Open Critical/High findings',
+  );
+  const closedCriticalHigh = canonicalReviewCount(
+    review,
+    'Closed Critical/High findings',
+  );
+  if (
+    requireStatusReconciliation &&
+    (openCriticalHigh === undefined ||
+      closedCriticalHigh === undefined ||
+      criticalHighRecords.filter((record) => record.disposition === 'open')
+        .length !== openCriticalHigh ||
+      criticalHighRecords.filter((record) => record.disposition === 'closed')
+        .length !== closedCriticalHigh ||
+      criticalHighRecords.some(
+        (record) => !['open', 'closed'].includes(record.disposition),
+      ))
+  ) {
+    errors.push(
+      'Critical and High finding dispositions must reconcile with their open and closed totals.',
+    );
+  }
+
+  const mediumRecords = parsedRecords.filter(
+    (record) => record.severity === 'Medium',
+  );
+  const openMedium = canonicalReviewCount(review, 'Open Medium findings');
+  const closedMedium = canonicalReviewCount(review, 'Closed Medium findings');
+  const acceptedMedium = canonicalReviewCount(
+    review,
+    'Accepted Medium findings',
+  );
+  if (
+    requireStatusReconciliation &&
+    (openMedium === undefined ||
+      closedMedium === undefined ||
+      acceptedMedium === undefined ||
+      mediumRecords.filter((record) => record.disposition === 'open').length !==
+        openMedium ||
+      mediumRecords.filter((record) => record.disposition === 'closed')
+        .length !== closedMedium ||
+      mediumRecords.filter((record) => record.disposition === 'accepted')
+        .length !== acceptedMedium ||
+      mediumRecords.some(
+        (record) =>
+          !['open', 'closed', 'accepted'].includes(record.disposition),
+      ))
+  ) {
+    errors.push(
+      'Medium finding dispositions must reconcile with their open, closed, and accepted totals.',
+    );
+  }
+
+  return errors;
+}
+
 function classifyFileRisk(fileName) {
   const normalized = normalizeFileName(fileName);
   for (const risk of ['high', 'medium', 'low']) {
@@ -254,4 +516,5 @@ module.exports = {
   createPullRequestReviewGate,
   domainsForPath,
   normalizeFileName,
+  validateFindingDispositionEvidence,
 };

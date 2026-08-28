@@ -31,13 +31,24 @@ interface ChangeDisciplineModule {
   verificationScriptsForRisk(risk: 'low' | 'medium' | 'high'): string[];
 }
 
+interface ChangeReviewPolicyModule {
+  validateFindingDispositionEvidence(
+    review: string,
+    requireStatusReconciliation?: boolean,
+  ): string[];
+}
+
 const require = createRequire(import.meta.url);
 const MarkdownIt = require('markdown-it') as new (options?: {
   html?: boolean;
+  linkify?: boolean;
 }) => { render(markdown: string): string };
 const markdown = new MarkdownIt({ html: true });
+const gfmMarkdown = new MarkdownIt({ html: true, linkify: true });
 const changeDiscipline =
   require('../../scripts/verify-pr.js') as ChangeDisciplineModule;
+const changeReviewPolicy =
+  require('../../scripts/change-review-policy.js') as ChangeReviewPolicyModule;
 
 interface PullRequestFile {
   readonly changes: number;
@@ -54,11 +65,39 @@ interface PullRequestReview {
 
 const pullRequestHead = '0123456789abcdef0123456789abcdef01234567';
 
+function extractTemplateReviewExample(
+  template: string,
+  label: 'No-findings' | 'Findings',
+): string {
+  const match = template.match(
+    new RegExp(
+      `^${label} example:\\r?\\n([\\s\\S]*?)(?=\\r?\\n(?:\\r?\\n|-->))`,
+      'm',
+    ),
+  );
+  if (match === null) {
+    throw new Error(`PR template is missing the ${label} review example.`);
+  }
+  return match[1].trim();
+}
+
 function createPullRequestBody(
   risk: 'Low' | 'Medium' | 'High',
   review: string,
 ): string {
   const evidence = 'Concrete evidence recorded for this required section.';
+  const highRiskDefaults = [
+    'Coverage gaps: 0',
+    'Synthesis reviewer: Not applicable',
+    'Closed Critical/High findings: 0',
+    'Open Medium findings: 0',
+    'Closed Medium findings: 0',
+    'Accepted Medium findings: 0',
+    'Medium acceptance evidence: Not applicable',
+  ].filter((defaultLine) => {
+    const label = defaultLine.slice(0, defaultLine.indexOf(':') + 1);
+    return !review.split('\n').some((line) => line.startsWith(label));
+  });
   return [
     '## Summary',
     evidence,
@@ -84,20 +123,7 @@ function createPullRequestBody(
     '## Scope Justification',
     'The change is below the non-generated line threshold.',
     '## Independent Quality Review',
-    [
-      review,
-      ...(risk === 'High'
-        ? [
-            'Coverage gaps: 0',
-            'Synthesis reviewer: Not applicable',
-            'Closed Critical/High findings: 0',
-            'Open Medium findings: 0',
-            'Closed Medium findings: 0',
-            'Accepted Medium findings: 0',
-            'Medium acceptance evidence: Not applicable',
-          ]
-        : []),
-    ].join('\n'),
+    [review, ...(risk === 'High' ? highRiskDefaults : [])].join('\n'),
     '## Review Coverage Manifest',
     risk === 'High'
       ? [
@@ -123,6 +149,7 @@ async function runPullRequestMetadataPolicy(
     readonly html_url: string;
     readonly user: { readonly login: string };
   }[] = [],
+  renderGfmAnchors = false,
 ): Promise<string[]> {
   const workflow = readFileSync(
     resolve('.github/workflows/contribution-governance.yml'),
@@ -157,15 +184,27 @@ async function runPullRequestMetadataPolicy(
   const listReviews = () => undefined;
   const listComments = () => undefined;
   const riskPolicy = readFileSync(resolve('.github/change-risk.json'), 'utf8');
-  const renderGitHubMarkdown = (markdownBody: string) =>
-    markdown.render(
-      markdownBody
+  const renderGitHubMarkdown = (markdownBody: string) => {
+    const renderedMarkdown = renderGfmAnchors
+      ? markdownBody
+          .replace(
+            /(^|[\s>(|])@([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))(?![A-Za-z0-9-])/g,
+            '$1[@$2](https://github.com/$2)',
+          )
+          .replace(
+            /(^|[\s>(|])#([1-9]\d*)\b/g,
+            '$1[#$2](https://github.com/CTHub/strelit-ui-kit/issues/$2)',
+          )
+      : markdownBody;
+    return (renderGfmAnchors ? gfmMarkdown : markdown).render(
+      renderedMarkdown
         .replace(
           /^(\s*-\s+)\[[xX]\]\s+/gm,
           '$1<input type="checkbox" checked=""> ',
         )
         .replace(/^(\s*-\s+)\[ \]\s+/gm, '$1<input type="checkbox"> '),
     );
+  };
   const github = {
     paginate: async (method: () => undefined) =>
       method === listFiles
@@ -199,6 +238,7 @@ async function runPullRequestMetadataPolicy(
 
   const execution = runInNewContext(`(async () => {${script}})()`, {
     Buffer,
+    URL,
     context,
     core,
     github,
@@ -390,6 +430,74 @@ describe('contribution governance workflow', () => {
     expect(rubric).toContain('## Measuring Quality Over Time');
     expect(rubric).toContain('score below 2');
     expect(rubric).toContain('fresh discovery pass');
+  });
+
+  it('keeps documented finding-disposition examples valid in both validators', async () => {
+    const template = readFileSync(
+      resolve('.github/pull_request_template.md'),
+      'utf8',
+    );
+    const examples = [
+      extractTemplateReviewExample(template, 'No-findings'),
+      extractTemplateReviewExample(template, 'Findings'),
+    ];
+    const files = [{ filename: 'src/ts/layout-manager.ts', changes: 12 }];
+    const reviews = [
+      {
+        commit_id: pullRequestHead,
+        state: 'APPROVED',
+        user: { login: 'reviewer-user' },
+      },
+    ];
+    const reviewFor = (example: string) =>
+      [
+        'Review mode: **Independent**',
+        'Reviewer: @reviewer-user',
+        'Review scope: **Whole PR**',
+        'Review pass: **Fresh discovery**',
+        `Reviewed boundary: ${pullRequestHead}`,
+        'Rubric result: **Pass**',
+        'Dimensions below 2: **0**',
+        'Verdict: **Pass**',
+        example,
+        'Review artifact: Whole PR review',
+        'Residual risks: Low findings remain explicitly tracked when present',
+      ].join('\n');
+    const bodyFor = (example: string) =>
+      createPullRequestBody('High', reviewFor(example))
+        .replace(
+          'Regression tests were added for executable behavior.',
+          'The contribution governance suite executes this generated workflow policy fixture.',
+        )
+        .replace(
+          '\nPath: test/specs/layout-lifecycle-tests.ts | Contract: lifecycle regression evidence | Domains: Tests and documentation | Assignments: Tests and documentation => @reviewer-user | Adjacent: layout lifecycle tests | Tests: self-validating governance fixture',
+          '',
+        );
+
+    for (const example of examples) {
+      expect(
+        changeReviewPolicy.validateFindingDispositionEvidence(example),
+      ).toEqual([]);
+      expect(
+        await runPullRequestMetadataPolicy(bodyFor(example), files, reviews),
+      ).toEqual([]);
+    }
+
+    const duplicateIdentifier = examples[1].replace('Medium M-1', 'Medium H-1');
+    const duplicateFailure = 'Finding disposition ID must be unique: H-1.';
+
+    expect(
+      changeReviewPolicy.validateFindingDispositionEvidence(
+        duplicateIdentifier,
+      ),
+    ).toContain(duplicateFailure);
+    expect(
+      await runPullRequestMetadataPolicy(
+        bodyFor(duplicateIdentifier),
+        files,
+        reviews,
+      ),
+    ).toContain(duplicateFailure);
   });
 
   it('rejects pending review evidence and requires self-review for every change', () => {
@@ -1220,6 +1328,511 @@ describe('contribution governance workflow', () => {
     );
   });
 
+  it('rejects no-finding disposition prose when findings were reported', async () => {
+    const review = [
+      'Review mode: **Independent**',
+      'Reviewer: @reviewer-user',
+      'Review scope: **Whole PR**',
+      'Review pass: **Fresh discovery**',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 1; High 0; Medium 0; Low 0',
+      'Open Critical/High findings: 0',
+      'Closed Critical/High findings: 1',
+      'Open Medium findings: 0',
+      'Closed Medium findings: 0',
+      'Accepted Medium findings: 0',
+      'Review artifact: Whole PR review',
+      'Finding dispositions: No findings',
+      'Residual risks: No known residual risks',
+    ].join('\n');
+
+    const failures = await runPullRequestMetadataPolicy(
+      createPullRequestBody('High', review),
+      [{ filename: 'src/ts/layout-manager.ts', changes: 12 }],
+      [
+        {
+          commit_id: pullRequestHead,
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+      ],
+    );
+
+    expect(failures).toContain(
+      'Finding dispositions may state "No findings" only when all reported finding totals are zero.',
+    );
+  });
+
+  it('normalizes rendered GFM anchors while preserving evidence destinations', async () => {
+    const review = [
+      'Review mode: **Independent**',
+      'Reviewer: @reviewer-user',
+      'Review scope: **Whole PR**',
+      'Review pass: **Fresh discovery**',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 1; High 1; Medium 1; Low 1',
+      'Open Critical/High findings: 0',
+      'Closed Critical/High findings: 2',
+      'Open Medium findings: 0',
+      'Closed Medium findings: 0',
+      'Accepted Medium findings: 1',
+      'Medium acceptance evidence: https://github.test/comment/1',
+      'Review artifact: [whole-PR review](https://github.test/review/1)',
+      'Finding dispositions: Critical C-1 => Closed: README.md, package.json, Makefile, Dockerfile; High H-1 => Closed: AGENTS.md:10; Medium M-1 => Accepted: [acceptance comment](https://github.test/comment/1); Low L-1 => Deferred: #123',
+      'Residual risks: Deferred Low hardening remains tracked',
+    ].join('\n');
+    const body = createPullRequestBody('High', review)
+      .replace(
+        'Regression tests were added for executable behavior.',
+        'The governance policy harness executes rendered GFM regression fixtures.',
+      )
+      .replace(
+        '\nPath: test/specs/layout-lifecycle-tests.ts | Contract: lifecycle regression evidence | Domains: Tests and documentation | Assignments: Tests and documentation => @reviewer-user | Adjacent: layout lifecycle tests | Tests: self-validating governance fixture',
+        '',
+      );
+    const reviews = [
+      {
+        commit_id: pullRequestHead,
+        state: 'APPROVED',
+        user: { login: 'reviewer-user' },
+      },
+    ];
+    const comments = [
+      {
+        body: 'Accepted Medium findings: 1\nRationale: bounded risk',
+        html_url: 'https://github.test/comment/1',
+        user: { login: 'implementer-user' },
+      },
+    ];
+
+    expect(
+      changeReviewPolicy.validateFindingDispositionEvidence(review),
+    ).toEqual([]);
+    expect(
+      await runPullRequestMetadataPolicy(
+        body,
+        [{ filename: 'src/ts/layout-manager.ts', changes: 12 }],
+        reviews,
+        false,
+        comments,
+        true,
+      ),
+    ).toEqual([]);
+    expect(
+      await runPullRequestMetadataPolicy(
+        body.replace(
+          'Medium acceptance evidence: https://github.test/comment/1',
+          'Medium acceptance evidence: [#123](https://github.com/other/repository/issues/123)',
+        ),
+        [{ filename: 'src/ts/layout-manager.ts', changes: 12 }],
+        reviews,
+        false,
+        [
+          {
+            ...comments[0],
+            html_url: 'https://github.com/other/repository/issues/123',
+          },
+        ],
+        true,
+      ),
+    ).toEqual([]);
+    expect(
+      await runPullRequestMetadataPolicy(
+        body.replace(
+          'Medium acceptance evidence: https://github.test/comment/1',
+          'Medium acceptance evidence: [author acceptance](https://github.test/comment/1)',
+        ),
+        [{ filename: 'src/ts/layout-manager.ts', changes: 12 }],
+        reviews,
+        false,
+        comments,
+        true,
+      ),
+    ).toEqual([]);
+  });
+
+  it.each([
+    '../README.md',
+    './README.md',
+    '/README.md',
+    'C:/package.json',
+    'README.md#L10',
+    'README.md:0',
+    '...',
+    'http://?',
+    '#0',
+    'pending',
+    'TODO',
+    '[TODO](https://github.test/review/1)',
+  ])(
+    'rejects unsafe or placeholder repository evidence %s in both validators',
+    async (evidence) => {
+      const review = [
+        'Review mode: **Self-review**',
+        'Reviewer: Implementer',
+        'Reviewed boundary: working tree review diff',
+        'Rubric result: **Pass**',
+        'Dimensions below 2: **0**',
+        'Verdict: **Pass**',
+        'Findings: Critical 0; High 0; Medium 0; Low 1',
+        'Open Critical/High findings: 0',
+        'Closed Critical/High findings: 0',
+        'Open Medium findings: 0',
+        'Closed Medium findings: 0',
+        'Accepted Medium findings: 0',
+        'Review artifact: Complete scoped review',
+        `Finding dispositions: Low L-1 => Deferred: ${evidence}`,
+        'Residual risks: Deferred finding remains tracked',
+      ].join('\n');
+      const expectedFailure =
+        'Finding disposition L-1 evidence must contain only comma-separated repository paths, URLs, issues, commits, or artifacts.';
+
+      expect(
+        changeReviewPolicy.validateFindingDispositionEvidence(review),
+      ).toContain(expectedFailure);
+      expect(
+        await runPullRequestMetadataPolicy(
+          createPullRequestBody('Low', review),
+          [{ filename: 'docs/index.md', changes: 1 }],
+        ),
+      ).toContain(expectedFailure);
+    },
+  );
+
+  it('requires identifiable disposition evidence reconciled to every severity', async () => {
+    const review = [
+      'Review mode: **Independent**',
+      'Reviewer: @reviewer-user',
+      'Review scope: **Whole PR**',
+      'Review pass: **Fresh discovery**',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 1; High 1; Medium 2; Low 1',
+      'Open Critical/High findings: 0',
+      'Closed Critical/High findings: 2',
+      'Open Medium findings: 0',
+      'Closed Medium findings: 2',
+      'Accepted Medium findings: 0',
+      'Review artifact: Whole PR review',
+      'Finding dispositions: Critical C-1 => Closed: https://github.test/review/C-1; High H-1 => Closed: test/specs/layout-lifecycle-tests.ts; Medium M-1 => Closed: test/specs/contribution-governance-tests.ts; Medium M-2 => Closed: test/specs/contribution-governance-tests.ts; Low L-1 => Deferred: #123',
+      'Residual risks: Deferred Low hardening remains tracked',
+    ].join('\n');
+
+    expect(
+      changeReviewPolicy.validateFindingDispositionEvidence(review),
+    ).toEqual([]);
+
+    const body = createPullRequestBody('High', review)
+      .replace(
+        'Regression tests were added for executable behavior.',
+        'The governance policy harness executes the extracted workflow script.',
+      )
+      .replace(
+        /## Review Coverage Manifest[\s\S]*?## Domain Discovery Reports/,
+        '## Review Coverage Manifest\n\nPath: src/ts/layout-manager.ts | Contract: layout behavior | Domains: Runtime behavior, lifecycle, and ownership; Public API, compatibility, and packaging | Assignments: Runtime behavior, lifecycle, and ownership => @reviewer-user; Public API, compatibility, and packaging => @reviewer-user | Adjacent: initialization and teardown | Tests: lifecycle and governance regressions\n\n## Domain Discovery Reports',
+      );
+    const failures = await runPullRequestMetadataPolicy(
+      body,
+      [{ filename: 'src/ts/layout-manager.ts', changes: 12 }],
+      [
+        {
+          commit_id: pullRequestHead,
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+      ],
+    );
+
+    expect(failures).toEqual([]);
+
+    const ambiguousCounts = await runPullRequestMetadataPolicy(
+      body.replace(
+        'Closed Critical/High findings: 2',
+        'Closed Critical/High findings: 2\nClosed Critical/High findings: 0',
+      ),
+      [{ filename: 'src/ts/layout-manager.ts', changes: 12 }],
+      [
+        {
+          commit_id: pullRequestHead,
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+      ],
+    );
+    expect(ambiguousCounts).toContain(
+      'Critical and High finding dispositions must reconcile with their open and closed totals.',
+    );
+
+    const noFindingsBody = body
+      .replace(
+        'Findings: Critical 1; High 1; Medium 2; Low 1',
+        'Findings: Critical 0; High 0; Medium 0; Low 0',
+      )
+      .replace(
+        'Closed Critical/High findings: 2',
+        'Closed Critical/High findings: 0',
+      )
+      .replace('Closed Medium findings: 2', 'Closed Medium findings: 0')
+      .replace(
+        /Finding dispositions: .*$/m,
+        'Finding dispositions: No findings',
+      )
+      .replace(
+        'Residual risks: Deferred Low hardening remains tracked',
+        'Residual risks: No known residual risks',
+      );
+    const ambiguousZeroFindingCounts = await runPullRequestMetadataPolicy(
+      noFindingsBody.replace(
+        'Closed Critical/High findings: 0',
+        'Closed Critical/High findings: 0\nClosed Critical/High findings: 1',
+      ),
+      [{ filename: 'src/ts/layout-manager.ts', changes: 12 }],
+      [
+        {
+          commit_id: pullRequestHead,
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+      ],
+    );
+    expect(ambiguousZeroFindingCounts).toContain(
+      'Critical and High finding dispositions must reconcile with their open and closed totals.',
+    );
+
+    const contradictoryEvidence = await runPullRequestMetadataPolicy(
+      body.replace('https://github.test/review/C-1', 'still failing #123'),
+      [{ filename: 'src/ts/layout-manager.ts', changes: 12 }],
+      [
+        {
+          commit_id: pullRequestHead,
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+      ],
+    );
+    expect(contradictoryEvidence).toContain(
+      'Finding disposition C-1 evidence must contain only comma-separated repository paths, URLs, issues, commits, or artifacts.',
+    );
+  });
+
+  it.each([
+    [
+      'Medium',
+      { filename: 'test/specs/layout-lifecycle-tests.ts', changes: 12 },
+      'Findings: Critical 0; High 0; Medium 1; Low 0',
+      'Finding dispositions: Medium M-1 => Closed: test/specs/contribution-governance-tests.ts',
+      'Finding dispositions: Medium M-1 => Deferred: #123',
+      'Finding disposition M-1 uses invalid Deferred status for Medium severity.',
+    ],
+    [
+      'Low',
+      { filename: 'docs/index.md', changes: 12 },
+      'Findings: Critical 0; High 0; Medium 0; Low 1',
+      'Finding dispositions: Low L-1 => Deferred: #123',
+      'Finding dispositions: Low L-1 => Accepted: #123',
+      'Finding disposition L-1 uses invalid Accepted status for Low severity.',
+    ],
+  ] as const)(
+    'enforces identifiable finding records for %s-risk reviews',
+    async (
+      risk,
+      file,
+      findings,
+      validDisposition,
+      invalidStatusDisposition,
+      invalidStatusFailure,
+    ) => {
+      const review = [
+        'Review mode: **Self-review**',
+        'Reviewer: Implementer',
+        'Reviewed boundary: working tree review diff',
+        'Rubric result: **Pass**',
+        'Dimensions below 2: **0**',
+        'Verdict: **Pass**',
+        findings,
+        'Open Critical/High findings: 0',
+        'Review artifact: Complete scoped review',
+        'Finding dispositions: No findings',
+        'Residual risks: Recorded in the finding disposition',
+      ].join('\n');
+      const invalidFailures = await runPullRequestMetadataPolicy(
+        createPullRequestBody(risk, review),
+        [file],
+      );
+      const validFailures = await runPullRequestMetadataPolicy(
+        createPullRequestBody(
+          risk,
+          review.replace('Finding dispositions: No findings', validDisposition),
+        ),
+        [file],
+      );
+      const invalidStatusFailures = await runPullRequestMetadataPolicy(
+        createPullRequestBody(
+          risk,
+          review.replace(
+            'Finding dispositions: No findings',
+            invalidStatusDisposition,
+          ),
+        ),
+        [file],
+      );
+
+      expect(invalidFailures).toContain(
+        'Finding dispositions may state "No findings" only when all reported finding totals are zero.',
+      );
+      expect(validFailures).toEqual([]);
+      expect(invalidStatusFailures).toContain(invalidStatusFailure);
+    },
+  );
+
+  it.each([
+    [
+      'a no-findings claim with a nonzero total',
+      [
+        'Findings: Critical 1; High 0; Medium 0; Low 0',
+        'Open Critical/High findings: 0',
+        'Closed Critical/High findings: 1',
+        'Open Medium findings: 0',
+        'Closed Medium findings: 0',
+        'Accepted Medium findings: 0',
+        'Finding dispositions: No findings',
+      ].join('\n'),
+      'Finding dispositions may state "No findings" only when all reported finding totals are zero.',
+    ],
+    [
+      'a missing per-severity record',
+      [
+        'Findings: Critical 1; High 1; Medium 0; Low 0',
+        'Open Critical/High findings: 0',
+        'Closed Critical/High findings: 2',
+        'Open Medium findings: 0',
+        'Closed Medium findings: 0',
+        'Accepted Medium findings: 0',
+        'Finding dispositions: Critical C-1 => Closed: test/specs/contribution-governance-tests.ts',
+      ].join('\n'),
+      'Finding disposition records must reconcile with reported finding totals by severity.',
+    ],
+    [
+      'a duplicate finding ID',
+      [
+        'Findings: Critical 1; High 1; Medium 0; Low 0',
+        'Open Critical/High findings: 0',
+        'Closed Critical/High findings: 2',
+        'Open Medium findings: 0',
+        'Closed Medium findings: 0',
+        'Accepted Medium findings: 0',
+        'Finding dispositions: Critical REVIEW-1 => Closed: test/specs/contribution-governance-tests.ts; High review-1 => Closed: test/specs/contribution-governance-tests.ts',
+      ].join('\n'),
+      'Finding disposition ID must be unique: review-1.',
+    ],
+    [
+      'duplicate reconciliation totals',
+      [
+        'Findings: Critical 1; High 0; Medium 0; Low 0',
+        'Open Critical/High findings: 0',
+        'Closed Critical/High findings: 1',
+        'Closed Critical/High findings: 0',
+        'Open Medium findings: 0',
+        'Closed Medium findings: 0',
+        'Accepted Medium findings: 0',
+        'Finding dispositions: Critical C-1 => Closed: test/specs/contribution-governance-tests.ts',
+      ].join('\n'),
+      'Critical and High finding dispositions must reconcile with their open and closed totals.',
+    ],
+    [
+      'a disposition status that contradicts the totals',
+      [
+        'Findings: Critical 0; High 0; Medium 1; Low 0',
+        'Open Critical/High findings: 0',
+        'Closed Critical/High findings: 0',
+        'Open Medium findings: 0',
+        'Closed Medium findings: 1',
+        'Accepted Medium findings: 0',
+        'Finding dispositions: Medium M-1 => Accepted: https://github.test/comment/1',
+      ].join('\n'),
+      'Medium finding dispositions must reconcile with their open, closed, and accepted totals.',
+    ],
+    [
+      'arbitrary completion prose without an evidence locator',
+      [
+        'Findings: Critical 0; High 0; Medium 0; Low 1',
+        'Open Critical/High findings: 0',
+        'Closed Critical/High findings: 0',
+        'Open Medium findings: 0',
+        'Closed Medium findings: 0',
+        'Accepted Medium findings: 0',
+        'Finding dispositions: Low L-1 => Deferred: done',
+      ].join('\n'),
+      'Finding disposition L-1 evidence must contain only comma-separated repository paths, URLs, issues, commits, or artifacts.',
+    ],
+    [
+      'duplicate finding summaries',
+      [
+        'Findings: Critical 0; High 0; Medium 0; Low 0',
+        'Findings: Critical 1; High 0; Medium 0; Low 0',
+        'Open Critical/High findings: 0',
+        'Closed Critical/High findings: 0',
+        'Open Medium findings: 0',
+        'Closed Medium findings: 0',
+        'Accepted Medium findings: 0',
+        'Finding dispositions: No findings',
+      ].join('\n'),
+      'A quality review must provide exactly one Findings line.',
+    ],
+    [
+      'duplicate zero-finding reconciliation totals',
+      [
+        'Findings: Critical 0; High 0; Medium 0; Low 0',
+        'Open Critical/High findings: 0',
+        'Closed Critical/High findings: 0',
+        'Closed Critical/High findings: 1',
+        'Open Medium findings: 0',
+        'Closed Medium findings: 0',
+        'Accepted Medium findings: 0',
+        'Finding dispositions: No findings',
+      ].join('\n'),
+      'Critical and High finding dispositions must reconcile with their open and closed totals.',
+    ],
+    [
+      'placeholder evidence hidden behind an issue locator',
+      [
+        'Findings: Critical 1; High 0; Medium 0; Low 0',
+        'Open Critical/High findings: 0',
+        'Closed Critical/High findings: 1',
+        'Open Medium findings: 0',
+        'Closed Medium findings: 0',
+        'Accepted Medium findings: 0',
+        'Finding dispositions: Critical C-1 => Closed: pending #123',
+      ].join('\n'),
+      'Finding disposition C-1 evidence must contain only comma-separated repository paths, URLs, issues, commits, or artifacts.',
+    ],
+    [
+      'placeholder evidence hidden behind a URL',
+      [
+        'Findings: Critical 0; High 0; Medium 1; Low 0',
+        'Open Critical/High findings: 0',
+        'Closed Critical/High findings: 0',
+        'Open Medium findings: 0',
+        'Closed Medium findings: 0',
+        'Accepted Medium findings: 1',
+        'Finding dispositions: Medium M-1 => Accepted: TODO https://github.test/issues/1',
+      ].join('\n'),
+      'Finding disposition M-1 evidence must contain only comma-separated repository paths, URLs, issues, commits, or artifacts.',
+    ],
+  ])('locally rejects %s', (_label, review, expectedFailure) => {
+    expect(
+      changeReviewPolicy.validateFindingDispositionEvidence(review),
+    ).toContain(expectedFailure);
+  });
+
   it.each([
     [
       'a leading-zero open Critical/High count',
@@ -1310,7 +1923,7 @@ describe('contribution governance workflow', () => {
         'Accepted Medium findings: 1',
         'Medium acceptance evidence: https://github.test/comment/1',
         'Review artifact: Whole PR review',
-        'Finding dispositions: One Medium accepted',
+        'Finding dispositions: Medium M-1 => Accepted: https://github.test/comment/1',
         'Residual risks: Accepted bounded risk',
       ].join('\n');
       const failures = await runPullRequestMetadataPolicy(
