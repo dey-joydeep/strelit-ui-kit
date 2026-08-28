@@ -1,5 +1,5 @@
 const { execFileSync } = require('node:child_process');
-const { createHash } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
 const {
   existsSync,
   lstatSync,
@@ -41,6 +41,21 @@ const validStatuses = new Set([
 const validReviewScopes = new Set(['domain', 'whole-pr']);
 const validReviewPasses = new Set(['fresh-discovery', 'finding-closure']);
 const validRecoveryIntents = new Set(['continue', 'status', 'summary']);
+const mutatingCommands = new Set([
+  'init',
+  'add',
+  'start',
+  'checkpoint',
+  'complete',
+  'interrupt',
+  'recover',
+  'enter',
+  'finish',
+]);
+const ledgerLockTimeoutMs = 30_000;
+const ledgerLockStaleMs = 10_000;
+const ledgerLockRetryMs = 25;
+const sleepBuffer = new Int32Array(new SharedArrayBuffer(4));
 
 function parseArguments(args) {
   const [command = 'status', ...rest] = args;
@@ -236,6 +251,421 @@ function readLedger(root, cwd) {
   return { fileName, ledger };
 }
 
+function sleep(milliseconds) {
+  Atomics.wait(sleepBuffer, 0, 0, milliseconds);
+}
+
+function lockPath(fileName) {
+  return `${fileName}.lock`;
+}
+
+function processExistence(pid) {
+  if (!Number.isSafeInteger(pid) || pid <= 0) {
+    return 'unknown';
+  }
+  try {
+    process.kill(pid, 0);
+    return 'alive';
+  } catch (error) {
+    if (
+      error !== null &&
+      typeof error === 'object' &&
+      ['ESRCH', 'EINVAL'].includes(error.code)
+    ) {
+      return 'missing';
+    }
+    return 'unknown';
+  }
+}
+
+function readProcessInstanceIdentity(pid, platform = process.platform) {
+  const existence = processExistence(pid);
+  if (existence !== 'alive') {
+    return { status: existence };
+  }
+  try {
+    let identity;
+    if (platform === 'linux') {
+      const stat = readFileSync(`/proc/${pid}/stat`, 'utf8').trim();
+      const commandEnd = stat.lastIndexOf(')');
+      const fields = stat.slice(commandEnd + 2).split(/\s+/);
+      const startTime = fields[19];
+      const bootId = readFileSync(
+        '/proc/sys/kernel/random/boot_id',
+        'utf8',
+      ).trim();
+      if (commandEnd < 0 || startTime === undefined || bootId.length === 0) {
+        throw new Error('Linux process identity fields are unavailable.');
+      }
+      identity = `linux:${bootId}:${startTime}`;
+    } else if (platform === 'win32') {
+      const ticks = execFileSync(
+        'powershell.exe',
+        [
+          '-NoLogo',
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          `[System.Diagnostics.Process]::GetProcessById(${pid}).StartTime.ToUniversalTime().Ticks`,
+        ],
+        {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: 5_000,
+          windowsHide: true,
+        },
+      ).trim();
+      if (!/^\d+$/.test(ticks)) {
+        throw new Error('Windows process start time is unavailable.');
+      }
+      identity = `win32:${ticks}`;
+    } else {
+      const startedAt = execFileSync(
+        'ps',
+        ['-o', 'lstart=', '-p', String(pid)],
+        {
+          encoding: 'utf8',
+          env: { ...process.env, LC_ALL: 'C' },
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: 5_000,
+        },
+      ).trim();
+      if (startedAt.length === 0) {
+        throw new Error('POSIX process start time is unavailable.');
+      }
+      identity = `${platform}:${startedAt}`;
+    }
+    return { status: 'alive', identity };
+  } catch {
+    const currentExistence = processExistence(pid);
+    return currentExistence === 'missing'
+      ? { status: 'missing' }
+      : { status: 'unknown' };
+  }
+}
+
+let cachedCurrentProcessIdentity;
+function currentProcessInstanceIdentity() {
+  if (cachedCurrentProcessIdentity === undefined) {
+    const current = readProcessInstanceIdentity(process.pid);
+    if (current.status === 'alive' && current.identity !== undefined) {
+      cachedCurrentProcessIdentity = current.identity;
+    }
+    return current;
+  }
+  return { status: 'alive', identity: cachedCurrentProcessIdentity };
+}
+
+function lockOwnerState(owner, identityLookup = readProcessInstanceIdentity) {
+  if (
+    owner === null ||
+    typeof owner !== 'object' ||
+    !Number.isSafeInteger(owner.pid) ||
+    owner.pid <= 0 ||
+    typeof owner.processIdentity !== 'string' ||
+    owner.processIdentity.length === 0
+  ) {
+    return 'unknown';
+  }
+  const current =
+    owner.pid === process.pid && identityLookup === readProcessInstanceIdentity
+      ? currentProcessInstanceIdentity()
+      : identityLookup(owner.pid);
+  if (current.status === 'missing') {
+    return 'dead';
+  }
+  if (current.status !== 'alive' || typeof current.identity !== 'string') {
+    return 'unknown';
+  }
+  return current.identity === owner.processIdentity ? 'live' : 'dead';
+}
+
+function readLock(fileName) {
+  let stats;
+  try {
+    stats = lstatSync(fileName);
+  } catch (error) {
+    if (
+      error !== null &&
+      typeof error === 'object' &&
+      error.code === 'ENOENT'
+    ) {
+      return undefined;
+    }
+    throw error;
+  }
+  if (stats.isSymbolicLink()) {
+    throw new Error(`Ledger lock must not be a symbolic link: ${fileName}`);
+  }
+  if (!stats.isDirectory()) {
+    throw new Error(`Ledger lock must be a directory: ${fileName}`);
+  }
+  const ownerFile = join(fileName, 'owner.json');
+  let rawOwner = '';
+  let owner;
+  try {
+    rawOwner = readFileSync(ownerFile, 'utf8');
+    owner = JSON.parse(rawOwner);
+  } catch {
+    owner = undefined;
+  }
+  const directoryIdentity = createHash('sha256')
+    .update(`${stats.dev}\0${stats.ino}\0${stats.birthtimeMs}`)
+    .digest('hex');
+  const identity = createHash('sha256')
+    .update(directoryIdentity)
+    .update(`\0${rawOwner}`)
+    .digest('hex');
+  return { owner, modifiedAt: stats.mtimeMs, directoryIdentity, identity };
+}
+
+function prepareReclaimFence(fileName, observed) {
+  const reclaimDirectory = `${fileName}.reclaim-${observed.identity}`;
+  try {
+    mkdirSync(reclaimDirectory, { mode: 0o700 });
+  } catch (error) {
+    if (
+      error !== null &&
+      typeof error === 'object' &&
+      error.code === 'ENOENT'
+    ) {
+      return false;
+    }
+    if (
+      error === null ||
+      typeof error !== 'object' ||
+      error.code !== 'EEXIST'
+    ) {
+      throw error;
+    }
+    const reclaimStats = lstatSync(reclaimDirectory);
+    if (reclaimStats.isSymbolicLink() || !reclaimStats.isDirectory()) {
+      throw new Error(
+        `Ledger reclaim fence must be a directory: ${reclaimDirectory}`,
+      );
+    }
+  }
+  return reclaimDirectory;
+}
+
+function moveLockBehindReclaimFence(fileName, reclaimDirectory, beforeRename) {
+  beforeRename?.();
+  const staleTarget = join(reclaimDirectory, 'stale');
+  try {
+    renameSync(fileName, staleTarget);
+    return true;
+  } catch (error) {
+    if (
+      error !== null &&
+      typeof error === 'object' &&
+      (['EEXIST', 'ENOENT', 'ENOTEMPTY'].includes(error.code) ||
+        (['EACCES', 'EPERM'].includes(error.code) && existsSync(staleTarget)))
+    ) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function reclaimStaleLock(
+  fileName,
+  observed,
+  staleMs,
+  now = Date.now(),
+  identityLookup = readProcessInstanceIdentity,
+  beforeRename,
+) {
+  if (
+    now - observed.modifiedAt < staleMs ||
+    lockOwnerState(observed.owner, identityLookup) !== 'dead'
+  ) {
+    return false;
+  }
+
+  const reclaimDirectory = prepareReclaimFence(fileName, observed);
+
+  const current = readLock(fileName);
+  if (
+    current === undefined ||
+    current.identity !== observed.identity ||
+    now - current.modifiedAt < staleMs ||
+    lockOwnerState(current.owner, identityLookup) !== 'dead'
+  ) {
+    return false;
+  }
+
+  const marker = join(fileName, `.reclaim-${observed.identity}`);
+  try {
+    writeFileSync(marker, '', { encoding: 'utf8', flag: 'wx' });
+  } catch (error) {
+    if (
+      error !== null &&
+      typeof error === 'object' &&
+      error.code === 'ENOENT'
+    ) {
+      return false;
+    }
+    if (
+      error === null ||
+      typeof error !== 'object' ||
+      error.code !== 'EEXIST'
+    ) {
+      throw error;
+    }
+  }
+  const confirmed = readLock(fileName);
+  if (confirmed === undefined || confirmed.identity !== observed.identity) {
+    return false;
+  }
+  return moveLockBehindReclaimFence(fileName, reclaimDirectory, beforeRename);
+}
+
+function removeLockDirectoryIfIdentity(fileName, directoryIdentity) {
+  const current = readLock(fileName);
+  if (
+    current === undefined ||
+    current.directoryIdentity !== directoryIdentity
+  ) {
+    return false;
+  }
+  rmSync(fileName, { force: true, recursive: true });
+  return true;
+}
+
+function acquireLedgerLock(
+  fileName,
+  {
+    timeoutMs = ledgerLockTimeoutMs,
+    staleMs = ledgerLockStaleMs,
+    retryMs = ledgerLockRetryMs,
+  } = {},
+) {
+  for (const [value, label] of [
+    [timeoutMs, 'timeoutMs'],
+    [staleMs, 'staleMs'],
+    [retryMs, 'retryMs'],
+  ]) {
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error(`Ledger lock ${label} must be a non-negative number.`);
+    }
+  }
+  if (retryMs === 0) {
+    throw new Error('Ledger lock retryMs must be greater than zero.');
+  }
+
+  mkdirSync(dirname(fileName), { recursive: true });
+  const fileLock = lockPath(fileName);
+  const startedAt = Date.now();
+  const token = `${process.pid}-${randomUUID()}`;
+  const processState = currentProcessInstanceIdentity();
+  if (processState.status !== 'alive' || processState.identity === undefined) {
+    throw new Error(
+      `Cannot establish process instance identity for ledger lock owner ${process.pid}.`,
+    );
+  }
+  const owner = {
+    pid: process.pid,
+    token,
+    createdAt: new Date(startedAt).toISOString(),
+    processIdentity: processState.identity,
+  };
+
+  while (true) {
+    let created = false;
+    let createdDirectoryIdentity;
+    try {
+      mkdirSync(fileLock, { mode: 0o700 });
+      created = true;
+      createdDirectoryIdentity = readLock(fileLock).directoryIdentity;
+      writeFileSync(
+        join(fileLock, 'owner.json'),
+        `${JSON.stringify(owner)}\n`,
+        { encoding: 'utf8', flag: 'wx', mode: 0o600 },
+      );
+      return { fileName: fileLock, token };
+    } catch (error) {
+      if (created) {
+        removeLockDirectoryIfIdentity(fileLock, createdDirectoryIdentity);
+      }
+      if (
+        error === null ||
+        typeof error !== 'object' ||
+        error.code !== 'EEXIST'
+      ) {
+        throw error;
+      }
+    }
+
+    const existing = readLock(fileLock);
+    if (existing === undefined) {
+      continue;
+    }
+    const age = Date.now() - existing.modifiedAt;
+    const existingPid = existing.owner?.pid;
+    const existingState =
+      age >= staleMs ? lockOwnerState(existing.owner) : 'live';
+    if (
+      age >= staleMs &&
+      existingState === 'dead' &&
+      reclaimStaleLock(fileLock, existing, staleMs)
+    ) {
+      continue;
+    }
+    if (Date.now() - startedAt >= timeoutMs) {
+      const ownerLabel = Number.isSafeInteger(existingPid)
+        ? `process ${existingPid}`
+        : 'an unknown process';
+      throw new Error(
+        `Timed out waiting for ledger transaction lock held by ${ownerLabel}.`,
+      );
+    }
+    sleep(Math.min(retryMs, Math.max(1, timeoutMs - (Date.now() - startedAt))));
+  }
+}
+
+function releaseLedgerLock(lock) {
+  const existing = readLock(lock.fileName);
+  if (existing === undefined) {
+    throw new Error(
+      `Cannot release ledger transaction lock because it is missing: ${lock.fileName}`,
+    );
+  }
+  if (existing.owner?.token !== lock.token) {
+    throw new Error(
+      `Cannot release ledger transaction lock because ownership changed: ${lock.fileName}`,
+    );
+  }
+  rmSync(lock.fileName, { recursive: true });
+}
+
+function withLedgerTransaction(fileName, transaction, lockOptions) {
+  const lock = acquireLedgerLock(fileName, lockOptions);
+  let failed = false;
+  let failure;
+  let result;
+  try {
+    result = transaction();
+  } catch (error) {
+    failed = true;
+    failure = error;
+  }
+  try {
+    releaseLedgerLock(lock);
+  } catch (cleanupError) {
+    if (failed) {
+      throw new AggregateError(
+        [failure, cleanupError],
+        `Ledger transaction failed and lock cleanup also failed: ${String(failure)}`,
+      );
+    }
+    throw cleanupError;
+  }
+  if (failed) {
+    throw failure;
+  }
+  return result;
+}
+
 function writeLedger(fileName, ledger, now = new Date()) {
   const nextLedger = { ...ledger, updatedAt: now.toISOString() };
   validateLedger(nextLedger);
@@ -251,7 +681,7 @@ function writeLedger(fileName, ledger, now = new Date()) {
     }
   }
   mkdirSync(dirname(fileName), { recursive: true });
-  const temporary = `${fileName}.${process.pid}.tmp`;
+  const temporary = `${fileName}.${process.pid}.${randomUUID()}.tmp`;
   try {
     writeFileSync(temporary, `${JSON.stringify(nextLedger, null, 2)}\n`, {
       encoding: 'utf8',
@@ -1274,7 +1704,12 @@ function refreshReviewGate(ledger, cwd) {
   );
 }
 
-function execute(command, options, cwd = process.cwd(), now = new Date()) {
+function executeUnlocked(
+  command,
+  options,
+  cwd = process.cwd(),
+  now = new Date(),
+) {
   const root = typeof options.root === 'string' ? options.root : defaultRoot;
   if (command === 'init') {
     const fileName = ledgerPath(root, cwd);
@@ -1594,6 +2029,17 @@ function execute(command, options, cwd = process.cwd(), now = new Date()) {
   return writeLedger(fileName, ledger, now);
 }
 
+function execute(command, options, cwd = process.cwd(), now) {
+  if (!mutatingCommands.has(command)) {
+    return executeUnlocked(command, options, cwd, now);
+  }
+  const root = typeof options.root === 'string' ? options.root : defaultRoot;
+  const fileName = ledgerPath(root, cwd);
+  return withLedgerTransaction(fileName, () =>
+    executeUnlocked(command, options, cwd, now),
+  );
+}
+
 function summarize(ledger) {
   const counts = {};
   for (const unit of ledger.units) {
@@ -1671,15 +2117,25 @@ if (require.main === module) {
 }
 
 module.exports = {
+  acquireLedgerLock,
   currentSourceState,
   execute,
   gitChangedPaths,
   ledgerPath,
+  lockOwnerState,
+  moveLockBehindReclaimFence,
   normalizePath,
   parseArguments,
+  readLock,
+  readProcessInstanceIdentity,
+  reclaimStaleLock,
+  removeLockDirectoryIfIdentity,
   recoverLedger,
+  releaseLedgerLock,
   summarize,
   validateCompletion,
   validateLedger,
   validatePullRequestGate,
+  withLedgerTransaction,
+  writeLedger,
 };

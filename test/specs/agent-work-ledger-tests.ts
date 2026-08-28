@@ -1,10 +1,13 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -105,7 +108,28 @@ interface Ledger {
   reviewGate?: ReviewGate;
 }
 
+interface LedgerLock {
+  fileName: string;
+  token: string;
+}
+
+interface LedgerLockObservation {
+  owner?: { pid?: number; token?: string; processIdentity?: string };
+  modifiedAt: number;
+  directoryIdentity: string;
+  identity: string;
+}
+
+interface ProcessIdentityState {
+  status: 'alive' | 'missing' | 'unknown';
+  identity?: string;
+}
+
 interface LedgerModule {
+  acquireLedgerLock(
+    fileName: string,
+    options?: { timeoutMs?: number; staleMs?: number; retryMs?: number },
+  ): LedgerLock;
   currentSourceState(cwd?: string): {
     head: string;
     fingerprint: string;
@@ -122,7 +146,26 @@ interface LedgerModule {
     cwd?: string,
     now?: Date,
   ): Ledger;
+  ledgerPath(root?: string, cwd?: string): string;
+  moveLockBehindReclaimFence(
+    fileName: string,
+    reclaimDirectory: string,
+    beforeRename?: () => void,
+  ): boolean;
   normalizePath(path: string): string;
+  readLock(fileName: string): LedgerLockObservation | undefined;
+  reclaimStaleLock(
+    fileName: string,
+    observed: LedgerLockObservation,
+    staleMs: number,
+    now?: number,
+    identityLookup?: (pid: number) => ProcessIdentityState,
+    beforeRename?: () => void,
+  ): boolean;
+  removeLockDirectoryIfIdentity(
+    fileName: string,
+    directoryIdentity: string,
+  ): boolean;
   recoverLedger(
     ledger: Ledger,
     newHead: string,
@@ -151,6 +194,13 @@ interface LedgerModule {
     readyUnits: string[];
     work: Array<Record<string, unknown>>;
   };
+  releaseLedgerLock(lock: LedgerLock): void;
+  withLedgerTransaction<T>(
+    fileName: string,
+    transaction: () => T,
+    options?: { timeoutMs?: number; staleMs?: number; retryMs?: number },
+  ): T;
+  writeLedger(fileName: string, ledger: Ledger, now?: Date): Ledger;
 }
 
 const require = createRequire(import.meta.url);
@@ -160,37 +210,78 @@ const firstHead = '1111111111111111111111111111111111111111';
 const secondHead = '2222222222222222222222222222222222222222';
 const thirdHead = '3333333333333333333333333333333333333333';
 
-function withTemporaryRepository(run: (repository: string) => void): void {
+function createTemporaryRepository(): string {
   const repository = mkdtempSync(join(tmpdir(), 'strelit-agent-ledger-'));
+  execFileSync('git', ['init'], { cwd: repository });
+  execFileSync('git', ['config', 'user.email', 'tests@example.invalid'], {
+    cwd: repository,
+  });
+  execFileSync('git', ['config', 'user.name', 'Strelit Tests'], {
+    cwd: repository,
+  });
+  writeFileSync(join(repository, 'README.md'), 'base\n');
+  writeFileSync(join(repository, '.gitignore'), '.tmp/\n');
+  mkdirSync(join(repository, 'src', 'ts', 'controls'), { recursive: true });
+  writeFileSync(join(repository, 'src', 'ts', 'layout-manager.ts'), 'layout\n');
+  writeFileSync(
+    join(repository, 'src', 'ts', 'controls', 'browser-popout.ts'),
+    'popout\n',
+  );
+  execFileSync('git', ['add', '.'], { cwd: repository });
+  execFileSync('git', ['commit', '-m', 'Create fixture.'], {
+    cwd: repository,
+  });
+  execFileSync('git', ['branch', '-M', 'main'], { cwd: repository });
+  execFileSync('git', ['switch', '-c', 'feature'], { cwd: repository });
+  return repository;
+}
+
+function withTemporaryRepository(run: (repository: string) => void): void {
+  const repository = createTemporaryRepository();
   try {
-    execFileSync('git', ['init'], { cwd: repository });
-    execFileSync('git', ['config', 'user.email', 'tests@example.invalid'], {
-      cwd: repository,
-    });
-    execFileSync('git', ['config', 'user.name', 'Strelit Tests'], {
-      cwd: repository,
-    });
-    writeFileSync(join(repository, 'README.md'), 'base\n');
-    writeFileSync(join(repository, '.gitignore'), '.tmp/\n');
-    mkdirSync(join(repository, 'src', 'ts', 'controls'), { recursive: true });
-    writeFileSync(
-      join(repository, 'src', 'ts', 'layout-manager.ts'),
-      'layout\n',
-    );
-    writeFileSync(
-      join(repository, 'src', 'ts', 'controls', 'browser-popout.ts'),
-      'popout\n',
-    );
-    execFileSync('git', ['add', '.'], { cwd: repository });
-    execFileSync('git', ['commit', '-m', 'Create fixture.'], {
-      cwd: repository,
-    });
-    execFileSync('git', ['branch', '-M', 'main'], { cwd: repository });
-    execFileSync('git', ['switch', '-c', 'feature'], { cwd: repository });
     run(repository);
   } finally {
     rmSync(repository, { force: true, recursive: true });
   }
+}
+
+async function withTemporaryRepositoryAsync(
+  run: (repository: string) => Promise<void>,
+): Promise<void> {
+  const repository = createTemporaryRepository();
+  try {
+    await run(repository);
+  } finally {
+    rmSync(repository, { force: true, recursive: true });
+  }
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
+}
+
+async function waitForPath(fileName: string, timeoutMs = 5_000): Promise<void> {
+  const startedAt = Date.now();
+  while (!existsSync(fileName)) {
+    if (Date.now() - startedAt >= timeoutMs) {
+      throw new Error(`Timed out waiting for ${fileName}`);
+    }
+    await delay(10);
+  }
+}
+
+function waitForProcess(
+  child: ReturnType<typeof spawn>,
+): Promise<{ code: number | null; stderr: string }> {
+  return new Promise((resolveProcess, rejectProcess) => {
+    let stderr = '';
+    child.stderr?.setEncoding('utf8');
+    child.stderr?.on('data', (chunk: string) => {
+      stderr += chunk;
+    });
+    child.once('error', rejectProcess);
+    child.once('close', (code) => resolveProcess({ code, stderr }));
+  });
 }
 
 function initialize(repository: string): void {
@@ -350,6 +441,306 @@ function bindReviewBoundary(unit: WorkUnit, ledger: Ledger): void {
 }
 
 describe('agent work ledger', () => {
+  it('serializes a contending command behind the complete ledger transaction', async () => {
+    await withTemporaryRepositoryAsync(async (repository) => {
+      initialize(repository);
+      const modulePath = resolve('scripts/agent-work-ledger.js');
+      const readyPath = join(repository, '.tmp', 'transaction-ready');
+      const releasePath = join(repository, '.tmp', 'transaction-release');
+      const holderSource = `
+        const fs = require('node:fs');
+        const ledgerModule = require(process.argv[1]);
+        const repository = process.argv[2];
+        const readyPath = process.argv[3];
+        const releasePath = process.argv[4];
+        const fileName = ledgerModule.ledgerPath('.tmp/agent-work', repository);
+        ledgerModule.withLedgerTransaction(fileName, () => {
+          const ledger = JSON.parse(fs.readFileSync(fileName, 'utf8'));
+          fs.writeFileSync(readyPath, 'ready');
+          while (!fs.existsSync(releasePath)) {
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+          }
+          ledger.units.push({
+            id: 'holder-checkpoint',
+            kind: 'implementation',
+            status: 'pending',
+            head: ledger.currentHead,
+            assignedPaths: ['README.md'],
+            adjacentPaths: [],
+            contracts: ['preserve the holder checkpoint'],
+            dependencies: [],
+            requiredCommands: [],
+          });
+          ledgerModule.writeLedger(fileName, ledger);
+        });
+      `;
+      const holder = spawn(
+        process.execPath,
+        ['-e', holderSource, modulePath, repository, readyPath, releasePath],
+        {
+          cwd: repository,
+          stdio: ['ignore', 'ignore', 'pipe'],
+          windowsHide: true,
+        },
+      );
+      const holderCompletion = waitForProcess(holder);
+      await waitForPath(readyPath);
+
+      const contender = spawn(
+        process.execPath,
+        [
+          modulePath,
+          'add',
+          '--unit',
+          'contender-checkpoint',
+          '--kind',
+          'implementation',
+          '--paths',
+          'README.md',
+          '--contracts',
+          'preserve the contender checkpoint',
+        ],
+        {
+          cwd: repository,
+          stdio: ['ignore', 'ignore', 'pipe'],
+          windowsHide: true,
+        },
+      );
+      const contenderCompletion = waitForProcess(contender);
+
+      try {
+        await delay(150);
+        expect(contender.exitCode).toBeNull();
+      } finally {
+        writeFileSync(releasePath, 'release');
+      }
+
+      const [holderResult, contenderResult] = await Promise.all([
+        holderCompletion,
+        contenderCompletion,
+      ]);
+      expect(holderResult).toEqual({ code: 0, stderr: '' });
+      expect(contenderResult).toEqual({ code: 0, stderr: '' });
+
+      const ledgerFile = ledgerModule.ledgerPath('.tmp/agent-work', repository);
+      const ledger = JSON.parse(readFileSync(ledgerFile, 'utf8')) as Ledger;
+      expect(ledger.units.map(({ id }) => id).sort()).toEqual([
+        'contender-checkpoint',
+        'holder-checkpoint',
+      ]);
+      expect(existsSync(`${ledgerFile}.lock`)).toBe(false);
+      expect(
+        readdirSync(join(repository, '.tmp', 'agent-work')).filter((path) =>
+          path.endsWith('.tmp'),
+        ),
+      ).toEqual([]);
+    });
+  });
+
+  it('bounds live-owner contention and releases the owned lock', () => {
+    withTemporaryRepository((repository) => {
+      initialize(repository);
+      const ledgerFile = ledgerModule.ledgerPath('.tmp/agent-work', repository);
+      const lock = ledgerModule.acquireLedgerLock(ledgerFile);
+      const startedAt = Date.now();
+      try {
+        expect(() =>
+          ledgerModule.acquireLedgerLock(ledgerFile, {
+            timeoutMs: 40,
+            staleMs: 1,
+            retryMs: 5,
+          }),
+        ).toThrow('Timed out waiting for ledger transaction lock');
+      } finally {
+        ledgerModule.releaseLedgerLock(lock);
+      }
+      expect(Date.now() - startedAt).toBeLessThan(1_000);
+      expect(existsSync(`${ledgerFile}.lock`)).toBe(false);
+    });
+  });
+
+  it('binds stale reclaim to the recorded process instance and fails closed', () => {
+    withTemporaryRepository((repository) => {
+      initialize(repository);
+      const ledgerFile = ledgerModule.ledgerPath('.tmp/agent-work', repository);
+      const lockFile = `${ledgerFile}.lock`;
+      mkdirSync(lockFile);
+      writeFileSync(
+        join(lockFile, 'owner.json'),
+        `${JSON.stringify({
+          pid: 42,
+          token: 'same-pid-owner',
+          createdAt: '2026-08-25T00:00:00.000Z',
+          processIdentity: 'process-instance-a',
+        })}\n`,
+      );
+      const staleTime = new Date(Date.now() - 60_000);
+      utimesSync(lockFile, staleTime, staleTime);
+      const observed = ledgerModule.readLock(lockFile)!;
+
+      expect(
+        ledgerModule.reclaimStaleLock(
+          lockFile,
+          observed,
+          100,
+          Date.now(),
+          () => ({ status: 'alive', identity: 'process-instance-a' }),
+        ),
+      ).toBe(false);
+      expect(existsSync(lockFile)).toBe(true);
+      expect(
+        ledgerModule.reclaimStaleLock(
+          lockFile,
+          observed,
+          100,
+          Date.now(),
+          () => ({ status: 'unknown' }),
+        ),
+      ).toBe(false);
+      expect(existsSync(lockFile)).toBe(true);
+      expect(
+        ledgerModule.reclaimStaleLock(
+          lockFile,
+          observed,
+          100,
+          Date.now(),
+          () => ({ status: 'alive', identity: 'process-instance-b' }),
+        ),
+      ).toBe(true);
+      expect(existsSync(lockFile)).toBe(false);
+    });
+  });
+
+  it('does not clean up a replacement using a stale directory identity', () => {
+    withTemporaryRepository((repository) => {
+      initialize(repository);
+      const ledgerFile = ledgerModule.ledgerPath('.tmp/agent-work', repository);
+      const lockFile = `${ledgerFile}.lock`;
+      mkdirSync(lockFile);
+      const staleDirectoryIdentity =
+        ledgerModule.readLock(lockFile)!.directoryIdentity;
+      rmSync(lockFile, { recursive: true });
+      mkdirSync(lockFile);
+      writeFileSync(join(lockFile, 'owner.json'), '{"token":"replacement"}\n');
+
+      expect(
+        ledgerModule.removeLockDirectoryIfIdentity(
+          lockFile,
+          staleDirectoryIdentity,
+        ),
+      ).toBe(false);
+      expect(existsSync(lockFile)).toBe(true);
+    });
+  });
+
+  it('reclaims an interrupted owner without deleting its live replacement', async () => {
+    await withTemporaryRepositoryAsync(async (repository) => {
+      initialize(repository);
+      const modulePath = resolve('scripts/agent-work-ledger.js');
+      const readyPath = join(repository, '.tmp', 'stale-owner-ready');
+      const ownerSource = `
+        const fs = require('node:fs');
+        const ledgerModule = require(process.argv[1]);
+        const fileName = ledgerModule.ledgerPath('.tmp/agent-work', process.argv[2]);
+        ledgerModule.acquireLedgerLock(fileName);
+        fs.writeFileSync(process.argv[3], 'ready');
+        setInterval(() => {}, 1_000);
+      `;
+      const owner = spawn(
+        process.execPath,
+        ['-e', ownerSource, modulePath, repository, readyPath],
+        {
+          cwd: repository,
+          stdio: ['ignore', 'ignore', 'pipe'],
+          windowsHide: true,
+        },
+      );
+      const ownerCompletion = waitForProcess(owner);
+      await waitForPath(readyPath);
+      owner.kill();
+      const ownerResult = await ownerCompletion;
+      expect(ownerResult.code).not.toBe(0);
+
+      const ledgerFile = ledgerModule.ledgerPath('.tmp/agent-work', repository);
+      const lockFile = `${ledgerFile}.lock`;
+      const staleTime = new Date(Date.now() - 60_000);
+      utimesSync(lockFile, staleTime, staleTime);
+
+      const delayedContenderObservation = ledgerModule.readLock(lockFile);
+      expect(delayedContenderObservation).toBeDefined();
+      const deadOwner = () => ({ status: 'missing' as const });
+      let replacement: LedgerLock | undefined;
+      expect(
+        ledgerModule.reclaimStaleLock(
+          lockFile,
+          delayedContenderObservation!,
+          100,
+          Date.now(),
+          deadOwner,
+          () => {
+            expect(
+              ledgerModule.moveLockBehindReclaimFence(
+                lockFile,
+                `${lockFile}.reclaim-${delayedContenderObservation!.identity}`,
+              ),
+            ).toBe(true);
+            replacement = ledgerModule.acquireLedgerLock(ledgerFile, {
+              timeoutMs: 1_000,
+              staleMs: 100,
+              retryMs: 5,
+            });
+          },
+        ),
+      ).toBe(false);
+      expect(replacement).toBeDefined();
+      try {
+        expect(ledgerModule.readLock(lockFile)?.owner?.token).toBe(
+          replacement!.token,
+        );
+      } finally {
+        ledgerModule.releaseLedgerLock(replacement!);
+      }
+
+      const ledger = ledgerModule.execute(
+        'add',
+        {
+          unit: 'recovered-after-interruption',
+          kind: 'implementation',
+          paths: 'README.md',
+          contracts: 'resume after an interrupted lock owner',
+        },
+        repository,
+      );
+
+      expect(ledger.units.map(({ id }) => id)).toContain(
+        'recovered-after-interruption',
+      );
+      expect(existsSync(lockFile)).toBe(false);
+    });
+  });
+
+  it('cleans up the transaction lock when a mutating command fails', () => {
+    withTemporaryRepository((repository) => {
+      initialize(repository);
+      const ledgerFile = ledgerModule.ledgerPath('.tmp/agent-work', repository);
+      const before = readFileSync(ledgerFile, 'utf8');
+
+      expect(() =>
+        ledgerModule.execute(
+          'add',
+          {
+            unit: 'invalid-unit',
+            kind: 'unsupported-kind',
+            contracts: 'reject invalid work',
+          },
+          repository,
+        ),
+      ).toThrow('Invalid unit kind');
+      expect(existsSync(`${ledgerFile}.lock`)).toBe(false);
+      expect(readFileSync(ledgerFile, 'utf8')).toBe(before);
+    });
+  });
+
   it('records work before dispatch and reclaims an interrupted running unit', () => {
     withTemporaryRepository((repository) => {
       initialize(repository);

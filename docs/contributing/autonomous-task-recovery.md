@@ -24,6 +24,38 @@ The active ledger lives at `.tmp/agent-work/active.json`. It is disposable
 workspace state and is never committed. The checked-in schema and CLI define
 its durable contract.
 
+### Concurrent Command Transactions
+
+Every command that can change `active.json` holds an exclusive, cross-process
+transaction lock from its initial ledger read through validation and atomic
+replacement. This serializes coordinators and agents that checkpoint different
+units at the same time; atomic replacement still prevents torn JSON, while the
+transaction boundary prevents one valid full-ledger snapshot from silently
+overwriting another.
+
+Contention retries for a bounded interval. The lock directory records its
+process owner, process-instance identity, and a unique ownership token. Linux
+uses the boot ID and `/proc` process start time, Windows uses the process start
+timestamp, and other POSIX systems use the process start timestamp reported by
+`ps`. A stale lock is reclaimable when that exact process instance is missing
+or the PID now belongs to a different instance. An exact identity match remains
+live. If the owner identity cannot be established or checked, acquisition or
+reclamation fails closed without deleting the lock.
+
+Reclamation atomically moves the stale directory behind an identity-derived,
+non-reusable fence. A delayed contender holding the same stale observation
+therefore cannot remove a replacement lock. Reclaim fences remain as small
+disposable tombstones so the old identity cannot be reused. Cleanup likewise
+checks the directory instance it created before removing a failed publication.
+A live owner is never reclaimed solely because its command is long-running.
+Success and failure both release the owned lock; an abruptly terminated owner
+leaves a stale lock that a later mutating command can recover. Do not delete a
+lock or reclaim fence manually while its owner may still be active.
+
+The final ledger commit remains a same-directory temporary-file write followed
+by rename. Read-only commands therefore observe either the prior valid snapshot
+or the complete replacement, never a partially written transaction.
+
 ## Work-Unit Design
 
 A unit should cover one behavioral contract or a small, explicit path set and
