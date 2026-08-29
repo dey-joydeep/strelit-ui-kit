@@ -118,7 +118,10 @@ export function ensureElementPositionAbsolute(element: HTMLElement): void {
  * @throws {@link ConfigurationError} When the value is cyclic, deeper than 128 levels, or contains more than 10,000 nodes.
  * @internal
  */
-export function deepCloneValue(value: unknown): unknown {
+export function deepCloneValue(
+  value: unknown,
+  budget: { nodes: number } = { nodes: 0 },
+): unknown {
   interface CloneFrame {
     readonly source: object;
     readonly target: unknown[] | Record<string, unknown>;
@@ -128,14 +131,12 @@ export function deepCloneValue(value: unknown): unknown {
   }
 
   const active = new WeakSet<object>();
-  let visitedNodes = 0;
-
   function createClone(
     source: unknown,
     depth: number,
   ): { clone: unknown; frame?: CloneFrame } {
-    visitedNodes++;
-    if (visitedNodes > maximumConfigNodes) {
+    budget.nodes++;
+    if (budget.nodes > maximumConfigNodes) {
       throw new ConfigurationError(
         'Serializable value exceeds resource limits',
       );
@@ -173,7 +174,7 @@ export function deepCloneValue(value: unknown): unknown {
 
     active.add(source);
     if (Array.isArray(source)) {
-      if (source.length > maximumConfigNodes - visitedNodes) {
+      if (source.length > maximumConfigNodes - budget.nodes) {
         throw new ConfigurationError(
           'Serializable value exceeds resource limits',
         );
@@ -207,7 +208,7 @@ export function deepCloneValue(value: unknown): unknown {
     }
 
     const entries = Object.entries(source);
-    if (entries.length > maximumConfigNodes - visitedNodes) {
+    if (entries.length > maximumConfigNodes - budget.nodes) {
       throw new ConfigurationError(
         'Serializable value exceeds resource limits',
       );

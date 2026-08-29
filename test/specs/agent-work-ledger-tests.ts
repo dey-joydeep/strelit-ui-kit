@@ -128,7 +128,15 @@ interface ProcessIdentityState {
 interface LedgerModule {
   acquireLedgerLock(
     fileName: string,
-    options?: { timeoutMs?: number; staleMs?: number; retryMs?: number },
+    options?: {
+      timeoutMs?: number;
+      staleMs?: number;
+      retryMs?: number;
+      identityLookup?: (
+        pid: number,
+        remainingMs: number,
+      ) => ProcessIdentityState;
+    },
   ): LedgerLock;
   currentSourceState(cwd?: string): {
     head: string;
@@ -160,7 +168,19 @@ interface LedgerModule {
       args: string[],
       options: { timeout?: number },
     ) => string,
+    timeoutMs?: number,
   ): ProcessIdentityState;
+  publishLedgerLock(
+    fileName: string,
+    owner: {
+      pid: number;
+      token: string;
+      createdAt: string;
+      processIdentity: string;
+    },
+    token: string,
+    beforePublish?: () => void,
+  ): LedgerLock;
   normalizePath(path: string): string;
   readLock(fileName: string): LedgerLockObservation | undefined;
   reclaimStaleLock(
@@ -466,6 +486,81 @@ describe('agent work ledger', () => {
       identity: 'win32:638919072000000000',
     });
     expect(observedTimeout).toBe(30_000);
+  });
+
+  it('passes the remaining lock deadline to Windows identity lookup', () => {
+    let observedTimeout: number | undefined;
+    const state = ledgerModule.readProcessInstanceIdentity(
+      process.pid,
+      'win32',
+      (_file, _args, options) => {
+        observedTimeout = options.timeout;
+        return '638919072000000000';
+      },
+      37,
+    );
+
+    expect(state.status).toBe('alive');
+    expect(observedTimeout).toBe(37);
+  });
+
+  it('does not publish an ownerless lock when acquisition is interrupted', () => {
+    withTemporaryRepository((repository) => {
+      initialize(repository);
+      const ledgerFile = ledgerModule.ledgerPath('.tmp/agent-work', repository);
+      const lockFile = `${ledgerFile}.lock`;
+      expect(() =>
+        ledgerModule.publishLedgerLock(
+          lockFile,
+          {
+            pid: process.pid,
+            token: 'interrupted-owner',
+            createdAt: new Date().toISOString(),
+            processIdentity: 'current-process',
+          },
+          'interrupted-owner',
+          () => {
+            throw new Error('injected interruption before publication');
+          },
+        ),
+      ).toThrow('injected interruption before publication');
+      expect(existsSync(lockFile)).toBe(false);
+
+      const replacement = ledgerModule.acquireLedgerLock(ledgerFile);
+      ledgerModule.releaseLedgerLock(replacement);
+    });
+  });
+
+  it('throttles live-owner probes and bounds them by the contention deadline', () => {
+    withTemporaryRepository((repository) => {
+      initialize(repository);
+      const ledgerFile = ledgerModule.ledgerPath('.tmp/agent-work', repository);
+      const lock = ledgerModule.acquireLedgerLock(ledgerFile);
+      const owner = ledgerModule.readLock(`${ledgerFile}.lock`)!.owner!;
+      const observedBudgets: number[] = [];
+      try {
+        expect(() =>
+          ledgerModule.acquireLedgerLock(ledgerFile, {
+            timeoutMs: 80,
+            staleMs: 0,
+            retryMs: 5,
+            identityLookup: (_pid, remainingMs) => {
+              observedBudgets.push(remainingMs);
+              return {
+                status: 'alive',
+                identity: owner.processIdentity,
+              };
+            },
+          }),
+        ).toThrow('Timed out waiting for ledger transaction lock');
+      } finally {
+        ledgerModule.releaseLedgerLock(lock);
+      }
+
+      expect(observedBudgets).toHaveLength(1);
+      expect(observedBudgets[0]).toBeGreaterThan(0);
+      expect(observedBudgets[0]).toBeLessThanOrEqual(80);
+    });
   });
 
   it('serializes a contending command behind the complete ledger transaction', async () => {

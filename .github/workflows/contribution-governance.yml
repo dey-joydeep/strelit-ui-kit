@@ -538,14 +538,70 @@ jobs:
               );
             }
 
-            const nonGeneratedChanges = files
+            const isNonGeneratedPath = (fileName) =>
+              fileName !== 'package-lock.json' &&
+              !/^etc\/.*\.api\.md$/.test(fileName) &&
+              !/^docs\/architecture\/generated\//.test(fileName);
+            const renamedFileLineCount = async (fileName, ref) => {
+              try {
+                const response = await github.rest.repos.getContent({
+                  owner,
+                  repo,
+                  path: fileName,
+                  ref
+                });
+                if (
+                  Array.isArray(response.data) ||
+                  typeof response.data.content !== 'string' ||
+                  (response.data.encoding !== undefined &&
+                    response.data.encoding !== 'base64')
+                ) {
+                  return undefined;
+                }
+                const content = Buffer.from(response.data.content, 'base64');
+                if (content.includes(0)) {
+                  return 0;
+                }
+                if (content.length === 0) {
+                  return 0;
+                }
+                let lines = content[content.length - 1] === 10 ? 0 : 1;
+                for (const byte of content) {
+                  if (byte === 10) {
+                    lines++;
+                  }
+                }
+                return lines;
+              } catch (error) {
+                if (error?.status === 404) {
+                  return undefined;
+                }
+                throw error;
+              }
+            };
+            let nonGeneratedChanges = files
               .filter(
                 (file) =>
-                  file.filename !== 'package-lock.json' &&
-                  !/^etc\/.*\.api\.md$/.test(file.filename) &&
-                  !/^docs\/architecture\/generated\//.test(file.filename)
+                  file.status !== 'renamed' &&
+                  isNonGeneratedPath(file.filename)
               )
               .reduce((total, file) => total + file.changes, 0);
+            for (const file of files.filter(
+              (candidate) =>
+                candidate.status === 'renamed' &&
+                candidate.previous_filename
+            )) {
+              for (const [fileName, ref] of [
+                [file.previous_filename, pr.base.sha],
+                [file.filename, pr.head.sha]
+              ]) {
+                if (!isNonGeneratedPath(fileName)) {
+                  continue;
+                }
+                const lineCount = await renamedFileLineCount(fileName, ref);
+                nonGeneratedChanges += lineCount ?? 1001;
+              }
+            }
             const scopeJustification =
               getSectionBody('## Scope Justification') ?? '';
             const canonicalDomains = new Set([

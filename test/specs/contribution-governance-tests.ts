@@ -52,7 +52,9 @@ const changeReviewPolicy =
 
 interface PullRequestFile {
   readonly changes: number;
+  readonly content?: string;
   readonly filename: string;
+  readonly previous_content?: string;
   readonly previous_filename?: string;
   readonly status?: string;
 }
@@ -221,12 +223,36 @@ async function runPullRequestMetadataPolicy(
       pulls: { listFiles, listReviews },
       issues: { listComments },
       repos: {
-        getContent: async () => {
+        getContent: async ({ path, ref }: { path: string; ref: string }) => {
+          if (path !== '.github/change-risk.json') {
+            const renamedFile = files.find(
+              (file) =>
+                file.filename === path || file.previous_filename === path,
+            );
+            if (renamedFile === undefined) {
+              throw Object.assign(new Error('Not Found'), { status: 404 });
+            }
+            const content =
+              ref === 'base-sha' && renamedFile.previous_filename === path
+                ? renamedFile.previous_content
+                : renamedFile.content;
+            return {
+              data: {
+                content: Buffer.from(
+                  content ?? 'line\n'.repeat(Math.max(1, renamedFile.changes)),
+                ).toString('base64'),
+                encoding: 'base64',
+              },
+            };
+          }
           if (riskPolicyMissingAtBase) {
             throw Object.assign(new Error('Not Found'), { status: 404 });
           }
           return {
-            data: { content: Buffer.from(riskPolicy).toString('base64') },
+            data: {
+              content: Buffer.from(riskPolicy).toString('base64'),
+              encoding: 'base64',
+            },
           };
         },
       },
@@ -2033,6 +2059,42 @@ describe('contribution governance workflow', () => {
     );
     expect(failures).toContain(
       'High-risk changes require Review mode: **Independent**.',
+    );
+  });
+
+  it('counts a content-preserving rename as deletion plus addition', async () => {
+    const review = [
+      'Review mode: **Independent**',
+      'Reviewer: @reviewer-user',
+      'Review scope: **Whole PR**',
+      'Review pass: **Fresh discovery**',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 0; High 0; Medium 0; Low 0',
+      'Open Critical/High findings: **0**',
+      'Review artifact: Rename classification review',
+      'Finding dispositions: No findings',
+      'Residual risks: No known residual risks',
+    ].join('\n');
+    const content = 'unchanged line\n'.repeat(600);
+    const failures = await runPullRequestMetadataPolicy(
+      createPullRequestBody('High', review),
+      [
+        {
+          changes: 0,
+          content,
+          filename: 'src/ts/renamed-large.ts',
+          previous_content: content,
+          previous_filename: 'src/ts/original-large.ts',
+          status: 'renamed',
+        },
+      ],
+    );
+
+    expect(failures).toContain(
+      'Large high-risk PRs require assignments to at least two independent domain discovery reviewers.',
     );
   });
 

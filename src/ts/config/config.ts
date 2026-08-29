@@ -217,11 +217,16 @@ export function resolveItemConfigWithComponentReorderEnabledDefault(
 
 interface LayoutResolutionBudget {
   nodes: number;
+  readonly cloneBudget: { nodes: number };
   readonly active: WeakSet<object>;
 }
 
 function createResolutionBudget(): LayoutResolutionBudget {
-  return { nodes: 0, active: new WeakSet<object>() };
+  return {
+    nodes: 0,
+    cloneBudget: { nodes: 0 },
+    active: new WeakSet<object>(),
+  };
 }
 
 function resolveItemConfigWithBudget(
@@ -276,6 +281,7 @@ function resolveItemConfigWithBudget(
         return resolveComponentItemConfigWithDefault(
           itemConfig as ComponentItemConfig,
           componentReorderEnabledDefault,
+          budget.cloneBudget,
         );
 
       default:
@@ -749,6 +755,7 @@ export function resolveComponentItemConfig(
 function resolveComponentItemConfigWithDefault(
   itemConfig: ComponentItemConfig,
   reorderEnabledDefault: boolean,
+  cloneBudget?: { nodes: number },
 ): ResolvedComponentItemConfig {
   const unresolvedComponentType = itemConfig.componentType;
   if (unresolvedComponentType === undefined) {
@@ -758,6 +765,7 @@ function resolveComponentItemConfigWithDefault(
   } else {
     const componentType = deepCloneValue(
       unresolvedComponentType,
+      cloneBudget,
     ) as ComponentType;
     const { id, maximised } =
       resolveHeaderedItemConfigIdAndMaximised(itemConfig);
@@ -795,6 +803,7 @@ function resolveComponentItemConfigWithDefault(
       componentType,
       componentState: deepCloneValue(
         itemConfig.componentState,
+        cloneBudget,
       ) as SerializableValue,
     };
     return result;

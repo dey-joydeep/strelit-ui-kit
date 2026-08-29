@@ -55,6 +55,7 @@ const mutatingCommands = new Set([
 const ledgerLockTimeoutMs = 30_000;
 const ledgerLockStaleMs = 10_000;
 const ledgerLockRetryMs = 25;
+const ledgerLockIdentityProbeMs = 1_000;
 const sleepBuffer = new Int32Array(new SharedArrayBuffer(4));
 
 function parseArguments(args) {
@@ -282,6 +283,7 @@ function readProcessInstanceIdentity(
   pid,
   platform = process.platform,
   executeFile = execFileSync,
+  timeoutMs = ledgerLockTimeoutMs,
 ) {
   const existence = processExistence(pid);
   if (existence !== 'alive') {
@@ -315,7 +317,7 @@ function readProcessInstanceIdentity(
         {
           encoding: 'utf8',
           stdio: ['ignore', 'pipe', 'pipe'],
-          timeout: ledgerLockTimeoutMs,
+          timeout: Math.max(1, Math.ceil(timeoutMs)),
           windowsHide: true,
         },
       ).trim();
@@ -349,9 +351,14 @@ function readProcessInstanceIdentity(
 }
 
 let cachedCurrentProcessIdentity;
-function currentProcessInstanceIdentity() {
+function currentProcessInstanceIdentity(timeoutMs = ledgerLockTimeoutMs) {
   if (cachedCurrentProcessIdentity === undefined) {
-    const current = readProcessInstanceIdentity(process.pid);
+    const current = readProcessInstanceIdentity(
+      process.pid,
+      process.platform,
+      execFileSync,
+      timeoutMs,
+    );
     if (current.status === 'alive' && current.identity !== undefined) {
       cachedCurrentProcessIdentity = current.identity;
     }
@@ -536,12 +543,41 @@ function removeLockDirectoryIfIdentity(fileName, directoryIdentity) {
   return true;
 }
 
+function publishLedgerLock(fileLock, owner, token, beforePublish) {
+  const candidate = `${fileLock}.candidate-${token}`;
+  let candidateDirectoryIdentity;
+  try {
+    mkdirSync(candidate, { mode: 0o700 });
+    writeFileSync(join(candidate, 'owner.json'), `${JSON.stringify(owner)}\n`, {
+      encoding: 'utf8',
+      flag: 'wx',
+      mode: 0o600,
+    });
+    candidateDirectoryIdentity = readLock(candidate).directoryIdentity;
+    beforePublish?.();
+    renameSync(candidate, fileLock);
+    return { fileName: fileLock, token };
+  } catch (error) {
+    if (candidateDirectoryIdentity !== undefined) {
+      removeLockDirectoryIfIdentity(candidate, candidateDirectoryIdentity);
+    }
+    throw error;
+  }
+}
+
 function acquireLedgerLock(
   fileName,
   {
     timeoutMs = ledgerLockTimeoutMs,
     staleMs = ledgerLockStaleMs,
     retryMs = ledgerLockRetryMs,
+    identityLookup = (pid, remainingMs) =>
+      readProcessInstanceIdentity(
+        pid,
+        process.platform,
+        execFileSync,
+        remainingMs,
+      ),
   } = {},
 ) {
   for (const [value, label] of [
@@ -574,54 +610,55 @@ function acquireLedgerLock(
     processIdentity: processState.identity,
   };
 
+  let contended = false;
+  let nextIdentityProbeAt = 0;
+  let existingPid;
   while (true) {
-    let created = false;
-    let createdDirectoryIdentity;
-    try {
-      mkdirSync(fileLock, { mode: 0o700 });
-      created = true;
-      createdDirectoryIdentity = readLock(fileLock).directoryIdentity;
-      writeFileSync(
-        join(fileLock, 'owner.json'),
-        `${JSON.stringify(owner)}\n`,
-        { encoding: 'utf8', flag: 'wx', mode: 0o600 },
-      );
-      return { fileName: fileLock, token };
-    } catch (error) {
-      if (created) {
-        removeLockDirectoryIfIdentity(fileLock, createdDirectoryIdentity);
-      }
-      if (
-        error === null ||
-        typeof error !== 'object' ||
-        error.code !== 'EEXIST'
-      ) {
-        throw error;
-      }
-    }
-
-    const existing = readLock(fileLock);
-    if (existing === undefined) {
-      continue;
-    }
-    const age = Date.now() - existing.modifiedAt;
-    const existingPid = existing.owner?.pid;
-    const existingState =
-      age >= staleMs ? lockOwnerState(existing.owner) : 'live';
-    if (
-      age >= staleMs &&
-      existingState === 'dead' &&
-      reclaimStaleLock(fileLock, existing, staleMs)
-    ) {
-      continue;
-    }
-    if (Date.now() - startedAt >= timeoutMs) {
+    const elapsed = Date.now() - startedAt;
+    if (contended && elapsed >= timeoutMs) {
       const ownerLabel = Number.isSafeInteger(existingPid)
         ? `process ${existingPid}`
         : 'an unknown process';
       throw new Error(
         `Timed out waiting for ledger transaction lock held by ${ownerLabel}.`,
       );
+    }
+    try {
+      return publishLedgerLock(fileLock, owner, token);
+    } catch (error) {
+      if (
+        error === null ||
+        typeof error !== 'object' ||
+        !['EACCES', 'EEXIST', 'ENOTEMPTY', 'EPERM'].includes(error.code) ||
+        !existsSync(fileLock)
+      ) {
+        throw error;
+      }
+    }
+    contended = true;
+
+    const existing = readLock(fileLock);
+    if (existing === undefined) {
+      continue;
+    }
+    const age = Date.now() - existing.modifiedAt;
+    existingPid = existing.owner?.pid;
+    const now = Date.now();
+    if (age >= staleMs && now >= nextIdentityProbeAt) {
+      nextIdentityProbeAt = now + ledgerLockIdentityProbeMs;
+      const boundedIdentityLookup = (pid) =>
+        identityLookup(pid, Math.max(1, timeoutMs - (Date.now() - startedAt)));
+      if (
+        reclaimStaleLock(
+          fileLock,
+          existing,
+          staleMs,
+          now,
+          boundedIdentityLookup,
+        )
+      ) {
+        continue;
+      }
     }
     sleep(Math.min(retryMs, Math.max(1, timeoutMs - (Date.now() - startedAt))));
   }
@@ -2130,6 +2167,7 @@ module.exports = {
   moveLockBehindReclaimFence,
   normalizePath,
   parseArguments,
+  publishLedgerLock,
   readLock,
   readProcessInstanceIdentity,
   reclaimStaleLock,

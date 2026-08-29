@@ -137,6 +137,19 @@ describe('Layout configuration resolution and defaults', function () {
     ).toEqual({ nested: { value: 'initial' } });
   });
 
+  it('shares one clone budget across all component payloads in a layout', () => {
+    const sharedState = Array(4_000).fill(null);
+    const content = Array.from({ length: 3 }, (_, index) => ({
+      type: 'component' as const,
+      componentType: `panel-${index}`,
+      componentState: sharedState,
+    }));
+
+    expect(() =>
+      resolveLayoutConfig({ root: { type: 'stack', content } }),
+    ).toThrow('Serializable value exceeds resource limits');
+  });
+
   it.each([
     'borderWidth',
     'borderGrabWidth',
