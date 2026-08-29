@@ -152,6 +152,15 @@ interface LedgerModule {
     reclaimDirectory: string,
     beforeRename?: () => void,
   ): boolean;
+  readProcessInstanceIdentity(
+    pid: number,
+    platform?: NodeJS.Platform,
+    executeFile?: (
+      file: string,
+      args: string[],
+      options: { timeout?: number },
+    ) => string,
+  ): ProcessIdentityState;
   normalizePath(path: string): string;
   readLock(fileName: string): LedgerLockObservation | undefined;
   reclaimStaleLock(
@@ -441,6 +450,24 @@ function bindReviewBoundary(unit: WorkUnit, ledger: Ledger): void {
 }
 
 describe('agent work ledger', () => {
+  it('allows a contended Windows runner the full lock timeout for identity lookup', () => {
+    let observedTimeout: number | undefined;
+    const state = ledgerModule.readProcessInstanceIdentity(
+      process.pid,
+      'win32',
+      (_file, _args, options) => {
+        observedTimeout = options.timeout;
+        return '638919072000000000';
+      },
+    );
+
+    expect(state).toEqual({
+      status: 'alive',
+      identity: 'win32:638919072000000000',
+    });
+    expect(observedTimeout).toBe(30_000);
+  });
+
   it('serializes a contending command behind the complete ledger transaction', async () => {
     await withTemporaryRepositoryAsync(async (repository) => {
       initialize(repository);

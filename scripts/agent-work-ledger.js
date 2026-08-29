@@ -278,7 +278,11 @@ function processExistence(pid) {
   }
 }
 
-function readProcessInstanceIdentity(pid, platform = process.platform) {
+function readProcessInstanceIdentity(
+  pid,
+  platform = process.platform,
+  executeFile = execFileSync,
+) {
   const existence = processExistence(pid);
   if (existence !== 'alive') {
     return { status: existence };
@@ -299,7 +303,7 @@ function readProcessInstanceIdentity(pid, platform = process.platform) {
       }
       identity = `linux:${bootId}:${startTime}`;
     } else if (platform === 'win32') {
-      const ticks = execFileSync(
+      const ticks = executeFile(
         'powershell.exe',
         [
           '-NoLogo',
@@ -311,7 +315,7 @@ function readProcessInstanceIdentity(pid, platform = process.platform) {
         {
           encoding: 'utf8',
           stdio: ['ignore', 'pipe', 'pipe'],
-          timeout: 5_000,
+          timeout: ledgerLockTimeoutMs,
           windowsHide: true,
         },
       ).trim();
