@@ -601,7 +601,7 @@ describe('agent work ledger', () => {
       initialize(repository);
       const ledgerFile = ledgerModule.ledgerPath('.tmp/agent-work', repository);
       const lockFile = `${ledgerFile}.lock`;
-      const lock = ledgerModule.acquireLedgerLock(ledgerFile);
+      ledgerModule.acquireLedgerLock(ledgerFile);
       const observed = ledgerModule.readLock(lockFile)!;
       const reclaimDirectory = `${lockFile}.reclaim-${observed.identity}`;
       mkdirSync(reclaimDirectory);
