@@ -1,6 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process';
 import {
   existsSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -118,6 +119,7 @@ interface LedgerLockObservation {
   modifiedAt: number;
   directoryIdentity: string;
   identity: string;
+  kind: 'directory' | 'file';
 }
 
 interface ProcessIdentityState {
@@ -136,6 +138,7 @@ interface LedgerModule {
         pid: number,
         remainingMs: number,
       ) => ProcessIdentityState;
+      currentIdentityLookup?: (remainingMs: number) => ProcessIdentityState;
     },
   ): LedgerLock;
   currentSourceState(cwd?: string): {
@@ -159,6 +162,7 @@ interface LedgerModule {
     fileName: string,
     reclaimDirectory: string,
     beforeRename?: () => void,
+    expectedIdentity?: string,
   ): boolean;
   readProcessInstanceIdentity(
     pid: number,
@@ -180,6 +184,7 @@ interface LedgerModule {
     },
     token: string,
     beforePublish?: () => void,
+    writeCandidate?: (handle: number, content: string) => void,
   ): LedgerLock;
   normalizePath(path: string): string;
   readLock(fileName: string): LedgerLockObservation | undefined;
@@ -525,9 +530,111 @@ describe('agent work ledger', () => {
         ),
       ).toThrow('injected interruption before publication');
       expect(existsSync(lockFile)).toBe(false);
+      expect(
+        readdirSync(join(repository, '.tmp', 'agent-work')).filter((entry) =>
+          entry.includes('.candidate-'),
+        ),
+      ).toEqual([]);
 
       const replacement = ledgerModule.acquireLedgerLock(ledgerFile);
       ledgerModule.releaseLedgerLock(replacement);
+    });
+  });
+
+  it('cleans up a partially written private candidate', () => {
+    withTemporaryRepository((repository) => {
+      initialize(repository);
+      const ledgerFile = ledgerModule.ledgerPath('.tmp/agent-work', repository);
+      const lockFile = `${ledgerFile}.lock`;
+      expect(() =>
+        ledgerModule.publishLedgerLock(
+          lockFile,
+          {
+            pid: process.pid,
+            token: 'partial-owner',
+            createdAt: new Date().toISOString(),
+            processIdentity: 'current-process',
+          },
+          'partial-owner',
+          undefined,
+          (handle) => {
+            writeFileSync(handle, '{"pid":');
+            throw new Error('injected candidate write failure');
+          },
+        ),
+      ).toThrow('injected candidate write failure');
+      expect(existsSync(lockFile)).toBe(false);
+      expect(
+        readdirSync(join(repository, '.tmp', 'agent-work')).filter((entry) =>
+          entry.includes('.candidate-'),
+        ),
+      ).toEqual([]);
+    });
+  });
+
+  it('does not replace an existing canonical lock during publication', () => {
+    withTemporaryRepository((repository) => {
+      initialize(repository);
+      const ledgerFile = ledgerModule.ledgerPath('.tmp/agent-work', repository);
+      const lockFile = `${ledgerFile}.lock`;
+      mkdirSync(lockFile);
+
+      expect(() =>
+        ledgerModule.publishLedgerLock(
+          lockFile,
+          {
+            pid: process.pid,
+            token: 'replacement-owner',
+            createdAt: new Date().toISOString(),
+            processIdentity: 'current-process',
+          },
+          'replacement-owner',
+        ),
+      ).toThrow();
+      expect(ledgerModule.readLock(lockFile)?.kind).toBe('directory');
+      expect(ledgerModule.readLock(lockFile)?.owner).toBeUndefined();
+    });
+  });
+
+  it('completes an interrupted file-lock reclaim without replacing ownership', () => {
+    withTemporaryRepository((repository) => {
+      initialize(repository);
+      const ledgerFile = ledgerModule.ledgerPath('.tmp/agent-work', repository);
+      const lockFile = `${ledgerFile}.lock`;
+      const lock = ledgerModule.acquireLedgerLock(ledgerFile);
+      const observed = ledgerModule.readLock(lockFile)!;
+      const reclaimDirectory = `${lockFile}.reclaim-${observed.identity}`;
+      mkdirSync(reclaimDirectory);
+      linkSync(lockFile, join(reclaimDirectory, 'stale'));
+
+      expect(
+        ledgerModule.moveLockBehindReclaimFence(
+          lockFile,
+          reclaimDirectory,
+          undefined,
+          observed.identity,
+        ),
+      ).toBe(true);
+      expect(existsSync(lockFile)).toBe(false);
+    });
+  });
+
+  it('bounds initial owner identity lookup by the acquisition deadline', () => {
+    withTemporaryRepository((repository) => {
+      initialize(repository);
+      const ledgerFile = ledgerModule.ledgerPath('.tmp/agent-work', repository);
+      let observedBudget: number | undefined;
+      const lock = ledgerModule.acquireLedgerLock(ledgerFile, {
+        timeoutMs: 37,
+        currentIdentityLookup: (remainingMs) => {
+          observedBudget = remainingMs;
+          return { status: 'alive', identity: 'bounded-current-process' };
+        },
+      });
+      ledgerModule.releaseLedgerLock(lock);
+
+      expect(observedBudget).toBeGreaterThan(0);
+      expect(observedBudget).toBeLessThanOrEqual(37);
     });
   });
 

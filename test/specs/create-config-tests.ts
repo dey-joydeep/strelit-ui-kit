@@ -7,6 +7,7 @@ import {
   createResolvedLayoutConfigCopy,
   createResolvedLayoutConfigDefault,
   createResolvedStackItemConfigDefault,
+  resolveComponentItemConfig,
   resolveLayoutConfig,
 } from '../../src';
 import { createResolvedStackItemConfigCopy } from '../../src/ts/config/resolved-config';
@@ -147,6 +148,16 @@ describe('Layout configuration resolution and defaults', function () {
 
     expect(() =>
       resolveLayoutConfig({ root: { type: 'stack', content } }),
+    ).toThrow('Serializable value exceeds resource limits');
+  });
+
+  it('shares one clone budget across standalone component payloads', () => {
+    expect(() =>
+      resolveComponentItemConfig({
+        type: 'component',
+        componentType: Array(6_000).fill(null),
+        componentState: Array(6_000).fill(null),
+      }),
     ).toThrow('Serializable value exceeds resource limits');
   });
 

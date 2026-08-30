@@ -586,20 +586,22 @@ jobs:
                   isNonGeneratedPath(file.filename)
               )
               .reduce((total, file) => total + file.changes, 0);
-            for (const file of files.filter(
-              (candidate) =>
-                candidate.status === 'renamed' &&
-                candidate.previous_filename
-            )) {
-              for (const [fileName, ref] of [
-                [file.previous_filename, pr.base.sha],
-                [file.filename, pr.head.sha]
-              ]) {
-                if (!isNonGeneratedPath(fileName)) {
-                  continue;
+            if (files.length <= 50) {
+              for (const file of files.filter(
+                (candidate) =>
+                  candidate.status === 'renamed' &&
+                  candidate.previous_filename
+              )) {
+                for (const [fileName, ref] of [
+                  [file.previous_filename, pr.base.sha],
+                  [file.filename, pr.head.sha]
+                ]) {
+                  if (!isNonGeneratedPath(fileName)) {
+                    continue;
+                  }
+                  const lineCount = await renamedFileLineCount(fileName, ref);
+                  nonGeneratedChanges += lineCount ?? 1001;
                 }
-                const lineCount = await renamedFileLineCount(fileName, ref);
-                nonGeneratedChanges += lineCount ?? 1001;
               }
             }
             const scopeJustification =

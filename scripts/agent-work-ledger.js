@@ -2,8 +2,12 @@ const { execFileSync } = require('node:child_process');
 const { createHash, randomUUID } = require('node:crypto');
 const {
   existsSync,
+  closeSync,
+  fstatSync,
+  linkSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -408,16 +412,23 @@ function readLock(fileName) {
   if (stats.isSymbolicLink()) {
     throw new Error(`Ledger lock must not be a symbolic link: ${fileName}`);
   }
-  if (!stats.isDirectory()) {
-    throw new Error(`Ledger lock must be a directory: ${fileName}`);
-  }
-  const ownerFile = join(fileName, 'owner.json');
   let rawOwner = '';
   let owner;
   try {
-    rawOwner = readFileSync(ownerFile, 'utf8');
+    if (stats.isDirectory()) {
+      rawOwner = readFileSync(join(fileName, 'owner.json'), 'utf8');
+    } else if (stats.isFile()) {
+      rawOwner = readFileSync(fileName, 'utf8');
+    } else {
+      throw new Error(
+        `Ledger lock must be a regular file or directory: ${fileName}`,
+      );
+    }
     owner = JSON.parse(rawOwner);
-  } catch {
+  } catch (error) {
+    if (!stats.isDirectory() && !stats.isFile()) {
+      throw error;
+    }
     owner = undefined;
   }
   const directoryIdentity = createHash('sha256')
@@ -427,7 +438,13 @@ function readLock(fileName) {
     .update(directoryIdentity)
     .update(`\0${rawOwner}`)
     .digest('hex');
-  return { owner, modifiedAt: stats.mtimeMs, directoryIdentity, identity };
+  return {
+    owner,
+    modifiedAt: stats.mtimeMs,
+    directoryIdentity,
+    identity,
+    kind: stats.isDirectory() ? 'directory' : 'file',
+  };
 }
 
 function prepareReclaimFence(fileName, observed) {
@@ -459,9 +476,71 @@ function prepareReclaimFence(fileName, observed) {
   return reclaimDirectory;
 }
 
-function moveLockBehindReclaimFence(fileName, reclaimDirectory, beforeRename) {
+function moveLockBehindReclaimFence(
+  fileName,
+  reclaimDirectory,
+  beforeRename,
+  expectedIdentity,
+) {
   beforeRename?.();
   const staleTarget = join(reclaimDirectory, 'stale');
+  const observed = readLock(fileName);
+  if (
+    observed === undefined ||
+    (expectedIdentity !== undefined && observed.identity !== expectedIdentity)
+  ) {
+    return false;
+  }
+  if (observed.kind === 'file') {
+    try {
+      linkSync(fileName, staleTarget);
+    } catch (error) {
+      if (
+        error !== null &&
+        typeof error === 'object' &&
+        error.code === 'EEXIST'
+      ) {
+        const linked = readLock(staleTarget);
+        const current = readLock(fileName);
+        if (
+          linked !== undefined &&
+          current !== undefined &&
+          linked.directoryIdentity === current.directoryIdentity &&
+          (expectedIdentity === undefined ||
+            current.identity === expectedIdentity)
+        ) {
+          return removeLockDirectoryIfIdentity(
+            fileName,
+            current.directoryIdentity,
+          );
+        }
+        return false;
+      }
+      if (
+        error !== null &&
+        typeof error === 'object' &&
+        ['EACCES', 'ENOENT', 'EPERM'].includes(error.code)
+      ) {
+        return false;
+      }
+      throw error;
+    }
+    const linked = readLock(staleTarget);
+    const current = readLock(fileName);
+    if (
+      linked === undefined ||
+      current === undefined ||
+      linked.directoryIdentity !== observed.directoryIdentity ||
+      current.identity !== observed.identity ||
+      (expectedIdentity !== undefined && current.identity !== expectedIdentity)
+    ) {
+      if (linked !== undefined) {
+        removeLockDirectoryIfIdentity(staleTarget, linked.directoryIdentity);
+      }
+      return false;
+    }
+    return removeLockDirectoryIfIdentity(fileName, observed.directoryIdentity);
+  }
   try {
     renameSync(fileName, staleTarget);
     return true;
@@ -505,30 +584,37 @@ function reclaimStaleLock(
     return false;
   }
 
-  const marker = join(fileName, `.reclaim-${observed.identity}`);
-  try {
-    writeFileSync(marker, '', { encoding: 'utf8', flag: 'wx' });
-  } catch (error) {
-    if (
-      error !== null &&
-      typeof error === 'object' &&
-      error.code === 'ENOENT'
-    ) {
-      return false;
-    }
-    if (
-      error === null ||
-      typeof error !== 'object' ||
-      error.code !== 'EEXIST'
-    ) {
-      throw error;
+  if (observed.kind === 'directory') {
+    const marker = join(fileName, `.reclaim-${observed.identity}`);
+    try {
+      writeFileSync(marker, '', { encoding: 'utf8', flag: 'wx' });
+    } catch (error) {
+      if (
+        error !== null &&
+        typeof error === 'object' &&
+        error.code === 'ENOENT'
+      ) {
+        return false;
+      }
+      if (
+        error === null ||
+        typeof error !== 'object' ||
+        error.code !== 'EEXIST'
+      ) {
+        throw error;
+      }
     }
   }
   const confirmed = readLock(fileName);
   if (confirmed === undefined || confirmed.identity !== observed.identity) {
     return false;
   }
-  return moveLockBehindReclaimFence(fileName, reclaimDirectory, beforeRename);
+  return moveLockBehindReclaimFence(
+    fileName,
+    reclaimDirectory,
+    beforeRename,
+    observed.identity,
+  );
 }
 
 function removeLockDirectoryIfIdentity(fileName, directoryIdentity) {
@@ -543,25 +629,37 @@ function removeLockDirectoryIfIdentity(fileName, directoryIdentity) {
   return true;
 }
 
-function publishLedgerLock(fileLock, owner, token, beforePublish) {
+function publishLedgerLock(
+  fileLock,
+  owner,
+  token,
+  beforePublish,
+  writeCandidate = (handle, content) => writeFileSync(handle, content),
+) {
   const candidate = `${fileLock}.candidate-${token}`;
-  let candidateDirectoryIdentity;
+  let candidateHandle;
+  let candidateIdentity;
   try {
-    mkdirSync(candidate, { mode: 0o700 });
-    writeFileSync(join(candidate, 'owner.json'), `${JSON.stringify(owner)}\n`, {
-      encoding: 'utf8',
-      flag: 'wx',
-      mode: 0o600,
-    });
-    candidateDirectoryIdentity = readLock(candidate).directoryIdentity;
+    candidateHandle = openSync(candidate, 'wx', 0o600);
+    const candidateStats = fstatSync(candidateHandle);
+    candidateIdentity = createHash('sha256')
+      .update(
+        `${candidateStats.dev}\0${candidateStats.ino}\0${candidateStats.birthtimeMs}`,
+      )
+      .digest('hex');
+    writeCandidate(candidateHandle, `${JSON.stringify(owner)}\n`);
+    closeSync(candidateHandle);
+    candidateHandle = undefined;
     beforePublish?.();
-    renameSync(candidate, fileLock);
+    linkSync(candidate, fileLock);
     return { fileName: fileLock, token };
-  } catch (error) {
-    if (candidateDirectoryIdentity !== undefined) {
-      removeLockDirectoryIfIdentity(candidate, candidateDirectoryIdentity);
+  } finally {
+    if (candidateHandle !== undefined) {
+      closeSync(candidateHandle);
     }
-    throw error;
+    if (candidateIdentity !== undefined) {
+      removeLockDirectoryIfIdentity(candidate, candidateIdentity);
+    }
   }
 }
 
@@ -578,6 +676,7 @@ function acquireLedgerLock(
         execFileSync,
         remainingMs,
       ),
+    currentIdentityLookup = currentProcessInstanceIdentity,
   } = {},
 ) {
   for (const [value, label] of [
@@ -597,7 +696,9 @@ function acquireLedgerLock(
   const fileLock = lockPath(fileName);
   const startedAt = Date.now();
   const token = `${process.pid}-${randomUUID()}`;
-  const processState = currentProcessInstanceIdentity();
+  const processState = currentIdentityLookup(
+    Math.max(1, timeoutMs - (Date.now() - startedAt)),
+  );
   if (processState.status !== 'alive' || processState.identity === undefined) {
     throw new Error(
       `Cannot establish process instance identity for ledger lock owner ${process.pid}.`,
@@ -676,7 +777,9 @@ function releaseLedgerLock(lock) {
       `Cannot release ledger transaction lock because ownership changed: ${lock.fileName}`,
     );
   }
-  rmSync(lock.fileName, { recursive: true });
+  rmSync(lock.fileName, {
+    recursive: existing.kind === 'directory',
+  });
 }
 
 function withLedgerTransaction(fileName, transaction, lockOptions) {

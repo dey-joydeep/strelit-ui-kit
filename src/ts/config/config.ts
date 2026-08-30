@@ -749,6 +749,7 @@ export function resolveComponentItemConfig(
   return resolveComponentItemConfigWithDefault(
     itemConfig,
     resolvedComponentItemConfigDefaultReorderEnabled,
+    { nodes: 0 },
   );
 }
 

@@ -2098,6 +2098,25 @@ describe('contribution governance workflow', () => {
     );
   });
 
+  it('does not fetch rename contents after the changed-path large threshold', async () => {
+    const files = Array.from({ length: 51 }, (_, index) => ({
+      changes: 0,
+      get content(): string {
+        throw new Error('rename content should not be fetched');
+      },
+      filename: `src/ts/renamed-${index}.ts`,
+      previous_filename: `src/ts/original-${index}.ts`,
+      status: 'renamed',
+    }));
+
+    const failures = await runPullRequestMetadataPolicy(
+      createPullRequestBody('High', ''),
+      files,
+    );
+
+    expect(failures).not.toEqual([]);
+  });
+
   it('loads the shared risk policy and requires current-head external approval', () => {
     const workflow = readFileSync(
       resolve('.github/workflows/contribution-governance.yml'),
