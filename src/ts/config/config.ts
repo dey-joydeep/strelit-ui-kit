@@ -1257,7 +1257,7 @@ export interface LayoutConfigDimensions {
   borderWidth?: number;
 
   /**
-   * Default: 15
+   * Default: 5
    */
   borderGrabWidth?: number;
 
