@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
   ConfigurationError,
+  type ComponentItemConfig,
   type LayoutConfig,
   type PopoutLayoutConfig,
+  type RowOrColumnItemConfig,
+  type StackItemConfig,
   createLayoutConfigFromResolved,
   createResolvedLayoutConfigCopy,
   createResolvedLayoutConfigDefault,
   createResolvedStackItemConfigDefault,
   resolveComponentItemConfig,
   resolveLayoutConfig,
+  resolveRowOrColumnItemConfig,
+  resolveStackItemConfig,
 } from '../../src';
 import { createResolvedStackItemConfigCopy } from '../../src/ts/config/resolved-config';
 
@@ -160,6 +165,49 @@ describe('Layout configuration resolution and defaults', function () {
       }),
     ).toThrow('Serializable value exceeds resource limits');
   });
+
+  it('rejects non-component discriminants in standalone component resolution', () => {
+    expect(() =>
+      resolveComponentItemConfig({
+        type: 'stack',
+        componentType: 'panel',
+      } as unknown as ComponentItemConfig),
+    ).toThrow('Invalid ComponentItemConfig.type');
+  });
+
+  it('rejects wrong discriminants in sibling standalone item resolvers', () => {
+    expect(() =>
+      resolveStackItemConfig({
+        type: 'component',
+        componentType: 'panel',
+      } as unknown as StackItemConfig),
+    ).toThrow('Invalid StackItemConfig.type');
+    expect(() =>
+      resolveRowOrColumnItemConfig({
+        type: 'stack',
+        content: [],
+      } as unknown as RowOrColumnItemConfig),
+    ).toThrow('Invalid RowOrColumnItemConfig.type');
+  });
+
+  it.each([null, undefined])(
+    'preserves controlled diagnostics for malformed standalone item %s',
+    (itemConfig) => {
+      expect(() =>
+        resolveComponentItemConfig(
+          itemConfig as unknown as ComponentItemConfig,
+        ),
+      ).toThrow('Layout item configuration must be an object');
+      expect(() =>
+        resolveStackItemConfig(itemConfig as unknown as StackItemConfig),
+      ).toThrow('Layout item configuration must be an object');
+      expect(() =>
+        resolveRowOrColumnItemConfig(
+          itemConfig as unknown as RowOrColumnItemConfig,
+        ),
+      ).toThrow('Layout item configuration must be an object');
+    },
+  );
 
   it.each([
     'borderWidth',

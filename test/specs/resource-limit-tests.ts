@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ConfigurationError,
   createComponentItemConfigFromResolved,
+  createResolvedStackItemConfigDefault,
   resolveComponentItemConfig,
   resolveItemConfig,
   resolveLayoutConfig,
@@ -278,6 +279,31 @@ describe('configuration resource limits', () => {
       expect(() => layout.createContentItem(resolvedRoot, groundItem!)).toThrow(
         'Resolved layout configuration exceeds resource limits',
       );
+    } finally {
+      layout.destroy();
+    }
+  });
+
+  it('shares one payload budget across an already-resolved construction tree', () => {
+    const content = Array.from({ length: 3 }, (_, index) =>
+      resolveComponentItemConfig({
+        type: 'component',
+        componentType: `panel-${index}`,
+        componentState: Array(4_000).fill(null),
+      }),
+    );
+    const resolvedStack = {
+      ...createResolvedStackItemConfigDefault(),
+      content,
+    };
+
+    const layout = new StrelitLayout();
+    try {
+      const groundItem = layout.groundItem;
+      expect(groundItem).toBeDefined();
+      expect(() =>
+        layout.createAndInitContentItem(resolvedStack, groundItem!),
+      ).toThrow('Serializable value exceeds resource limits');
     } finally {
       layout.destroy();
     }

@@ -182,8 +182,8 @@ export interface ItemConfig {
   id?: string;
 
   /**
-   * Determines if the item is closable. If false, the x on the items tab will be hidden and container.close()
-   * will return false
+   * Determines if the item is closable. If false, the x on the item's tab will be hidden and
+   * `container.close()` will leave the item open.
    * Default: true
    */
   isClosable?: boolean;
@@ -229,6 +229,18 @@ function createResolutionBudget(): LayoutResolutionBudget {
   };
 }
 
+function assertItemConfigObject(
+  itemConfig: unknown,
+): asserts itemConfig is ItemConfig {
+  if (
+    itemConfig === null ||
+    typeof itemConfig !== 'object' ||
+    Array.isArray(itemConfig)
+  ) {
+    throw new ConfigurationError('Layout item configuration must be an object');
+  }
+}
+
 function resolveItemConfigWithBudget(
   itemConfig: ItemConfig,
   budget: LayoutResolutionBudget,
@@ -240,13 +252,7 @@ function resolveItemConfigWithBudget(
       'Layout configuration exceeds resource limits',
     );
   }
-  if (
-    itemConfig === null ||
-    typeof itemConfig !== 'object' ||
-    Array.isArray(itemConfig)
-  ) {
-    throw new ConfigurationError('Layout item configuration must be an object');
-  }
+  assertItemConfigObject(itemConfig);
   if (budget.active.has(itemConfig)) {
     throw new ConfigurationError('Layout configuration contains a cycle');
   }
@@ -550,6 +556,13 @@ export interface StackItemConfig extends HeaderedItemConfig {
 export function resolveStackItemConfig(
   itemConfig: StackItemConfig,
 ): ResolvedStackItemConfig {
+  assertItemConfigObject(itemConfig);
+  if (itemConfig.type !== ItemType.stack) {
+    throw new ConfigurationError(
+      'Invalid StackItemConfig.type',
+      JSON.stringify(itemConfig),
+    );
+  }
   return resolveItemConfigWithBudget(
     itemConfig,
     createResolutionBudget(),
@@ -746,6 +759,13 @@ export interface ComponentItemConfig extends HeaderedItemConfig {
 export function resolveComponentItemConfig(
   itemConfig: ComponentItemConfig,
 ): ResolvedComponentItemConfig {
+  assertItemConfigObject(itemConfig);
+  if (itemConfig.type !== ItemType.component) {
+    throw new ConfigurationError(
+      'Invalid ComponentItemConfig.type',
+      JSON.stringify(itemConfig),
+    );
+  }
   return resolveComponentItemConfigWithDefault(
     itemConfig,
     resolvedComponentItemConfigDefaultReorderEnabled,
@@ -908,6 +928,13 @@ export function isRowOrColumnItemConfigChild(
 export function resolveRowOrColumnItemConfig(
   itemConfig: RowOrColumnItemConfig,
 ): ResolvedRowOrColumnItemConfig {
+  assertItemConfigObject(itemConfig);
+  if (itemConfig.type !== ItemType.row && itemConfig.type !== ItemType.column) {
+    throw new ConfigurationError(
+      'Invalid RowOrColumnItemConfig.type',
+      JSON.stringify(itemConfig),
+    );
+  }
   return resolveItemConfigWithBudget(
     itemConfig,
     createResolutionBudget(),
@@ -1182,7 +1209,7 @@ export interface LayoutConfig {
 export interface LayoutConfigSettings {
   /**
    * Constrains the area in which items can be dragged to the layout's container. Will be set to false
-   * automatically when layout.createDragSource() is called.
+   * automatically when `layout.newDragSource()` is called.
    * Default: true
    */
   constrainDragToContainer?: boolean;
@@ -1311,7 +1338,7 @@ export interface LayoutConfigHeader {
   popout?: false | string;
   /**
    * The tooltip text that appears when hovering over the popin icon.
-   * Default: 'pop in'
+   * Default: 'dock'
    */
   popin?: string;
   /**

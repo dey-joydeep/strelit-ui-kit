@@ -137,6 +137,7 @@ function assertResolvedItemConfigWithinLimits(root: ResolvedItemConfig): void {
 
   const active = new WeakSet<object>();
   const stack: ValidationFrame[] = [{ config: root, depth: 0 }];
+  const cloneBudget = { nodes: 0 };
   let nodes = 0;
 
   while (stack.length > 0) {
@@ -163,8 +164,8 @@ function assertResolvedItemConfigWithinLimits(root: ResolvedItemConfig): void {
 
     nodes++;
     if (isResolvedComponentItemConfig(config)) {
-      deepCloneValue(config.componentType);
-      deepCloneValue(config.componentState);
+      deepCloneValue(config.componentType, cloneBudget);
+      deepCloneValue(config.componentState, cloneBudget);
     }
     const content = config.content;
     if (content.length > maximumConfigNodes - nodes) {
@@ -1700,7 +1701,7 @@ export abstract class LayoutManager extends EventEmitter {
   }
 
   /**
-   * Removes a DragListener added by createDragSource() so the corresponding
+   * Removes a DragListener added by `newDragSource()` so the corresponding
    * DOM element is not a drag source any more.
    */
   removeDragSource(dragSource: DragSource): void {
