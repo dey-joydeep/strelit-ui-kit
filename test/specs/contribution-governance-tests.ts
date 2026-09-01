@@ -61,7 +61,15 @@ interface PullRequestFile {
 
 interface PullRequestReview {
   readonly commit_id: string;
+  readonly submitted_at?: string;
   readonly state: string;
+  readonly user: { readonly login: string };
+}
+
+interface PullRequestReviewComment {
+  readonly commit_id: string;
+  readonly created_at: string;
+  readonly updated_at?: string;
   readonly user: { readonly login: string };
 }
 
@@ -152,6 +160,7 @@ async function runPullRequestMetadataPolicy(
     readonly user: { readonly login: string };
   }[] = [],
   renderGfmAnchors = false,
+  reviewComments: readonly PullRequestReviewComment[] = [],
 ): Promise<string[]> {
   const workflow = readFileSync(
     resolve('.github/workflows/contribution-governance.yml'),
@@ -184,6 +193,7 @@ async function runPullRequestMetadataPolicy(
   };
   const listFiles = () => undefined;
   const listReviews = () => undefined;
+  const listReviewComments = () => undefined;
   const listComments = () => undefined;
   const riskPolicy = readFileSync(resolve('.github/change-risk.json'), 'utf8');
   const renderGitHubMarkdown = (markdownBody: string) => {
@@ -213,14 +223,16 @@ async function runPullRequestMetadataPolicy(
         ? files
         : method === listReviews
           ? reviews
-          : comments,
+          : method === listReviewComments
+            ? reviewComments
+            : comments,
     rest: {
       markdown: {
         render: async ({ text: markdownBody }: { text: string }) => ({
           data: renderGitHubMarkdown(markdownBody),
         }),
       },
-      pulls: { listFiles, listReviews },
+      pulls: { listFiles, listReviewComments, listReviews },
       issues: { listComments },
       repos: {
         getContent: async ({ path, ref }: { path: string; ref: string }) => {
@@ -959,6 +971,113 @@ describe('contribution governance workflow', () => {
     );
 
     expect(accepted).toEqual([]);
+
+    const staleAfterExternalComment = await runPullRequestMetadataPolicy(
+      bodyFor(independentReview),
+      files,
+      [
+        {
+          commit_id: pullRequestHead,
+          submitted_at: '2026-08-31T10:00:00Z',
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+      ],
+      false,
+      [],
+      false,
+      [
+        {
+          commit_id: pullRequestHead,
+          created_at: '2026-08-31T09:59:00Z',
+          updated_at: '2026-08-31T10:01:00Z',
+          user: { login: 'external-reviewer' },
+        },
+      ],
+    );
+    expect(staleAfterExternalComment).toContain(
+      'High-risk approval is stale because an external review comment was created or edited after it.',
+    );
+
+    const ambiguousSameSecondComment = await runPullRequestMetadataPolicy(
+      bodyFor(independentReview),
+      files,
+      [
+        {
+          commit_id: pullRequestHead,
+          submitted_at: '2026-08-31T10:00:00Z',
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+      ],
+      false,
+      [],
+      false,
+      [
+        {
+          commit_id: pullRequestHead,
+          created_at: '2026-08-31T10:00:00Z',
+          user: { login: 'external-reviewer' },
+        },
+      ],
+    );
+    expect(ambiguousSameSecondComment).toContain(
+      'High-risk approval is stale because an external review comment was created or edited after it.',
+    );
+
+    const unaffectedByAuthorOrOldHeadComments =
+      await runPullRequestMetadataPolicy(
+        bodyFor(independentReview),
+        files,
+        [
+          {
+            commit_id: pullRequestHead,
+            submitted_at: '2026-08-31T10:00:00Z',
+            state: 'APPROVED',
+            user: { login: 'reviewer-user' },
+          },
+        ],
+        false,
+        [],
+        false,
+        [
+          {
+            commit_id: pullRequestHead,
+            created_at: '2026-08-31T10:01:00Z',
+            user: { login: 'implementer-user' },
+          },
+          {
+            commit_id: 'previous-head',
+            created_at: '2026-08-31T10:01:00Z',
+            user: { login: 'external-reviewer' },
+          },
+        ],
+      );
+    expect(unaffectedByAuthorOrOldHeadComments).toEqual([]);
+
+    const reapprovedAfterExternalComment = await runPullRequestMetadataPolicy(
+      bodyFor(independentReview),
+      files,
+      [
+        {
+          commit_id: pullRequestHead,
+          submitted_at: '2026-08-31T10:02:00Z',
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+      ],
+      false,
+      [],
+      false,
+      [
+        {
+          commit_id: pullRequestHead,
+          created_at: '2026-08-31T10:01:00Z',
+          user: { login: 'external-reviewer' },
+        },
+      ],
+    );
+    expect(reapprovedAfterExternalComment).toEqual([]);
   });
 
   it('rejects incomplete per-path domain declarations', async () => {
@@ -2126,6 +2245,8 @@ describe('contribution governance workflow', () => {
 
     expect(workflow).toContain("path: '.github/change-risk.json'");
     expect(workflow).toContain('github.rest.pulls.listReviews');
+    expect(workflow).toContain('github.rest.pulls.listReviewComments');
+    expect(workflow).toContain('pull_request_review_comment:');
     expect(workflow).toContain('review.commit_id === pr.head.sha');
     expect(workflow).toContain('latestDecisiveReview');
     expect(workflow).toContain('review.user.login.toLowerCase() !== author');

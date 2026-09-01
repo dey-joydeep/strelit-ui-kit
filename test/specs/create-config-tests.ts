@@ -14,6 +14,7 @@ import {
   resolveLayoutConfig,
   resolveRowOrColumnItemConfig,
   resolveStackItemConfig,
+  resolveStackItemConfigContent,
 } from '../../src';
 import { createResolvedStackItemConfigCopy } from '../../src/ts/config/resolved-config';
 
@@ -206,6 +207,26 @@ describe('Layout configuration resolution and defaults', function () {
           itemConfig as unknown as RowOrColumnItemConfig,
         ),
       ).toThrow('Layout item configuration must be an object');
+    },
+  );
+
+  it.each(['row', 'column', 'stack'] as const)(
+    'rejects %s children in public stack configuration with a controlled error',
+    (type) => {
+      const child = { type, content: [] };
+      expect(() =>
+        resolveLayoutConfig({
+          root: {
+            type: 'stack',
+            content: [child],
+          },
+        } as unknown as LayoutConfig),
+      ).toThrow(ConfigurationError);
+      expect(() =>
+        resolveStackItemConfigContent([
+          child,
+        ] as unknown as ComponentItemConfig[]),
+      ).toThrow(ConfigurationError);
     },
   );
 

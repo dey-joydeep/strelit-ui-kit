@@ -11,7 +11,13 @@ on:
   pull_request_review:
     types:
       - submitted
+      - edited
       - dismissed
+  pull_request_review_comment:
+    types:
+      - created
+      - edited
+      - deleted
 
 permissions:
   contents: read
@@ -1121,11 +1127,39 @@ jobs:
                     )
                 );
                 const latestDecisiveReview = decisiveReviews.at(-1);
+                const latestApprovalSubmittedAt = Date.parse(
+                  latestDecisiveReview?.submitted_at ?? ''
+                );
+                const reviewComments = await github.paginate(
+                  github.rest.pulls.listReviewComments,
+                  { owner, repo, pull_number, per_page: 100 }
+                );
+                const hasLaterExternalReviewComment = reviewComments.some(
+                  (comment) => {
+                    const commentUpdatedAt = Date.parse(
+                      comment.updated_at ?? comment.created_at ?? ''
+                    );
+                    return (
+                      comment.commit_id === pr.head.sha &&
+                      comment.user?.login !== undefined &&
+                      comment.user.login.toLowerCase() !== author &&
+                      Number.isFinite(commentUpdatedAt) &&
+                      (!Number.isFinite(latestApprovalSubmittedAt) ||
+                        commentUpdatedAt >= latestApprovalSubmittedAt)
+                    );
+                  }
+                );
                 const hasCurrentIndependentApproval =
-                  latestDecisiveReview?.state === 'APPROVED';
+                  latestDecisiveReview?.state === 'APPROVED' &&
+                  !hasLaterExternalReviewComment;
                 if (!hasCurrentIndependentApproval) {
                   errors.push(
                     'High-risk changes require approval on the current head from the declared reviewer, using a GitHub identity different from the PR author.'
+                  );
+                }
+                if (hasLaterExternalReviewComment) {
+                  errors.push(
+                    'High-risk approval is stale because an external review comment was created or edited after it.'
                   );
                 }
               }

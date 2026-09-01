@@ -693,7 +693,10 @@ function resolveStackItemConfigContentWithBudget(
         componentReorderEnabledDefault,
       );
       if (!isResolvedComponentItemConfig(itemConfig)) {
-        throw new AssertError('UCUSICRC91114', JSON.stringify(itemConfig));
+        throw new ConfigurationError(
+          'StackItemConfig.content must contain only component items',
+          JSON.stringify(itemConfig),
+        );
       } else {
         result[i] = itemConfig;
       }
