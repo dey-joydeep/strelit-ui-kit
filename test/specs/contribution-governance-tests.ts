@@ -60,6 +60,7 @@ interface PullRequestFile {
 }
 
 interface PullRequestReview {
+  readonly body?: string;
   readonly commit_id: string;
   readonly submitted_at?: string;
   readonly state: string;
@@ -156,11 +157,14 @@ async function runPullRequestMetadataPolicy(
   riskPolicyMissingAtBase = false,
   comments: readonly {
     readonly body: string;
+    readonly created_at?: string;
     readonly html_url: string;
+    readonly updated_at?: string;
     readonly user: { readonly login: string };
   }[] = [],
   renderGfmAnchors = false,
   reviewComments: readonly PullRequestReviewComment[] = [],
+  issueCommentEvent = false,
 ): Promise<string[]> {
   const workflow = readFileSync(
     resolve('.github/workflows/contribution-governance.yml'),
@@ -178,17 +182,18 @@ async function runPullRequestMetadataPolicy(
     .map((line) => (line.startsWith('            ') ? line.slice(12) : line))
     .join('\n');
   const failures: string[] = [];
+  const pullRequest = {
+    body,
+    base: { sha: 'base-sha' },
+    head: { sha: pullRequestHead },
+    number: 1,
+    title: 'Validate independent review evidence',
+    user: { login: 'implementer-user' },
+  };
   const context = {
-    payload: {
-      pull_request: {
-        body,
-        base: { sha: 'base-sha' },
-        head: { sha: pullRequestHead },
-        number: 1,
-        title: 'Validate independent review evidence',
-        user: { login: 'implementer-user' },
-      },
-    },
+    payload: issueCommentEvent
+      ? { issue: { number: 1, pull_request: {} } }
+      : { pull_request: pullRequest },
     repo: { owner: 'CTHub', repo: 'strelit-ui-kit' },
   };
   const listFiles = () => undefined;
@@ -232,7 +237,12 @@ async function runPullRequestMetadataPolicy(
           data: renderGitHubMarkdown(markdownBody),
         }),
       },
-      pulls: { listFiles, listReviewComments, listReviews },
+      pulls: {
+        get: async () => ({ data: pullRequest }),
+        listFiles,
+        listReviewComments,
+        listReviews,
+      },
       issues: { listComments },
       repos: {
         getContent: async ({ path, ref }: { path: string; ref: string }) => {
@@ -996,7 +1006,7 @@ describe('contribution governance workflow', () => {
       ],
     );
     expect(staleAfterExternalComment).toContain(
-      'High-risk approval is stale because an external review comment was created or edited after it.',
+      'High-risk approval is stale because external review feedback was created or edited at or after it.',
     );
 
     const ambiguousSameSecondComment = await runPullRequestMetadataPolicy(
@@ -1022,7 +1032,7 @@ describe('contribution governance workflow', () => {
       ],
     );
     expect(ambiguousSameSecondComment).toContain(
-      'High-risk approval is stale because an external review comment was created or edited after it.',
+      'High-risk approval is stale because external review feedback was created or edited at or after it.',
     );
 
     const unaffectedByAuthorOrOldHeadComments =
@@ -1078,6 +1088,132 @@ describe('contribution governance workflow', () => {
       ],
     );
     expect(reapprovedAfterExternalComment).toEqual([]);
+
+    const staleAfterCommentedReview = await runPullRequestMetadataPolicy(
+      bodyFor(independentReview),
+      files,
+      [
+        {
+          commit_id: pullRequestHead,
+          submitted_at: '2026-08-31T10:00:00Z',
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+        {
+          body: 'Please address the remaining failure path.',
+          commit_id: pullRequestHead,
+          submitted_at: '2026-08-31T10:01:00Z',
+          state: 'COMMENTED',
+          user: { login: 'external-reviewer' },
+        },
+      ],
+    );
+    expect(staleAfterCommentedReview).toContain(
+      'High-risk approval is stale because external review feedback was created or edited at or after it.',
+    );
+
+    const staleAfterChangesRequested = await runPullRequestMetadataPolicy(
+      bodyFor(independentReview),
+      files,
+      [
+        {
+          commit_id: pullRequestHead,
+          submitted_at: '2026-08-31T10:00:00Z',
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+        {
+          commit_id: pullRequestHead,
+          submitted_at: '2026-08-31T10:01:00Z',
+          state: 'CHANGES_REQUESTED',
+          user: { login: 'external-reviewer' },
+        },
+      ],
+    );
+    expect(staleAfterChangesRequested).toContain(
+      'High-risk approval is stale because external review feedback was created or edited at or after it.',
+    );
+
+    const staleAfterConversationComment = await runPullRequestMetadataPolicy(
+      bodyFor(independentReview),
+      files,
+      [
+        {
+          commit_id: pullRequestHead,
+          submitted_at: '2026-08-31T10:00:00Z',
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+      ],
+      false,
+      [
+        {
+          body: 'The fallback still needs a regression test.',
+          created_at: '2026-08-31T10:01:00Z',
+          html_url:
+            'https://github.com/CTHub/strelit-ui-kit/pull/1#issuecomment-1',
+          user: { login: 'external-reviewer' },
+        },
+      ],
+      false,
+      [],
+      true,
+    );
+    expect(staleAfterConversationComment).toContain(
+      'High-risk approval is stale because external review feedback was created or edited at or after it.',
+    );
+
+    const unaffectedByNonFindingFeedback = await runPullRequestMetadataPolicy(
+      bodyFor(independentReview),
+      files,
+      [
+        {
+          commit_id: pullRequestHead,
+          submitted_at: '2026-08-31T10:02:00Z',
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+        {
+          body: 'Earlier feedback.',
+          commit_id: pullRequestHead,
+          submitted_at: '2026-08-31T10:01:00Z',
+          state: 'COMMENTED',
+          user: { login: 'external-reviewer' },
+        },
+        {
+          body: 'Old-head feedback.',
+          commit_id: 'previous-head',
+          submitted_at: '2026-08-31T10:03:00Z',
+          state: 'COMMENTED',
+          user: { login: 'external-reviewer' },
+        },
+        {
+          body: '',
+          commit_id: pullRequestHead,
+          submitted_at: '2026-08-31T10:03:00Z',
+          state: 'COMMENTED',
+          user: { login: 'external-reviewer' },
+        },
+      ],
+      false,
+      [
+        {
+          body: 'Author follow-up.',
+          created_at: '2026-08-31T10:03:00Z',
+          html_url:
+            'https://github.com/CTHub/strelit-ui-kit/pull/1#issuecomment-2',
+          user: { login: 'implementer-user' },
+        },
+        {
+          body: 'Earlier conversation feedback.',
+          created_at: '2026-08-31T10:01:00Z',
+          html_url:
+            'https://github.com/CTHub/strelit-ui-kit/pull/1#issuecomment-3',
+          user: { login: 'external-reviewer' },
+        },
+      ],
+    );
+    expect(unaffectedByNonFindingFeedback).toEqual([]);
   });
 
   it('rejects incomplete per-path domain declarations', async () => {
@@ -2247,6 +2383,7 @@ describe('contribution governance workflow', () => {
     expect(workflow).toContain('github.rest.pulls.listReviews');
     expect(workflow).toContain('github.rest.pulls.listReviewComments');
     expect(workflow).toContain('pull_request_review_comment:');
+    expect(workflow).toContain('issue_comment:');
     expect(workflow).toContain('review.commit_id === pr.head.sha');
     expect(workflow).toContain('latestDecisiveReview');
     expect(workflow).toContain('review.user.login.toLowerCase() !== author');

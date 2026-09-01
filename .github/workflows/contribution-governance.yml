@@ -1,6 +1,11 @@
 name: Contribution Governance
 
 on:
+  issue_comment:
+    types:
+      - created
+      - edited
+      - deleted
   pull_request_target:
     types:
       - opened
@@ -25,13 +30,27 @@ permissions:
 
 jobs:
   pr-metadata:
+    if: ${{ github.event_name != 'issue_comment' || github.event.issue.pull_request }}
     runs-on: ubuntu-latest
     steps:
       - name: Validate PR title and body
         uses: actions/github-script@v7
         with:
           script: |
-            const pr = context.payload.pull_request;
+            const pullNumber =
+              context.payload.pull_request?.number ?? context.payload.issue?.number;
+            if (!Number.isInteger(pullNumber)) {
+              core.setFailed('Contribution governance requires a pull request event.');
+              return;
+            }
+            const pr =
+              context.payload.pull_request ??
+              (
+                await github.rest.pulls.get({
+                  ...context.repo,
+                  pull_number: pullNumber
+                })
+              ).data;
             const errors = [];
 
             const title = (pr.title ?? '').trim();
@@ -1149,17 +1168,55 @@ jobs:
                     );
                   }
                 );
+                const hasLaterExternalReviewBody = reviews.some((review) => {
+                  const reviewSubmittedAt = Date.parse(
+                    review.submitted_at ?? ''
+                  );
+                  const hasFindingBody =
+                    review.state === 'COMMENTED' &&
+                    (review.body ?? '').trim().length > 0;
+                  return (
+                    review.commit_id === pr.head.sha &&
+                    review.user?.login !== undefined &&
+                    review.user.login.toLowerCase() !== author &&
+                    (hasFindingBody || review.state === 'CHANGES_REQUESTED') &&
+                    Number.isFinite(reviewSubmittedAt) &&
+                    (!Number.isFinite(latestApprovalSubmittedAt) ||
+                      reviewSubmittedAt >= latestApprovalSubmittedAt)
+                  );
+                });
+                const conversationComments = await github.paginate(
+                  github.rest.issues.listComments,
+                  { owner, repo, issue_number: pull_number, per_page: 100 }
+                );
+                const hasLaterExternalConversationComment =
+                  conversationComments.some((comment) => {
+                    const commentUpdatedAt = Date.parse(
+                      comment.updated_at ?? comment.created_at ?? ''
+                    );
+                    return (
+                      comment.user?.login !== undefined &&
+                      comment.user.login.toLowerCase() !== author &&
+                      Number.isFinite(commentUpdatedAt) &&
+                      (!Number.isFinite(latestApprovalSubmittedAt) ||
+                        commentUpdatedAt >= latestApprovalSubmittedAt)
+                    );
+                  });
+                const hasLaterExternalFeedback =
+                  hasLaterExternalReviewComment ||
+                  hasLaterExternalReviewBody ||
+                  hasLaterExternalConversationComment;
                 const hasCurrentIndependentApproval =
                   latestDecisiveReview?.state === 'APPROVED' &&
-                  !hasLaterExternalReviewComment;
+                  !hasLaterExternalFeedback;
                 if (!hasCurrentIndependentApproval) {
                   errors.push(
                     'High-risk changes require approval on the current head from the declared reviewer, using a GitHub identity different from the PR author.'
                   );
                 }
-                if (hasLaterExternalReviewComment) {
+                if (hasLaterExternalFeedback) {
                   errors.push(
-                    'High-risk approval is stale because an external review comment was created or edited after it.'
+                    'High-risk approval is stale because external review feedback was created or edited at or after it.'
                   );
                 }
               }
@@ -1176,6 +1233,7 @@ jobs:
             }
 
   commit-messages:
+    if: ${{ github.event_name != 'issue_comment' || github.event.issue.pull_request }}
     runs-on: ubuntu-latest
     steps:
       - name: Validate commit messages in PR
@@ -1183,7 +1241,8 @@ jobs:
         with:
           script: |
             const { owner, repo } = context.repo;
-            const pull_number = context.payload.pull_request.number;
+            const pull_number =
+              context.payload.pull_request?.number ?? context.payload.issue.number;
             const commits = await github.paginate(
               github.rest.pulls.listCommits,
               { owner, repo, pull_number, per_page: 100 }
