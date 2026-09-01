@@ -47,6 +47,15 @@ import {
   type ResolvedStackItemConfig,
 } from './resolved-config';
 
+function stringifyConfigurationValue(value: unknown): string {
+  try {
+    const serialized = JSON.stringify(value);
+    return serialized === undefined ? String(value) : serialized;
+  } catch {
+    return '[unserializable configuration]';
+  }
+}
+
 function assertContentArray(
   content: ItemConfig[] | undefined,
   ownerName: string,
@@ -54,7 +63,7 @@ function assertContentArray(
   if (content !== undefined && !Array.isArray(content)) {
     throw new ConfigurationError(
       `${ownerName}.content must be an array`,
-      JSON.stringify(content),
+      stringifyConfigurationValue(content),
     );
   }
 }
@@ -264,7 +273,7 @@ function resolveItemConfigWithBudget(
       case ItemType.ground:
         throw new ConfigurationError(
           'ItemConfig cannot specify type ground',
-          JSON.stringify(itemConfig),
+          stringifyConfigurationValue(itemConfig),
         );
       case ItemType.row:
       case ItemType.column:
@@ -560,7 +569,7 @@ export function resolveStackItemConfig(
   if (itemConfig.type !== ItemType.stack) {
     throw new ConfigurationError(
       'Invalid StackItemConfig.type',
-      JSON.stringify(itemConfig),
+      stringifyConfigurationValue(itemConfig),
     );
   }
   return resolveItemConfigWithBudget(
@@ -598,7 +607,7 @@ function resolveStackItemConfigWithBudget(
   ) {
     throw new ConfigurationError(
       'StackItemConfig.activeItemIndex must be an in-range integer',
-      JSON.stringify(configuredActiveItemIndex),
+      stringifyConfigurationValue(configuredActiveItemIndex),
     );
   }
   const result: ResolvedStackItemConfig = {
@@ -695,7 +704,7 @@ function resolveStackItemConfigContentWithBudget(
       if (!isResolvedComponentItemConfig(itemConfig)) {
         throw new ConfigurationError(
           'StackItemConfig.content must contain only component items',
-          JSON.stringify(itemConfig),
+          stringifyConfigurationValue(itemConfig),
         );
       } else {
         result[i] = itemConfig;
@@ -766,7 +775,7 @@ export function resolveComponentItemConfig(
   if (itemConfig.type !== ItemType.component) {
     throw new ConfigurationError(
       'Invalid ComponentItemConfig.type',
-      JSON.stringify(itemConfig),
+      stringifyConfigurationValue(itemConfig),
     );
   }
   return resolveComponentItemConfigWithDefault(
@@ -935,7 +944,7 @@ export function resolveRowOrColumnItemConfig(
   if (itemConfig.type !== ItemType.row && itemConfig.type !== ItemType.column) {
     throw new ConfigurationError(
       'Invalid RowOrColumnItemConfig.type',
-      JSON.stringify(itemConfig),
+      stringifyConfigurationValue(itemConfig),
     );
   }
   return resolveItemConfigWithBudget(
@@ -1047,7 +1056,7 @@ function resolveRowOrColumnItemConfigContentWithBudget(
       if (!isResolvedRowOrColumnItemConfigChild(resolvedChildItemConfig)) {
         throw new AssertError(
           'UROCOSPIC99512',
-          JSON.stringify(resolvedChildItemConfig),
+          stringifyConfigurationValue(resolvedChildItemConfig),
         );
       } else {
         result[i] = resolvedChildItemConfig;
@@ -1155,7 +1164,7 @@ function resolveRootItemConfigWithBudget(
     if (!isResolvedRootItemConfig(result)) {
       throw new ConfigurationError(
         'ItemConfig is not Row, Column or Stack',
-        JSON.stringify(itemConfig),
+        stringifyConfigurationValue(itemConfig),
       );
     } else {
       return result;

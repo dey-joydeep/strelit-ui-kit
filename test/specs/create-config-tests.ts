@@ -191,6 +191,36 @@ describe('Layout configuration resolution and defaults', function () {
     ).toThrow('Invalid RowOrColumnItemConfig.type');
   });
 
+  it('keeps cyclic invalid item diagnostics controlled', () => {
+    const cases = [
+      () => {
+        const item = { type: 'ground' as const, content: [] as unknown[] };
+        item.content.push(item);
+        resolveLayoutConfig({ root: item } as unknown as LayoutConfig);
+      },
+      () => {
+        const item = { type: 'row' as const, content: [] as unknown[] };
+        item.content.push(item);
+        resolveStackItemConfig(item as unknown as StackItemConfig);
+      },
+      () => {
+        const item = { type: 'stack' as const, content: [] as unknown[] };
+        item.content.push(item);
+        resolveComponentItemConfig(item as unknown as ComponentItemConfig);
+      },
+      () => {
+        const item = { type: 'stack' as const, content: [] as unknown[] };
+        item.content.push(item);
+        resolveRowOrColumnItemConfig(item as unknown as RowOrColumnItemConfig);
+      },
+    ];
+
+    for (const resolve of cases) {
+      expect(resolve).toThrow(ConfigurationError);
+      expect(resolve).not.toThrow(TypeError);
+    }
+  });
+
   it.each([null, undefined])(
     'preserves controlled diagnostics for malformed standalone item %s',
     (itemConfig) => {
