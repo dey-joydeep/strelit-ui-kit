@@ -273,6 +273,10 @@ describe('Layout configuration resolution and defaults', function () {
       ).toThrow(ConfigurationError);
     }
 
+    expect(() =>
+      resolveLayoutConfig({ dimensions: { [dimension]: null } }),
+    ).toThrow(ConfigurationError);
+
     expect(
       resolveLayoutConfig({ dimensions: { [dimension]: 0 } }).dimensions[
         dimension

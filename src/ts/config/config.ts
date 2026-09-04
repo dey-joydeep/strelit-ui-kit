@@ -1501,7 +1501,7 @@ function resolvePixelDimension(
   value: number | undefined,
   defaultValue: number,
 ): number {
-  const resolved = value ?? defaultValue;
+  const resolved = value === undefined ? defaultValue : value;
   if (!Number.isFinite(resolved) || resolved < 0) {
     throw new ConfigurationError(
       `Layout dimension ${name} must be finite and nonnegative`,
