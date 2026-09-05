@@ -337,4 +337,27 @@ describe('configuration resource limits', () => {
       layout.destroy();
     }
   });
+
+  it('rejects an oversized resolved child array before structural traversal', () => {
+    const layout = new StrelitLayout();
+    try {
+      const groundItem = layout.groundItem;
+      expect(groundItem).toBeDefined();
+      const resolvedStack = {
+        ...createResolvedStackItemConfigDefault(),
+        content: Array.from({ length: maximumNodes }, () =>
+          resolveComponentItemConfig({
+            type: 'component',
+            componentType: 'panel',
+          }),
+        ),
+        activeItemIndex: 0,
+      };
+      expect(() =>
+        layout.createContentItem(resolvedStack, groundItem!),
+      ).toThrow(ConfigurationError);
+    } finally {
+      layout.destroy();
+    }
+  });
 });

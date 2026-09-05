@@ -282,6 +282,26 @@ describe('Runtime layout tree manipulation', function () {
     expect(createdComponent.element.style.display).not.toBe('none');
   });
 
+  it('activates a new stack child before fallible sizing callbacks', function () {
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: [{ type: 'component', componentType: 'testComponent' }],
+      },
+    });
+    const stack = layout.rootItem as Stack;
+    const updateSize = vi.spyOn(stack, 'updateSize').mockImplementation(() => {
+      expect(stack.getActiveComponentItem()).toBe(stack.contentItems[1]);
+      throw new Error('sizing failed');
+    });
+
+    expect(() =>
+      stack.addItem({ type: 'component', componentType: 'testComponent' }),
+    ).toThrow('sizing failed');
+    expect(stack.getActiveComponentItem()).toBe(stack.contentItems[1]);
+    updateSize.mockRestore();
+  });
+
   it('initializes the complete stack before notifying tabCreated listeners', function () {
     const observed: Array<{
       tab: Tab;

@@ -1788,6 +1788,63 @@ fs.renameSync = (source, destination) => {
     );
   });
 
+  it('preserves concurrent edits made before stale-plan rollback', () => {
+    const directory = mkdtempSync(
+      join(tmpdir(), 'strelit-migration-concurrent-rollback-'),
+    );
+    temporaryDirectories.push(directory);
+    const firstPath = join(directory, 'a.json');
+    const secondPath = join(directory, 'b.json');
+    writeFileSync(
+      firstPath,
+      JSON.stringify({ root: { type: 'component', componentName: 'first' } }),
+    );
+    writeFileSync(
+      secondPath,
+      JSON.stringify({ root: { type: 'component', componentName: 'second' } }),
+    );
+    const preloadPath = join(directory, 'concurrent-rollback.cjs');
+    writeFileSync(
+      preloadPath,
+      `const fs = require('node:fs');
+const path = require('node:path');
+const renameSync = fs.renameSync;
+fs.renameSync = (source, destination) => {
+  if (path.basename(destination) === 'a.json' && source.includes('-next-')) {
+    const result = renameSync(source, destination);
+    fs.writeFileSync(destination, 'concurrent edit to a');
+    fs.writeFileSync(path.join(path.dirname(destination), 'b.json'), 'concurrent edit to b');
+    return result;
+  }
+  return renameSync(source, destination);
+};
+`,
+    );
+
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [migrationScript, '--target', directory, '--from', 'v1', '--write'],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            NODE_OPTIONS: `--require=${preloadPath}`,
+          },
+        },
+      ),
+    ).toThrow(/rollback was incomplete/);
+
+    expect(readFileSync(firstPath, 'utf8')).toBe('concurrent edit to a');
+    expect(readFileSync(secondPath, 'utf8')).toBe('concurrent edit to b');
+    expect(
+      readdirSync(directory).some(
+        (name) =>
+          name.startsWith('.a.json.strelit-') && name.includes('-backup-'),
+      ),
+    ).toBe(true);
+  });
+
   it('migrates standalone item JSON without dropping its wrapper or children', () => {
     const filePath = createFixture(
       JSON.stringify({

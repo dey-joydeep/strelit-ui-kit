@@ -3276,8 +3276,17 @@ function applyMigrationWritePlans(plans, canonicalTarget) {
       let backupCanBeRemoved = !entry.committed;
       if (entry.committed) {
         try {
-          fs.renameSync(entry.backupPath, entry.filePath);
-          backupCanBeRemoved = true;
+          const current = fs.readFileSync(entry.filePath, 'utf8');
+          if (current !== entry.transformed) {
+            rollbackErrors.push(
+              new Error(
+                `Refusing to overwrite a concurrent edit while rolling back ${entry.filePath}`,
+              ),
+            );
+          } else {
+            fs.renameSync(entry.backupPath, entry.filePath);
+            backupCanBeRemoved = true;
+          }
         } catch (rollbackError) {
           rollbackErrors.push(rollbackError);
         }

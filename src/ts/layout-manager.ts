@@ -152,12 +152,24 @@ function assertResolvedItemConfigWithinLimits(root: ResolvedItemConfig): void {
     }
 
     const { config, depth } = frame;
-    _assertResolvedItemConfigStructure(config);
     if (depth > maximumConfigDepth || nodes >= maximumConfigNodes) {
       throw new ConfigurationError(
         'Resolved layout configuration exceeds resource limits',
       );
     }
+    if (
+      typeof config === 'object' &&
+      config !== null &&
+      !Array.isArray(config) &&
+      Array.isArray((config as { content?: unknown }).content) &&
+      (config as { content: readonly unknown[] }).content.length >
+        maximumConfigNodes - nodes
+    ) {
+      throw new ConfigurationError(
+        'Resolved layout configuration exceeds resource limits',
+      );
+    }
+    _assertResolvedItemConfigStructure(config);
     if (active.has(config)) {
       throw new ConfigurationError(
         'Resolved layout configuration contains a cycle',
@@ -170,11 +182,6 @@ function assertResolvedItemConfigWithinLimits(root: ResolvedItemConfig): void {
       deepCloneValue(config.componentState, cloneBudget);
     }
     const content = config.content;
-    if (content.length > maximumConfigNodes - nodes) {
-      throw new ConfigurationError(
-        'Resolved layout configuration exceeds resource limits',
-      );
-    }
 
     active.add(config);
     stack.push({ completed: config });

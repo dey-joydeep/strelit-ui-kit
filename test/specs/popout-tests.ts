@@ -820,6 +820,46 @@ describe('BrowserPopout functionality (item.popout())', function () {
     }
   });
 
+  it('transfers surviving popout storage cleanup without retaining the layout', function () {
+    const listeners: Array<() => void> = [];
+    const mockWindow = {
+      closed: false,
+      close: vi.fn(),
+      addEventListener: vi.fn((name: string, listener: () => void) => {
+        if (name === 'beforeunload') listeners.push(listener);
+      }),
+      removeEventListener: vi.fn(),
+      document: {
+        createElement: () => document.createElement('div'),
+        body: document.createElement('body'),
+        head: document.createElement('head'),
+        write: vi.fn(),
+        close: vi.fn(),
+      },
+      location: { href: '' },
+    } as unknown as Window;
+    const open = vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+
+    layout.loadLayout({
+      settings: { closePopoutsOnUnload: false },
+      openPopouts: [
+        {
+          root: {
+            type: 'component',
+            componentType: 'testComponent',
+          },
+        },
+      ],
+    });
+    expect(open).toHaveBeenCalled();
+
+    layout.destroy();
+
+    const cleanupListener = listeners.at(-1);
+    expect(cleanupListener).toBeDefined();
+    expect(cleanupListener).not.toBe(listeners[0]);
+  });
+
   it('does not emit windowOpened when popout initialisation destroys the owner', function () {
     vi.useFakeTimers();
     try {

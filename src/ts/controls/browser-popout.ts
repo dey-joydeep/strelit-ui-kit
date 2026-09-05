@@ -57,6 +57,8 @@ export class BrowserPopout extends EventEmitter {
   private readonly _loadListener = () => this.positionWindow();
   /** @internal */
   private readonly _beforeUnloadListener = () => this._onClose();
+  /** Cleans persisted popout state without retaining the owning layout. */
+  private _storageCleanupListener: (() => void) | undefined;
   /** @internal */
   private _checkReadyInterval: ReturnType<typeof setTimeout> | undefined;
   /** @internal */
@@ -127,10 +129,27 @@ export class BrowserPopout extends EventEmitter {
     if (this._popoutWindow !== null) {
       try {
         this._popoutWindow.removeEventListener('load', this._loadListener);
-        if (this._storageKey === undefined || this._popoutWindow.closed) {
+        this._popoutWindow.removeEventListener(
+          'beforeunload',
+          this._beforeUnloadListener,
+        );
+        if (this._storageKey !== undefined && !this._popoutWindow.closed) {
+          const storageCleanupListener = this._storageCleanupListener;
+          if (storageCleanupListener !== undefined) {
+            this._popoutWindow.removeEventListener(
+              'beforeunload',
+              storageCleanupListener,
+            );
+            this._popoutWindow.addEventListener(
+              'beforeunload',
+              storageCleanupListener,
+              { passive: true },
+            );
+          }
+        } else if (this._storageCleanupListener !== undefined) {
           this._popoutWindow.removeEventListener(
             'beforeunload',
-            this._beforeUnloadListener,
+            this._storageCleanupListener,
           );
         }
       } catch {
@@ -508,6 +527,13 @@ export class BrowserPopout extends EventEmitter {
   private createWindow(): void {
     const { url, storageKey } = this.createUrl();
     this._storageKey = storageKey;
+    this._storageCleanupListener = () => {
+      try {
+        localStorage.removeItem(storageKey);
+      } catch {
+        // A detached cleanup listener cannot report through the destroyed layout.
+      }
+    };
 
     /**
      * Bogus title to prevent re-usage of existing window with the
