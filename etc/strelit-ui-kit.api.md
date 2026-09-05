@@ -19,6 +19,9 @@ export interface AreaLinkedRect {
     y2: number;
 }
 
+// @internal (undocumented)
+export function _assertResolvedItemConfigStructure(value: unknown): asserts value is ResolvedItemConfig;
+
 // @public
 export class BindError extends ExternalError {
     constructor(_nonConstructible: never, ..._args: never[]);
@@ -767,6 +770,8 @@ export interface ItemConfig {
     id?: string;
     isClosable?: boolean;
     minSize?: string;
+    // @internal
+    popInParentIds?: string[];
     size?: string;
     type: ItemType;
 }
@@ -1117,6 +1122,8 @@ export interface ResolvedItemConfig {
     readonly isClosable: boolean;
     readonly minSize: number | undefined;
     readonly minSizeUnit: SizeUnit;
+    // @internal
+    readonly popInParentIds?: readonly string[];
     readonly size: number;
     readonly sizeUnit: SizeUnit;
     readonly type: ItemType;

@@ -295,6 +295,7 @@ describe('configuration resource limits', () => {
     const resolvedStack = {
       ...createResolvedStackItemConfigDefault(),
       content,
+      activeItemIndex: 0,
     };
 
     const layout = new StrelitLayout();
@@ -304,6 +305,34 @@ describe('configuration resource limits', () => {
       expect(() =>
         layout.createAndInitContentItem(resolvedStack, groundItem!),
       ).toThrow('Serializable value exceeds resource limits');
+    } finally {
+      layout.destroy();
+    }
+  });
+
+  it('rejects malformed resolved item structure before traversing content', () => {
+    const layout = new StrelitLayout();
+    try {
+      const groundItem = layout.groundItem;
+      expect(groundItem).toBeDefined();
+      const malformed = {
+        type: 'component',
+        content: null,
+        size: 1,
+        sizeUnit: 'fr',
+        minSize: undefined,
+        minSizeUnit: 'px',
+        id: 'malformed',
+        isClosable: true,
+        maximised: false,
+        reorderEnabled: true,
+        title: 'malformed',
+        header: undefined,
+        componentType: 'panel',
+      } as unknown as ResolvedItemConfig;
+      expect(() =>
+        layout.createAndInitContentItem(malformed, groundItem!),
+      ).toThrow(ConfigurationError);
     } finally {
       layout.destroy();
     }

@@ -6,6 +6,7 @@ import {
   ComponentItem,
   eventEmitterAllEventName,
   resolveLayoutConfig,
+  createLayoutConfigFromResolved,
 } from '../../src';
 
 describe('BrowserPopout functionality (item.popout())', function () {
@@ -102,7 +103,11 @@ describe('BrowserPopout functionality (item.popout())', function () {
 
     const saved = layout.saveLayout();
     expect(saved.root?.id).toBe('pending');
+    expect(saved.root?.popInParentIds).toHaveLength(1);
     expect(saved.openPopouts).toHaveLength(0);
+    expect(createLayoutConfigFromResolved(saved).root?.popInParentIds).toEqual(
+      saved.root?.popInParentIds,
+    );
     expect(() => popout.getStrelitInstance()).toThrow(
       'UnexpectedUndefined: BPGGI24694',
     );

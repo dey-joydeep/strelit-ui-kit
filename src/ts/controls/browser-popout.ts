@@ -127,10 +127,12 @@ export class BrowserPopout extends EventEmitter {
     if (this._popoutWindow !== null) {
       try {
         this._popoutWindow.removeEventListener('load', this._loadListener);
-        this._popoutWindow.removeEventListener(
-          'beforeunload',
-          this._beforeUnloadListener,
-        );
+        if (this._storageKey === undefined || this._popoutWindow.closed) {
+          this._popoutWindow.removeEventListener(
+            'beforeunload',
+            this._beforeUnloadListener,
+          );
+        }
       } catch {
         // Cross-origin children may reject listener access during disposal.
       }

@@ -181,6 +181,7 @@ export class ComponentItem extends ContentItem {
       header: createResolvedHeaderedItemConfigHeaderCopy(this._headerConfig),
       componentType: createComponentTypeCopy(this.componentType),
       componentState: deepCloneValue(state) as SerializableValue | undefined,
+      popInParentIds: [...this.popInParentIds],
     };
 
     return result;

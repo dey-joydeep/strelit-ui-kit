@@ -397,7 +397,16 @@ export class GroundItem extends ComponentParentableItem {
       const item = contentItems[i];
       const itemConfig = item.toConfig();
       if (isResolvedRootItemConfig(itemConfig)) {
-        result[i] = itemConfig;
+        // GroundItem is not serialized itself, so preserve markers attached to
+        // it on the root snapshot that will be persisted instead.
+        const popInParentIds =
+          this.popInParentIds.length === 0
+            ? itemConfig.popInParentIds
+            : [...this.popInParentIds, ...(itemConfig.popInParentIds ?? [])];
+        result[i] =
+          popInParentIds === undefined
+            ? itemConfig
+            : { ...itemConfig, popInParentIds };
       } else {
         throw new AssertError('RCCC66832');
       }

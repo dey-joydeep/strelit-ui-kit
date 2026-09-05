@@ -38,6 +38,8 @@ export interface ResolvedItemConfig {
   readonly id: string;
   /** Whether closable. */
   readonly isClosable: boolean;
+  /** @internal Generated parent markers used to restore persisted popouts. */
+  readonly popInParentIds?: readonly string[];
 }
 
 /** @internal */
@@ -260,6 +262,10 @@ export function createResolvedStackItemConfigCopy(
     isClosable: original.isClosable,
     activeItemIndex,
     header: createResolvedHeaderedItemConfigHeaderCopy(original.header),
+    popInParentIds:
+      original.popInParentIds === undefined
+        ? undefined
+        : [...original.popInParentIds],
   };
   return result;
 }
@@ -369,6 +375,10 @@ export function createResolvedComponentItemConfigCopy(
     componentState: deepCloneValue(
       original.componentState,
     ) as SerializableValue,
+    popInParentIds:
+      original.popInParentIds === undefined
+        ? undefined
+        : [...original.popInParentIds],
   };
   return result;
 }
@@ -476,6 +486,10 @@ export function createResolvedRowOrColumnItemConfigCopy(
     minSizeUnit: original.minSizeUnit,
     id: original.id,
     isClosable: original.isClosable,
+    popInParentIds:
+      original.popInParentIds === undefined
+        ? undefined
+        : [...original.popInParentIds],
   };
   return result;
 }
@@ -1086,6 +1100,16 @@ function assertResolvedItemFields(
     throw new ConfigurationError(`${name}.id must be a string`);
   }
   assertBoolean(value.isClosable, `${name}.isClosable`);
+  if (value.popInParentIds !== undefined) {
+    if (
+      !Array.isArray(value.popInParentIds) ||
+      value.popInParentIds.some((id) => typeof id !== 'string')
+    ) {
+      throw new ConfigurationError(
+        `${name}.popInParentIds must be an array of strings`,
+      );
+    }
+  }
 
   if (value.type === ItemType.stack || value.type === ItemType.component) {
     assertBoolean(value.maximised, `${name}.maximised`);
@@ -1127,6 +1151,32 @@ function assertResolvedItemFields(
     if (typeof value.title !== 'string') {
       throw new ConfigurationError(`${name}.title must be a string`);
     }
+  }
+}
+
+/** @internal */
+export function _assertResolvedItemConfigStructure(
+  value: unknown,
+): asserts value is ResolvedItemConfig {
+  assertRecord(value, 'Resolved layout item configuration');
+  if (
+    value.type !== ItemType.row &&
+    value.type !== ItemType.column &&
+    value.type !== ItemType.stack &&
+    value.type !== ItemType.component
+  ) {
+    throw new ConfigurationError(
+      'Resolved layout item configuration has an invalid type',
+    );
+  }
+  assertResolvedItemFields(value);
+  if (
+    value.type === ItemType.component &&
+    !Object.prototype.hasOwnProperty.call(value, 'componentType')
+  ) {
+    throw new ConfigurationError(
+      'Resolved component configuration requires componentType',
+    );
   }
 }
 

@@ -481,6 +481,7 @@ export class RowOrColumn extends ContentItem {
       minSizeUnit: this.minSizeUnit,
       id: this.id,
       isClosable: this.isClosable,
+      popInParentIds: [...this.popInParentIds],
     };
     return result;
   }

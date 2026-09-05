@@ -196,6 +196,9 @@ export interface ItemConfig {
    * Default: true
    */
   isClosable?: boolean;
+
+  /** @internal Generated parent markers used to restore persisted popouts. */
+  popInParentIds?: string[];
 }
 
 /**
@@ -361,6 +364,16 @@ function resolveItemConfigContentWithBudget(
  */
 export function resolveItemConfigId(id: string | undefined): string {
   return resolveString(id, resolvedItemConfigDefaults.id, 'ItemConfig.id');
+}
+
+function resolvePopInParentIds(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.some((id) => typeof id !== 'string')) {
+    throw new ConfigurationError(
+      'ItemConfig.popInParentIds must be an array of strings',
+    );
+  }
+  return [...value];
 }
 
 /**
@@ -630,6 +643,7 @@ function resolveStackItemConfigWithBudget(
         : (itemConfig.activeItemIndex ??
           resolvedStackItemConfigDefaultActiveItemIndex),
     header: resolveHeaderedItemConfigHeader(itemConfig.header),
+    popInParentIds: resolvePopInParentIds(itemConfig.popInParentIds),
   };
   return result;
 }
@@ -654,6 +668,10 @@ export function createStackItemConfigFromResolved(
     isClosable: resolvedConfig.isClosable,
     activeItemIndex: resolvedConfig.activeItemIndex,
     header: createResolvedHeaderedItemConfigHeaderCopy(resolvedConfig.header),
+    popInParentIds:
+      resolvedConfig.popInParentIds === undefined
+        ? undefined
+        : [...resolvedConfig.popInParentIds],
   };
 
   return result;
@@ -838,6 +856,7 @@ function resolveComponentItemConfigWithDefault(
         itemConfig.componentState,
         cloneBudget,
       ) as SerializableValue,
+      popInParentIds: resolvePopInParentIds(itemConfig.popInParentIds),
     };
     return result;
   }
@@ -866,6 +885,10 @@ export function createComponentItemConfigFromResolved(
     componentType: deepCloneValue(
       resolvedConfig.componentType,
     ) as ComponentType,
+    popInParentIds:
+      resolvedConfig.popInParentIds === undefined
+        ? undefined
+        : [...resolvedConfig.popInParentIds],
     componentState: deepCloneValue(
       resolvedConfig.componentState,
     ) as SerializableValue,
@@ -983,6 +1006,7 @@ function resolveRowOrColumnItemConfigWithBudget(
       resolvedItemConfigDefaults.isClosable,
       'RowOrColumnItemConfig.isClosable',
     ),
+    popInParentIds: resolvePopInParentIds(itemConfig.popInParentIds),
   };
   return result;
 }
@@ -1006,6 +1030,10 @@ export function createRowOrColumnItemConfigFromResolved(
     ),
     id: resolvedConfig.id,
     isClosable: resolvedConfig.isClosable,
+    popInParentIds:
+      resolvedConfig.popInParentIds === undefined
+        ? undefined
+        : [...resolvedConfig.popInParentIds],
   };
 
   return result;

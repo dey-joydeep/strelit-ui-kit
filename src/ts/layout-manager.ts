@@ -11,6 +11,7 @@ import {
   createResolvedLayoutConfigDimensionsCopy,
   createResolvedLayoutConfigHeaderCopy,
   createResolvedLayoutConfigSettingsCopy,
+  _assertResolvedItemConfigStructure,
   type ResolvedComponentItemConfig,
   type ResolvedItemConfig,
   type ResolvedLayoutConfig,
@@ -151,6 +152,7 @@ function assertResolvedItemConfigWithinLimits(root: ResolvedItemConfig): void {
     }
 
     const { config, depth } = frame;
+    _assertResolvedItemConfigStructure(config);
     if (depth > maximumConfigDepth || nodes >= maximumConfigNodes) {
       throw new ConfigurationError(
         'Resolved layout configuration exceeds resource limits',
@@ -1321,6 +1323,7 @@ export abstract class LayoutManager extends EventEmitter {
           isClosable: config.isClosable,
           activeItemIndex: 0,
           header: undefined,
+          popInParentIds: config.popInParentIds,
         };
 
         config = stackConfig;

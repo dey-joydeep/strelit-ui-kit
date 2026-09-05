@@ -1680,6 +1680,55 @@ fs.renameSync = (source, destination) => {
     ).toEqual([]);
   });
 
+  it('refuses to publish a file changed after migration discovery', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'strelit-migration-stale-'));
+    temporaryDirectories.push(directory);
+    const firstPath = join(directory, 'a.json');
+    const secondPath = join(directory, 'b.json');
+    const firstSource = JSON.stringify({
+      root: { type: 'component', componentName: 'first' },
+    });
+    const secondSource = JSON.stringify({
+      root: { type: 'component', componentName: 'second' },
+    });
+    writeFileSync(firstPath, firstSource);
+    writeFileSync(secondPath, secondSource);
+    const preloadPath = join(directory, 'change-after-discovery.cjs');
+    writeFileSync(
+      preloadPath,
+      `const fs = require('node:fs');
+const path = require('node:path');
+const renameSync = fs.renameSync;
+fs.renameSync = (source, destination) => {
+  if (path.basename(destination) === 'a.json' && source.includes('-next-')) {
+    fs.writeFileSync(path.join(path.dirname(destination), 'b.json'), 'concurrent edit');
+  }
+  return renameSync(source, destination);
+};
+`,
+    );
+
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [migrationScript, '--target', directory, '--from', 'v1', '--write'],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            NODE_OPTIONS: `--require=${preloadPath}`,
+          },
+        },
+      ),
+    ).toThrow(/stale migration plan/);
+
+    expect(readFileSync(firstPath, 'utf8')).toBe(firstSource);
+    expect(readFileSync(secondPath, 'utf8')).toBe('concurrent edit');
+    expect(
+      readdirSync(directory).filter((name) => name.includes('.strelit-')),
+    ).toEqual([]);
+  });
+
   it('preserves a rollback backup when restoration itself fails', () => {
     const directory = mkdtempSync(
       join(tmpdir(), 'strelit-migration-recovery-'),

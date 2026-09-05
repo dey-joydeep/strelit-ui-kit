@@ -471,13 +471,13 @@ export class Stack extends ComponentParentableItem {
       index = super.addChild(contentItem, index, suspendResize);
       this._childElementContainer.appendChild(contentItem.element);
       const tab = this._header.createTab(contentItem, index);
-      this.setActiveComponentItem(contentItem, focus);
       this._header.updateTabSizes();
       if (!suspendResize) {
         this.updateSize(false);
       }
       contentItem.container.setBaseLogicalZIndex();
       this._header.updateClosability();
+      this.setActiveComponentItem(contentItem, focus);
       this.emitStateChangedEvent();
       if (tab !== undefined) {
         this.layoutManager.emit('tabCreated', tab);
@@ -662,6 +662,7 @@ export class Stack extends ComponentParentableItem {
         maximised: this.isMaximised,
         header: this.createHeaderConfig(),
         activeItemIndex,
+        popInParentIds: [...this.popInParentIds],
       };
       return result;
     }

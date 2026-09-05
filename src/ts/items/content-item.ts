@@ -108,16 +108,6 @@ function areValidatedComponentTypesEqual(
   return false;
 }
 
-function areComponentTypesEqual(
-  left: ComponentType,
-  right: ComponentType,
-): boolean {
-  return areValidatedComponentTypesEqual(
-    deepCloneValue(left) as ComponentType,
-    deepCloneValue(right) as ComponentType,
-  );
-}
-
 /**
  * This is the baseclass that all content items inherit from.
  * Most methods provide a subset of what the sub-classes do.
@@ -253,6 +243,7 @@ export abstract class ContentItem extends EventEmitter {
     this.minSizeUnit = config.minSizeUnit;
 
     this._isClosable = config.isClosable;
+    this._popInParentIds = [...(config.popInParentIds ?? [])];
 
     this._pendingEventPropagations = {};
     this._pendingEventPropagationFrames = {};
@@ -494,10 +485,16 @@ export abstract class ContentItem extends EventEmitter {
    * Returns every component item in this subtree whose componentType matches `componentType`.
    */
   getComponentItemsByType(componentType: ComponentType): ComponentItem[] {
+    const validatedComponentType = deepCloneValue(
+      componentType,
+    ) as ComponentType;
     return this.getItemsByFilter(
       (item) =>
         ContentItem.isComponentItem(item) &&
-        areComponentTypesEqual(item.componentType, componentType),
+        areValidatedComponentTypesEqual(
+          item.componentType,
+          validatedComponentType,
+        ),
     ) as ComponentItem[];
   }
 

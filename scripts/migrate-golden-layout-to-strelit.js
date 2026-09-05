@@ -3260,6 +3260,12 @@ function applyMigrationWritePlans(plans, canonicalTarget) {
   try {
     for (const entry of staged) {
       assertSafeMigrationPath(entry.filePath, canonicalTarget);
+      const current = fs.readFileSync(entry.filePath, 'utf8');
+      if (current !== entry.original) {
+        throw new Error(
+          `Refusing to publish a stale migration plan for ${entry.filePath}; the file changed after discovery`,
+        );
+      }
       fs.renameSync(entry.temporaryPath, entry.filePath);
       entry.committed = true;
     }
