@@ -162,7 +162,7 @@ function assertResolvedItemConfigWithinLimits(root: ResolvedItemConfig): void {
       config !== null &&
       !Array.isArray(config) &&
       Array.isArray((config as { content?: unknown }).content) &&
-      (config as { content: readonly unknown[] }).content.length >
+      (config as { content: readonly unknown[] }).content.length >=
         maximumConfigNodes - nodes
     ) {
       throw new ConfigurationError(
@@ -176,7 +176,15 @@ function assertResolvedItemConfigWithinLimits(root: ResolvedItemConfig): void {
       );
     }
 
-    nodes++;
+    const markerCount = Array.isArray(config.popInParentIds)
+      ? config.popInParentIds.length
+      : 0;
+    if (markerCount > maximumConfigNodes - nodes - 1) {
+      throw new ConfigurationError(
+        'Resolved layout configuration exceeds resource limits',
+      );
+    }
+    nodes += markerCount + 1;
     if (isResolvedComponentItemConfig(config)) {
       deepCloneValue(config.componentType, cloneBudget);
       deepCloneValue(config.componentState, cloneBudget);

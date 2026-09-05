@@ -1103,6 +1103,7 @@ function assertResolvedItemFields(
   if (value.popInParentIds !== undefined) {
     if (
       !Array.isArray(value.popInParentIds) ||
+      value.popInParentIds.length > maximumConfigNodes ||
       value.popInParentIds.some((id) => typeof id !== 'string')
     ) {
       throw new ConfigurationError(
@@ -1208,6 +1209,18 @@ function assertResolvedLayoutConfigStructure(value: unknown): void {
       );
     }
     assertRecord(frame.value, `Unminified ${frame.kind} configuration`);
+    if (
+      Array.isArray(
+        (frame.value as { popInParentIds?: unknown }).popInParentIds,
+      ) &&
+      (frame.value as { popInParentIds: readonly unknown[] }).popInParentIds
+        .length >
+        maximumConfigNodes - nodes
+    ) {
+      throw new ConfigurationError(
+        'Unminified layout configuration exceeds resource limits',
+      );
+    }
 
     if (frame.kind === 'layout') {
       if (frame.value.resolved !== true) {

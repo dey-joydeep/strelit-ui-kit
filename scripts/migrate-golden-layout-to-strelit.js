@@ -2925,6 +2925,9 @@ function assertSafeMigrationPath(entryPath, canonicalRoot) {
   if (stat.isFile() && stat.nlink > 1) {
     throw new Error(`Refusing multiply-linked file: ${entryPath}`);
   }
+  if (!stat.isDirectory() && !stat.isFile()) {
+    throw new Error(`Refusing non-regular filesystem entry: ${entryPath}`);
+  }
 
   const canonicalEntry = fs.realpathSync.native(entryPath);
   if (!isPathWithin(canonicalRoot, canonicalEntry)) {
@@ -3241,6 +3244,22 @@ function applyMigrationWritePlans(plans, canonicalTarget) {
       flushStagedFile(temporaryPath);
       fs.copyFileSync(plan.filePath, backupPath, fs.constants.COPYFILE_EXCL);
       flushStagedFile(backupPath);
+      // Verify the rollback primitive while the original is still present.
+      // This must complete before publication so an unsupported filesystem
+      // cannot leave the public path missing during rollback.
+      const linkProbePath = createStagedSiblingPath(
+        plan.filePath,
+        'link-probe',
+      );
+      let linkProbeCreated = false;
+      try {
+        fs.linkSync(backupPath, linkProbePath);
+        linkProbeCreated = true;
+      } finally {
+        if (linkProbeCreated) {
+          fs.unlinkSync(linkProbePath);
+        }
+      }
     }
   } catch (error) {
     const cleanupErrors = [];
@@ -3275,20 +3294,45 @@ function applyMigrationWritePlans(plans, canonicalTarget) {
       const entry = staged[index];
       let backupCanBeRemoved = !entry.committed;
       if (entry.committed) {
+        const rollbackCurrentPath = createStagedSiblingPath(
+          entry.filePath,
+          'rollback-current',
+        );
+        let rollbackCurrentCaptured = false;
         try {
-          const current = fs.readFileSync(entry.filePath, 'utf8');
+          // Reserve the destination with an exclusive create so a concurrent
+          // entry cannot be replaced by the rollback capture.
+          const reservation = fs.openSync(rollbackCurrentPath, 'wx');
+          fs.closeSync(reservation);
+          // Atomically take the current file out of the published path before
+          // deciding whether the migration output is still ours to roll back.
+          fs.renameSync(entry.filePath, rollbackCurrentPath);
+          rollbackCurrentCaptured = true;
+          const current = fs.readFileSync(rollbackCurrentPath, 'utf8');
           if (current !== entry.transformed) {
             rollbackErrors.push(
               new Error(
                 `Refusing to overwrite a concurrent edit while rolling back ${entry.filePath}`,
               ),
             );
+            fs.linkSync(rollbackCurrentPath, entry.filePath);
+            fs.unlinkSync(rollbackCurrentPath);
           } else {
-            fs.renameSync(entry.backupPath, entry.filePath);
+            fs.linkSync(entry.backupPath, entry.filePath);
+            fs.unlinkSync(entry.backupPath);
             backupCanBeRemoved = true;
+            fs.unlinkSync(rollbackCurrentPath);
           }
         } catch (rollbackError) {
           rollbackErrors.push(rollbackError);
+          if (!rollbackCurrentCaptured) {
+            const reservationError = removeStagedFile(rollbackCurrentPath);
+            if (reservationError !== undefined) {
+              rollbackErrors.push(reservationError);
+            }
+          }
+          // Preserve the atomically captured current file for manual recovery
+          // when restoration cannot complete safely.
         }
       }
       const temporaryError = removeStagedFile(entry.temporaryPath);

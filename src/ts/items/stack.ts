@@ -471,10 +471,10 @@ export class Stack extends ComponentParentableItem {
       index = super.addChild(contentItem, index, suspendResize);
       this._childElementContainer.appendChild(contentItem.element);
       const tab = this._header.createTab(contentItem, index);
-      this._header.updateTabSizes();
-      // The active child must be established before sizing and z-index hooks,
-      // which may invoke fallible host callbacks.
+      // Establish the active child before sizing and z-index hooks, which may
+      // invoke fallible host callbacks.
       this.setActiveComponentItem(contentItem, focus);
+      this._header.updateTabSizes();
       if (!suspendResize) {
         this.updateSize(false);
       }

@@ -821,6 +821,8 @@ describe('BrowserPopout functionality (item.popout())', function () {
   });
 
   it('transfers surviving popout storage cleanup without retaining the layout', function () {
+    vi.useFakeTimers();
+    localStorage.clear();
     const listeners: Array<() => void> = [];
     const mockWindow = {
       closed: false,
@@ -858,6 +860,24 @@ describe('BrowserPopout functionality (item.popout())', function () {
     const cleanupListener = listeners.at(-1);
     expect(cleanupListener).toBeDefined();
     expect(cleanupListener).not.toBe(listeners[0]);
+    const storageKey = Object.keys(localStorage).find((key) =>
+      key.startsWith('strelit-window-config-'),
+    );
+    expect(storageKey).toBeDefined();
+    cleanupListener?.();
+    vi.advanceTimersByTime(50);
+    expect(
+      storageKey === undefined ? null : localStorage.getItem(storageKey),
+    ).not.toBeNull();
+
+    (mockWindow as unknown as { closed: boolean }).closed = true;
+    cleanupListener?.();
+    vi.advanceTimersByTime(50);
+    expect(
+      storageKey === undefined ? null : localStorage.getItem(storageKey),
+    ).toBeNull();
+    localStorage.clear();
+    vi.useRealTimers();
   });
 
   it('does not emit windowOpened when popout initialisation destroys the owner', function () {

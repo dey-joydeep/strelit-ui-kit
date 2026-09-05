@@ -527,12 +527,24 @@ export class BrowserPopout extends EventEmitter {
   private createWindow(): void {
     const { url, storageKey } = this.createUrl();
     this._storageKey = storageKey;
+    let childWindow: Window | null = null;
+    let cleanupTimer: ReturnType<typeof setTimeout> | undefined;
     this._storageCleanupListener = () => {
-      try {
-        localStorage.removeItem(storageKey);
-      } catch {
-        // A detached cleanup listener cannot report through the destroyed layout.
-      }
+      const windowToCheck = childWindow;
+      if (windowToCheck === null || cleanupTimer !== undefined) return;
+      const checkClosed = (): void => {
+        cleanupTimer = undefined;
+        if (!windowToCheck.closed) {
+          cleanupTimer = setTimeout(checkClosed, 50);
+          return;
+        }
+        try {
+          localStorage.removeItem(storageKey);
+        } catch {
+          // A detached cleanup listener cannot report through the destroyed layout.
+        }
+      };
+      cleanupTimer = setTimeout(checkClosed, 50);
     };
 
     /**
@@ -560,6 +572,7 @@ export class BrowserPopout extends EventEmitter {
     });
 
     this._popoutWindow = globalThis.open(url, target, features);
+    childWindow = this._popoutWindow;
 
     if (!this._popoutWindow) {
       localStorage.removeItem(storageKey);

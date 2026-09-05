@@ -167,6 +167,18 @@ describe('Layout configuration resolution and defaults', function () {
     ).toThrow('Serializable value exceeds resource limits');
   });
 
+  it('budgets persisted pop-in markers with the layout node limit', () => {
+    expect(() =>
+      resolveLayoutConfig({
+        root: {
+          type: 'component',
+          componentType: 'panel',
+          popInParentIds: Array.from({ length: 10_000 }, () => 'parent'),
+        },
+      }),
+    ).toThrow('Layout configuration exceeds resource limits');
+  });
+
   it('rejects non-component discriminants in standalone component resolution', () => {
     expect(() =>
       resolveComponentItemConfig({

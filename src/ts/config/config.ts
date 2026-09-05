@@ -300,6 +300,7 @@ function resolveItemConfigWithBudget(
           itemConfig as ComponentItemConfig,
           componentReorderEnabledDefault,
           budget.cloneBudget,
+          budget,
         );
 
       default:
@@ -366,13 +367,27 @@ export function resolveItemConfigId(id: string | undefined): string {
   return resolveString(id, resolvedItemConfigDefaults.id, 'ItemConfig.id');
 }
 
-function resolvePopInParentIds(value: unknown): string[] | undefined {
+function resolvePopInParentIds(
+  value: unknown,
+  budget: LayoutResolutionBudget,
+): string[] | undefined {
   if (value === undefined) return undefined;
-  if (!Array.isArray(value) || value.some((id) => typeof id !== 'string')) {
+  if (!Array.isArray(value)) {
     throw new ConfigurationError(
       'ItemConfig.popInParentIds must be an array of strings',
     );
   }
+  if (value.length > maximumConfigNodes - budget.nodes) {
+    throw new ConfigurationError(
+      'Layout configuration exceeds resource limits',
+    );
+  }
+  if (value.some((id) => typeof id !== 'string')) {
+    throw new ConfigurationError(
+      'ItemConfig.popInParentIds must be an array of strings',
+    );
+  }
+  budget.nodes += value.length;
   return [...value];
 }
 
@@ -643,7 +658,7 @@ function resolveStackItemConfigWithBudget(
         : (itemConfig.activeItemIndex ??
           resolvedStackItemConfigDefaultActiveItemIndex),
     header: resolveHeaderedItemConfigHeader(itemConfig.header),
-    popInParentIds: resolvePopInParentIds(itemConfig.popInParentIds),
+    popInParentIds: resolvePopInParentIds(itemConfig.popInParentIds, budget),
   };
   return result;
 }
@@ -796,10 +811,13 @@ export function resolveComponentItemConfig(
       stringifyConfigurationValue(itemConfig),
     );
   }
+  const budget = createResolutionBudget();
+  budget.nodes = 1;
   return resolveComponentItemConfigWithDefault(
     itemConfig,
     resolvedComponentItemConfigDefaultReorderEnabled,
-    { nodes: 0 },
+    budget.cloneBudget,
+    budget,
   );
 }
 
@@ -807,6 +825,7 @@ function resolveComponentItemConfigWithDefault(
   itemConfig: ComponentItemConfig,
   reorderEnabledDefault: boolean,
   cloneBudget?: { nodes: number },
+  itemBudget?: LayoutResolutionBudget,
 ): ResolvedComponentItemConfig {
   const unresolvedComponentType = itemConfig.componentType;
   if (unresolvedComponentType === undefined) {
@@ -856,7 +875,14 @@ function resolveComponentItemConfigWithDefault(
         itemConfig.componentState,
         cloneBudget,
       ) as SerializableValue,
-      popInParentIds: resolvePopInParentIds(itemConfig.popInParentIds),
+      popInParentIds: resolvePopInParentIds(
+        itemConfig.popInParentIds,
+        itemBudget ?? {
+          nodes: 0,
+          cloneBudget: { nodes: 0 },
+          active: new WeakSet<object>(),
+        },
+      ),
     };
     return result;
   }
@@ -1006,7 +1032,7 @@ function resolveRowOrColumnItemConfigWithBudget(
       resolvedItemConfigDefaults.isClosable,
       'RowOrColumnItemConfig.isClosable',
     ),
-    popInParentIds: resolvePopInParentIds(itemConfig.popInParentIds),
+    popInParentIds: resolvePopInParentIds(itemConfig.popInParentIds, budget),
   };
   return result;
 }

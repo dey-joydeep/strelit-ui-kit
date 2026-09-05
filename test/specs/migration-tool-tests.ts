@@ -1752,14 +1752,18 @@ fs.renameSync = (source, destination) => {
       `const fs = require('node:fs');
 const path = require('node:path');
 const renameSync = fs.renameSync;
+const linkSync = fs.linkSync;
 fs.renameSync = (source, destination) => {
   if (path.basename(destination) === 'b.json' && source.includes('-next-')) {
     throw new Error('injected replacement failure');
   }
+  return renameSync(source, destination);
+};
+fs.linkSync = (source, destination) => {
   if (path.basename(destination) === 'a.json' && source.includes('-backup-')) {
     throw new Error('injected rollback failure');
   }
-  return renameSync(source, destination);
+  return linkSync(source, destination);
 };
 `,
     );
