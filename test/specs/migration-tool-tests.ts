@@ -1649,12 +1649,12 @@ const config: DragSource.ComponentItemConfig = {
       preloadPath,
       `const fs = require('node:fs');
 const path = require('node:path');
-const renameSync = fs.renameSync;
-fs.renameSync = (source, destination) => {
+const linkSync = fs.linkSync;
+fs.linkSync = (source, destination) => {
   if (path.basename(destination) === 'b.json' && source.includes('-next-')) {
     throw new Error('injected second replacement failure');
   }
-  return renameSync(source, destination);
+  return linkSync(source, destination);
 };
 `,
     );
@@ -1680,6 +1680,52 @@ fs.renameSync = (source, destination) => {
     ).toEqual([]);
   });
 
+  it('rolls back a published file when staged-link cleanup fails', () => {
+    const directory = mkdtempSync(
+      join(tmpdir(), 'strelit-migration-publication-cleanup-'),
+    );
+    temporaryDirectories.push(directory);
+    const filePath = join(directory, 'layout.json');
+    const source = JSON.stringify({
+      root: { type: 'component', componentName: 'editor' },
+    });
+    writeFileSync(filePath, source);
+    const preloadPath = join(directory, 'fail-publication-cleanup.cjs');
+    writeFileSync(
+      preloadPath,
+      `const fs = require('node:fs');
+const unlinkSync = fs.unlinkSync;
+let failed = false;
+fs.unlinkSync = (path) => {
+  if (!failed && path.includes('-next-')) {
+    failed = true;
+    throw new Error('injected publication cleanup failure');
+  }
+  return unlinkSync(path);
+};
+`,
+    );
+
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [migrationScript, '--target', directory, '--from', 'v1', '--write'],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            NODE_OPTIONS: `--require=${preloadPath}`,
+          },
+        },
+      ),
+    ).toThrow(/injected publication cleanup failure/u);
+
+    expect(readFileSync(filePath, 'utf8')).toBe(source);
+    expect(
+      readdirSync(directory).filter((name) => name.includes('.strelit-')),
+    ).toEqual([]);
+  });
+
   it('refuses to publish a file changed after migration discovery', () => {
     const directory = mkdtempSync(join(tmpdir(), 'strelit-migration-stale-'));
     temporaryDirectories.push(directory);
@@ -1698,12 +1744,12 @@ fs.renameSync = (source, destination) => {
       preloadPath,
       `const fs = require('node:fs');
 const path = require('node:path');
-const renameSync = fs.renameSync;
-fs.renameSync = (source, destination) => {
+const linkSync = fs.linkSync;
+fs.linkSync = (source, destination) => {
   if (path.basename(destination) === 'a.json' && source.includes('-next-')) {
     fs.writeFileSync(path.join(path.dirname(destination), 'b.json'), 'concurrent edit');
   }
-  return renameSync(source, destination);
+  return linkSync(source, destination);
 };
 `,
     );
@@ -1729,6 +1775,50 @@ fs.renameSync = (source, destination) => {
     ).toEqual([]);
   });
 
+  it('does not overwrite a file changed after its publication check', () => {
+    const directory = mkdtempSync(
+      join(tmpdir(), 'strelit-migration-publication-race-'),
+    );
+    temporaryDirectories.push(directory);
+    const firstPath = join(directory, 'a.json');
+    writeFileSync(
+      firstPath,
+      JSON.stringify({
+        root: { type: 'component', componentName: 'first' },
+      }),
+    );
+    const preloadPath = join(directory, 'change-before-publication.cjs');
+    writeFileSync(
+      preloadPath,
+      `const fs = require('node:fs');
+const path = require('node:path');
+const linkSync = fs.linkSync;
+fs.linkSync = (source, destination) => {
+  if (path.basename(destination) === 'a.json' && source.includes('-next-')) {
+    fs.writeFileSync(destination, 'concurrent edit');
+  }
+  return linkSync(source, destination);
+};
+`,
+    );
+
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [migrationScript, '--target', directory, '--from', 'v1', '--write'],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            NODE_OPTIONS: `--require=${preloadPath}`,
+          },
+        },
+      ),
+    ).toThrow(/stale migration plan|concurrent/u);
+
+    expect(readFileSync(firstPath, 'utf8')).toBe('concurrent edit');
+  });
+
   it('preserves a rollback backup when restoration itself fails', () => {
     const directory = mkdtempSync(
       join(tmpdir(), 'strelit-migration-recovery-'),
@@ -1751,16 +1841,14 @@ fs.renameSync = (source, destination) => {
       preloadPath,
       `const fs = require('node:fs');
 const path = require('node:path');
-const renameSync = fs.renameSync;
 const linkSync = fs.linkSync;
-fs.renameSync = (source, destination) => {
+let publicationFailed = false;
+fs.linkSync = (source, destination) => {
   if (path.basename(destination) === 'b.json' && source.includes('-next-')) {
+    publicationFailed = true;
     throw new Error('injected replacement failure');
   }
-  return renameSync(source, destination);
-};
-fs.linkSync = (source, destination) => {
-  if (path.basename(destination) === 'a.json' && source.includes('-backup-')) {
+  if (publicationFailed && path.basename(destination) === 'a.json') {
     throw new Error('injected rollback failure');
   }
   return linkSync(source, destination);
@@ -1790,6 +1878,7 @@ fs.linkSync = (source, destination) => {
     expect(readFileSync(join(directory, recoveryBackup!), 'utf8')).toBe(
       firstSource,
     );
+    expect(readFileSync(firstPath, 'utf8')).toContain('"componentType"');
   });
 
   it('preserves concurrent edits made before stale-plan rollback', () => {
@@ -1812,15 +1901,15 @@ fs.linkSync = (source, destination) => {
       preloadPath,
       `const fs = require('node:fs');
 const path = require('node:path');
-const renameSync = fs.renameSync;
-fs.renameSync = (source, destination) => {
+const linkSync = fs.linkSync;
+fs.linkSync = (source, destination) => {
   if (path.basename(destination) === 'a.json' && source.includes('-next-')) {
-    const result = renameSync(source, destination);
+    const result = linkSync(source, destination);
     fs.writeFileSync(destination, 'concurrent edit to a');
     fs.writeFileSync(path.join(path.dirname(destination), 'b.json'), 'concurrent edit to b');
     return result;
   }
-  return renameSync(source, destination);
+  return linkSync(source, destination);
 };
 `,
     );

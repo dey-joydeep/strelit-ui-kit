@@ -3219,6 +3219,36 @@ function flushStagedFile(filePath) {
   }
 }
 
+/** Returns whether a migration path exists without following it. */
+function migrationPathExists(filePath) {
+  try {
+    fs.lstatSync(filePath);
+    return true;
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+/** Restores a captured file without replacing a concurrently created path. */
+function restoreCapturedFile(capturedPath, filePath) {
+  try {
+    fs.linkSync(capturedPath, filePath);
+  } catch (linkError) {
+    if (migrationPathExists(filePath)) throw linkError;
+    try {
+      fs.copyFileSync(capturedPath, filePath, fs.constants.COPYFILE_EXCL);
+      flushStagedFile(filePath);
+    } catch (copyError) {
+      throw new AggregateError(
+        [linkError, copyError],
+        `Could not restore captured file ${filePath}`,
+      );
+    }
+  }
+  fs.unlinkSync(capturedPath);
+}
+
 /** Stages every changed file before atomically replacing any original. */
 function applyMigrationWritePlans(plans, canonicalTarget) {
   const staged = [];
@@ -3233,6 +3263,8 @@ function applyMigrationWritePlans(plans, canonicalTarget) {
         temporaryPath,
         backupPath,
         committed: false,
+        publicationCurrentPath: undefined,
+        publicationCurrentCaptured: false,
       };
       staged.push(entry);
       fs.writeFileSync(temporaryPath, plan.transformed, {
@@ -3279,20 +3311,56 @@ function applyMigrationWritePlans(plans, canonicalTarget) {
   try {
     for (const entry of staged) {
       assertSafeMigrationPath(entry.filePath, canonicalTarget);
-      const current = fs.readFileSync(entry.filePath, 'utf8');
-      if (current !== entry.original) {
-        throw new Error(
-          `Refusing to publish a stale migration plan for ${entry.filePath}; the file changed after discovery`,
-        );
+      const publicationCurrentPath = createStagedSiblingPath(
+        entry.filePath,
+        'publication-current',
+      );
+      entry.publicationCurrentPath = publicationCurrentPath;
+      const reservation = fs.openSync(publicationCurrentPath, 'wx');
+      fs.closeSync(reservation);
+      fs.renameSync(entry.filePath, publicationCurrentPath);
+      entry.publicationCurrentCaptured = true;
+      try {
+        const current = fs.readFileSync(publicationCurrentPath, 'utf8');
+        if (current !== entry.original) {
+          throw new Error(
+            `Refusing to publish a stale migration plan for ${entry.filePath}; the file changed after discovery`,
+          );
+        }
+        // A hard link into the vacant public path fails rather than replacing
+        // an entry created after the current file was captured.
+        fs.linkSync(entry.temporaryPath, entry.filePath);
+        entry.committed = true;
+        fs.unlinkSync(entry.temporaryPath);
+        fs.unlinkSync(publicationCurrentPath);
+        entry.publicationCurrentCaptured = false;
+      } catch (publicationError) {
+        if (entry.committed) throw publicationError;
+        if (!migrationPathExists(entry.filePath)) {
+          try {
+            restoreCapturedFile(publicationCurrentPath, entry.filePath);
+            entry.publicationCurrentCaptured = false;
+          } catch (restoreError) {
+            throw new AggregateError(
+              [publicationError, restoreError],
+              `Publication failed and ${entry.filePath} could not be restored`,
+            );
+          }
+        } else {
+          throw new Error(
+            `Refusing to overwrite a concurrent edit while publishing ${entry.filePath}`,
+            { cause: publicationError },
+          );
+        }
+        throw publicationError;
       }
-      fs.renameSync(entry.temporaryPath, entry.filePath);
-      entry.committed = true;
     }
   } catch (error) {
     const rollbackErrors = [];
     for (let index = staged.length - 1; index >= 0; index--) {
       const entry = staged[index];
-      let backupCanBeRemoved = !entry.committed;
+      let backupCanBeRemoved =
+        !entry.committed && !entry.publicationCurrentCaptured;
       if (entry.committed) {
         const rollbackCurrentPath = createStagedSiblingPath(
           entry.filePath,
@@ -3318,10 +3386,18 @@ function applyMigrationWritePlans(plans, canonicalTarget) {
             fs.linkSync(rollbackCurrentPath, entry.filePath);
             fs.unlinkSync(rollbackCurrentPath);
           } else {
-            fs.linkSync(entry.backupPath, entry.filePath);
-            fs.unlinkSync(entry.backupPath);
-            backupCanBeRemoved = true;
-            fs.unlinkSync(rollbackCurrentPath);
+            try {
+              fs.linkSync(entry.backupPath, entry.filePath);
+              fs.unlinkSync(entry.backupPath);
+              backupCanBeRemoved = true;
+              fs.unlinkSync(rollbackCurrentPath);
+            } catch (restoreBackupError) {
+              rollbackErrors.push(restoreBackupError);
+              if (!migrationPathExists(entry.filePath)) {
+                restoreCapturedFile(rollbackCurrentPath, entry.filePath);
+                rollbackCurrentCaptured = false;
+              }
+            }
           }
         } catch (rollbackError) {
           rollbackErrors.push(rollbackError);
@@ -3331,8 +3407,21 @@ function applyMigrationWritePlans(plans, canonicalTarget) {
               rollbackErrors.push(reservationError);
             }
           }
-          // Preserve the atomically captured current file for manual recovery
-          // when restoration cannot complete safely.
+          // Preserve hidden recovery files only when no public path can be
+          // restored without replacing a concurrent entry.
+        }
+        if (
+          entry.publicationCurrentCaptured &&
+          entry.publicationCurrentPath !== undefined
+        ) {
+          const publicationCurrentError = removeStagedFile(
+            entry.publicationCurrentPath,
+          );
+          if (publicationCurrentError !== undefined) {
+            rollbackErrors.push(publicationCurrentError);
+          } else {
+            entry.publicationCurrentCaptured = false;
+          }
         }
       }
       const temporaryError = removeStagedFile(entry.temporaryPath);

@@ -145,6 +145,7 @@ export class BrowserPopout extends EventEmitter {
               storageCleanupListener,
               { passive: true },
             );
+            storageCleanupListener();
           }
         } else if (this._storageCleanupListener !== undefined) {
           this._popoutWindow.removeEventListener(

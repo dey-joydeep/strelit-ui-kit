@@ -864,14 +864,12 @@ describe('BrowserPopout functionality (item.popout())', function () {
       key.startsWith('strelit-window-config-'),
     );
     expect(storageKey).toBeDefined();
-    cleanupListener?.();
     vi.advanceTimersByTime(50);
     expect(
       storageKey === undefined ? null : localStorage.getItem(storageKey),
     ).not.toBeNull();
 
     (mockWindow as unknown as { closed: boolean }).closed = true;
-    cleanupListener?.();
     vi.advanceTimersByTime(50);
     expect(
       storageKey === undefined ? null : localStorage.getItem(storageKey),
