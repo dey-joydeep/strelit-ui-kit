@@ -350,6 +350,22 @@ function collectChangedFiles(baseRef, cwd = process.cwd()) {
   return normalizeFileNames([...tracked, ...untracked]);
 }
 
+function collectCommittedChangedFiles(baseRef, headRef, cwd = process.cwd()) {
+  return normalizeFileNames(
+    nulPaths(
+      [
+        'diff',
+        '--name-only',
+        '--no-renames',
+        '--diff-filter=ACDMRTUXB',
+        `${baseRef}...${headRef}`,
+        '--',
+      ],
+      cwd,
+    ),
+  );
+}
+
 function isGeneratedPath(fileName) {
   return (
     fileName === 'package-lock.json' ||
@@ -512,6 +528,7 @@ module.exports = {
   classifyChangeRisk,
   classifyFileRisk,
   collectChangedFiles,
+  collectCommittedChangedFiles,
   collectNonGeneratedLines,
   createPullRequestReviewGate,
   domainsForPath,

@@ -28,16 +28,23 @@ npm run review:finalize -- --pr <number>
 ```
 
 This command runs the definitive local gate, records an exact-head receipt,
-pushes that same commit, confirms that the pull request points to it, and only
-then posts `@codex review`. A tracked pre-push hook rejects a high-risk current
-branch push when its receipt is missing or stale. `npm install` configures that
-hook without replacing a pre-existing custom hook path.
+pushes that same commit, confirms that the pull request head and base match the
+receipt, and only then posts an exact-head `@codex review`. A tracked pre-push
+hook rejects a high-risk current commit push when its receipt is missing or
+stale, including explicit `HEAD` and SHA refspecs. `npm install` integrates that
+hook with Git's default hook directory without disabling existing hooks, and
+refuses to replace a pre-existing custom hook path.
 
 Use `npm run review:prepare` when only the local gate and receipt are needed,
 and `npm run review:request -- --pr <number>` when the verified commit is already
 on GitHub. A new commit or working-tree change invalidates the receipt. These
 commands do not replace independent review, GitHub approval, finding
 disposition, or the maintainer's merge decision.
+
+Review requests are idempotent for a pull request, exact head, and reviewed
+base. A retry therefore does not create another comment after an ambiguous
+client failure. To intentionally reopen review for the same boundary, run
+`npm run review:request -- --pr <number> --reopen`.
 
 The independent reviewer must be a human or separate agent context that did not
 implement the change. If that reviewer is unavailable, high-risk work remains

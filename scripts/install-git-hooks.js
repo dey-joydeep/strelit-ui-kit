@@ -1,6 +1,61 @@
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
+const { randomUUID } = require('node:crypto');
 const nodePath = require('node:path');
+
+const managedMarker = '# strelit-managed-pre-push';
+
+function installDefaultPrePush(cwd) {
+  const hooksDirectory = nodePath.join(
+    runGit(['rev-parse', '--absolute-git-dir'], false, cwd).stdout.trim(),
+    'hooks',
+  );
+  const hookPath = nodePath.join(hooksDirectory, 'pre-push');
+  const previousHookPath = nodePath.join(
+    hooksDirectory,
+    'pre-push.strelit-existing',
+  );
+  fs.mkdirSync(hooksDirectory, { recursive: true });
+  if (
+    fs.existsSync(hookPath) &&
+    fs.readFileSync(hookPath, 'utf8').includes(managedMarker)
+  ) {
+    fs.chmodSync(hookPath, 0o755);
+    return;
+  }
+  let preservedExisting = false;
+  if (fs.existsSync(hookPath)) {
+    if (fs.existsSync(previousHookPath)) {
+      throw new Error(
+        `Cannot preserve ${hookPath} because ${previousHookPath} already exists.`,
+      );
+    }
+    fs.renameSync(hookPath, previousHookPath);
+    preservedExisting = true;
+  }
+  const candidate = `${hookPath}.${randomUUID()}.tmp`;
+  const wrapper = `#!/bin/sh
+${managedMarker}
+hook_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+previous_hook="$hook_dir/pre-push.strelit-existing"
+if [ -f "$previous_hook" ]; then
+  "$previous_hook" "$@" || exit $?
+fi
+repo_root=$(git rev-parse --show-toplevel) || exit $?
+exec "$repo_root/.githooks/pre-push" "$@"
+`;
+  try {
+    fs.writeFileSync(candidate, wrapper, { encoding: 'utf8', flag: 'wx' });
+    fs.chmodSync(candidate, 0o755);
+    fs.renameSync(candidate, hookPath);
+  } catch (error) {
+    fs.rmSync(candidate, { force: true });
+    if (preservedExisting && !fs.existsSync(hookPath)) {
+      fs.renameSync(previousHookPath, hookPath);
+    }
+    throw error;
+  }
+}
 
 function runGit(args, allowFailure = false, cwd = process.cwd()) {
   const result = spawnSync('git', args, {
@@ -31,7 +86,10 @@ function install(cwd = process.cwd()) {
     );
   }
   fs.chmodSync(nodePath.resolve(cwd, '.githooks/pre-push'), 0o755);
-  runGit(['config', '--local', 'core.hooksPath', '.githooks'], false, cwd);
+  installDefaultPrePush(cwd);
+  if (configured === '.githooks') {
+    runGit(['config', '--local', '--unset', 'core.hooksPath'], false, cwd);
+  }
   return 'installed';
 }
 

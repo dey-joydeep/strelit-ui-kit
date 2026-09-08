@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -17,17 +18,35 @@ interface SourceState {
 }
 
 interface ReviewHandoffModule {
+  hasReviewRequest(marker: string, comments: Array<{ body?: string }>): boolean;
   parsePushUpdates(input: string): Array<{
     localRef: string;
     localSha: string;
     remoteRef: string;
     remoteSha: string;
   }>;
+  parseArguments(args: string[]): {
+    command: string;
+    options: Record<string, string | boolean>;
+  };
   receiptPath(cwd?: string): string;
+  prePush(input: string, cwd?: string): void;
+  reviewRequestMarker(
+    pullRequest: string,
+    head: string,
+    baseTip: string,
+  ): string;
   validateReceipt(
     receipt: Record<string, unknown> | undefined,
     source: SourceState,
     expectedBaseHead: string,
+    expectedBaseTip: string,
+  ): string[];
+  validatePullRequestBoundary(
+    pullRequest: string,
+    remotePullRequest: { headRefOid: string; baseRefOid: string },
+    source: SourceState,
+    receipt: { baseTip: string },
   ): string[];
 }
 
@@ -52,6 +71,19 @@ function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 }
 
+function initializeReviewRepository(cwd: string): string {
+  git(cwd, 'init');
+  git(cwd, 'config', 'user.email', 'review@example.test');
+  git(cwd, 'config', 'user.name', 'Review Test');
+  writeFileSync(join(cwd, 'README.md'), 'base\n');
+  git(cwd, 'add', 'README.md');
+  git(cwd, 'commit', '-m', 'base');
+  git(cwd, 'branch', '-M', 'main');
+  const base = git(cwd, 'rev-parse', 'HEAD');
+  git(cwd, 'update-ref', 'refs/remotes/origin/main', base);
+  return base;
+}
+
 afterEach(() => {
   for (const path of temporaryPaths.splice(0)) {
     rmSync(path, { force: true, recursive: true });
@@ -61,24 +93,27 @@ afterEach(() => {
 describe('review handoff', () => {
   it('rejects missing, stale-head, stale-source, and stale-base receipts', () => {
     const source = { head: 'head-a', fingerprint: 'fingerprint-a' };
-    expect(handoff.validateReceipt(undefined, source, 'base-a')).toEqual([
-      'No review-ready receipt exists for this checkout.',
-    ]);
+    expect(
+      handoff.validateReceipt(undefined, source, 'base-a', 'base-tip-a'),
+    ).toEqual(['No review-ready receipt exists for this checkout.']);
     expect(
       handoff.validateReceipt(
         {
-          version: 1,
+          version: 2,
           head: 'head-b',
           fingerprint: 'fingerprint-b',
           baseHead: 'base-b',
+          baseTip: 'base-tip-b',
         },
         source,
         'base-a',
+        'base-tip-a',
       ),
     ).toEqual([
       'The review-ready receipt targets a different commit.',
       'The review-ready receipt is stale for the current source state.',
       'The review-ready receipt targets a different pull-request base.',
+      'The review-ready receipt targets a different pull-request base tip.',
     ]);
   });
 
@@ -87,15 +122,79 @@ describe('review handoff', () => {
     expect(
       handoff.validateReceipt(
         {
-          version: 1,
+          version: 2,
           head: source.head,
           fingerprint: source.fingerprint,
           baseHead: 'base-a',
+          baseTip: 'base-tip-a',
         },
         source,
         'base-a',
+        'base-tip-a',
       ),
     ).toEqual([]);
+  });
+
+  it('rejects a cloud request when the PR head or base differs', () => {
+    expect(
+      handoff.validatePullRequestBoundary(
+        '1',
+        { headRefOid: 'remote-head', baseRefOid: 'remote-base' },
+        { head: 'reviewed-head', fingerprint: 'fingerprint' },
+        { baseTip: 'reviewed-base' },
+      ),
+    ).toEqual([
+      'Pull request #1 targets remote-head, not local HEAD reviewed-head. Push first.',
+      'Pull request #1 base remote-base does not match reviewed base reviewed-base.',
+    ]);
+  });
+
+  it('checks high-risk HEAD pushes for branch, HEAD, and SHA refspecs', () => {
+    const cwd = temporaryDirectory();
+    const base = initializeReviewRepository(cwd);
+    mkdirSync(join(cwd, 'scripts'));
+    writeFileSync(
+      join(cwd, 'scripts/high-risk.js'),
+      'module.exports = true;\n',
+    );
+    git(cwd, 'add', 'scripts/high-risk.js');
+    git(cwd, 'commit', '-m', 'high risk');
+    const head = git(cwd, 'rev-parse', 'HEAD');
+
+    for (const localRef of ['refs/heads/main', 'HEAD', head]) {
+      expect(() =>
+        handoff.prePush(`${localRef} ${head} refs/heads/topic ${base}\n`, cwd),
+      ).toThrow(/No review-ready receipt exists/u);
+    }
+  });
+
+  it('classifies the committed candidate independently of worktree edits', () => {
+    const highRiskCwd = temporaryDirectory();
+    const highRiskBase = initializeReviewRepository(highRiskCwd);
+    mkdirSync(join(highRiskCwd, 'scripts'));
+    const highRiskPath = join(highRiskCwd, 'scripts/high-risk.js');
+    writeFileSync(highRiskPath, 'module.exports = true;\n');
+    git(highRiskCwd, 'add', 'scripts/high-risk.js');
+    git(highRiskCwd, 'commit', '-m', 'high risk');
+    const highRiskHead = git(highRiskCwd, 'rev-parse', 'HEAD');
+    rmSync(highRiskPath);
+    expect(() =>
+      handoff.prePush(
+        `HEAD ${highRiskHead} refs/heads/topic ${highRiskBase}\n`,
+        highRiskCwd,
+      ),
+    ).toThrow(/clean committed candidate/u);
+
+    const safeCwd = temporaryDirectory();
+    const safeHead = initializeReviewRepository(safeCwd);
+    mkdirSync(join(safeCwd, 'scripts'));
+    writeFileSync(join(safeCwd, 'scripts/uncommitted.js'), 'dirty\n');
+    expect(() =>
+      handoff.prePush(
+        `HEAD ${safeHead} refs/heads/topic ${safeHead}\n`,
+        safeCwd,
+      ),
+    ).not.toThrow();
   });
 
   it('parses the updates supplied to a pre-push hook', () => {
@@ -137,17 +236,79 @@ describe('review handoff', () => {
     );
   });
 
-  it('installs the tracked hook path without overriding a custom path', () => {
+  it('integrates with default hooks without disabling existing hooks', () => {
+    const cwd = temporaryDirectory();
+    initializeReviewRepository(cwd);
+    const remote = temporaryDirectory();
+    git(remote, 'init', '--bare');
+    git(cwd, 'remote', 'add', 'origin', remote);
+    mkdirSync(join(cwd, '.githooks'));
+    const trackedHook = join(cwd, '.githooks/pre-push');
+    writeFileSync(trackedHook, '#!/bin/sh\nprintf tracked >> hook-order.txt\n');
+    chmodSync(trackedHook, 0o755);
+    const hooksDirectory = join(
+      git(cwd, 'rev-parse', '--absolute-git-dir'),
+      'hooks',
+    );
+    writeFileSync(join(hooksDirectory, 'pre-commit'), '#!/bin/sh\nexit 0\n');
+    const existingPrePush = join(hooksDirectory, 'pre-push');
+    writeFileSync(
+      existingPrePush,
+      '#!/bin/sh\nprintf previous- >> hook-order.txt\n',
+    );
+    chmodSync(existingPrePush, 0o755);
+    git(cwd, 'config', '--local', 'core.hooksPath', '.githooks');
+    expect(hookInstaller.install(cwd)).toBe('installed');
+    expect(() =>
+      git(cwd, 'config', '--local', '--get', 'core.hooksPath'),
+    ).toThrow();
+    expect(readFileSync(join(hooksDirectory, 'pre-commit'), 'utf8')).toBe(
+      '#!/bin/sh\nexit 0\n',
+    );
+    expect(
+      readFileSync(join(hooksDirectory, 'pre-push.strelit-existing'), 'utf8'),
+    ).toBe('#!/bin/sh\nprintf previous- >> hook-order.txt\n');
+    expect(readFileSync(join(hooksDirectory, 'pre-push'), 'utf8')).toContain(
+      '# strelit-managed-pre-push',
+    );
+    git(cwd, 'push', 'origin', 'main');
+    expect(readFileSync(join(cwd, 'hook-order.txt'), 'utf8')).toBe(
+      'previous-tracked',
+    );
+    expect(hookInstaller.install(cwd)).toBe('installed');
+  });
+
+  it('does not override a custom hook path', () => {
     const cwd = temporaryDirectory();
     git(cwd, 'init');
     mkdirSync(join(cwd, '.githooks'));
     writeFileSync(join(cwd, '.githooks/pre-push'), '#!/bin/sh\n');
-    expect(hookInstaller.install(cwd)).toBe('installed');
-    expect(git(cwd, 'config', '--local', '--get', 'core.hooksPath')).toBe(
-      '.githooks',
-    );
     git(cwd, 'config', '--local', 'core.hooksPath', 'custom-hooks');
     expect(() => hookInstaller.install(cwd)).toThrow(/already custom-hooks/u);
+  });
+
+  it('keys Codex review requests by PR, exact head, and base', () => {
+    const marker = handoff.reviewRequestMarker('1', 'head-a', 'base-a');
+    expect(marker).toContain('pr=1 head=head-a base=base-a');
+    expect(
+      handoff.hasReviewRequest(marker, [{ body: `@codex review\n${marker}` }]),
+    ).toBe(true);
+    expect(
+      handoff.hasReviewRequest(marker, [
+        {
+          body: `@codex review\n${handoff.reviewRequestMarker('1', 'head-b', 'base-a')}`,
+        },
+      ]),
+    ).toBe(false);
+  });
+
+  it('requires an explicit reopen option for intentional repeat requests', () => {
+    expect(
+      handoff.parseArguments(['request', '--pr', '1', '--reopen']),
+    ).toEqual({
+      command: 'request',
+      options: { pr: '1', reopen: true },
+    });
   });
 
   it('does nothing outside a git checkout', () => {

@@ -9,9 +9,10 @@ const {
 } = require('node:fs');
 const nodePath = require('node:path');
 const agentLedger = require('./agent-work-ledger.js');
+const reviewPolicy = require('./change-review-policy.js');
 const changeDiscipline = require('./verify-pr.js');
 
-const receiptVersion = 1;
+const receiptVersion = 2;
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -101,11 +102,12 @@ function createReceipt(cwd = process.cwd()) {
     head: source.head,
     fingerprint: source.fingerprint,
     baseHead: gitOutput(['merge-base', baseRef, 'HEAD'], cwd),
+    baseTip: gitOutput(['rev-parse', `${baseRef}^{commit}`], cwd),
     createdAt: new Date().toISOString(),
   };
 }
 
-function validateReceipt(receipt, source, expectedBaseHead) {
+function validateReceipt(receipt, source, expectedBaseHead, expectedBaseTip) {
   const errors = [];
   if (receipt === undefined) {
     return ['No review-ready receipt exists for this checkout.'];
@@ -126,6 +128,11 @@ function validateReceipt(receipt, source, expectedBaseHead) {
       'The review-ready receipt targets a different pull-request base.',
     );
   }
+  if (receipt.baseTip !== expectedBaseTip) {
+    errors.push(
+      'The review-ready receipt targets a different pull-request base tip.',
+    );
+  }
   return errors;
 }
 
@@ -136,7 +143,13 @@ function checkReceipt(cwd = process.cwd()) {
     cwd,
   );
   const expectedBaseHead = gitOutput(['merge-base', baseRef, 'HEAD'], cwd);
-  const errors = validateReceipt(readReceipt(cwd), source, expectedBaseHead);
+  const expectedBaseTip = gitOutput(['rev-parse', `${baseRef}^{commit}`], cwd);
+  const errors = validateReceipt(
+    readReceipt(cwd),
+    source,
+    expectedBaseHead,
+    expectedBaseTip,
+  );
   if (errors.length > 0) {
     throw new Error(
       `${errors.join('\n')} Run npm run review:prepare after exact-head reviews are complete.`,
@@ -145,12 +158,12 @@ function checkReceipt(cwd = process.cwd()) {
   return source;
 }
 
-function requiresReceiptForHead(cwd = process.cwd()) {
+function requiresReceiptForHead(head, cwd = process.cwd()) {
   const baseRef = changeDiscipline.resolveBaseRef(
     process.env.STRELIT_REVIEW_BASE_REF,
     cwd,
   );
-  const paths = changeDiscipline.collectChangedFiles(baseRef, cwd);
+  const paths = reviewPolicy.collectCommittedChangedFiles(baseRef, head, cwd);
   const risk = changeDiscipline.resolveVerificationRisk(paths);
   return changeDiscipline.requiresLocalReviewGate(risk, {});
 }
@@ -170,10 +183,9 @@ function parsePushUpdates(input) {
 function prePush(input, cwd = process.cwd()) {
   const head = gitOutput(['rev-parse', 'HEAD'], cwd);
   const pushesHead = parsePushUpdates(input).some(
-    ({ localRef, localSha }) =>
-      localSha === head && localRef?.startsWith('refs/heads/'),
+    ({ localSha }) => localSha === head,
   );
-  if (!pushesHead || !requiresReceiptForHead(cwd)) {
+  if (!pushesHead || !requiresReceiptForHead(head, cwd)) {
     return;
   }
   checkReceipt(cwd);
@@ -205,20 +217,92 @@ function requirePullRequest(options) {
   return options.pr;
 }
 
+function reviewRequestMarker(pullRequest, head, baseTip) {
+  return `<!-- strelit-codex-review-request pr=${pullRequest} head=${head} base=${baseTip} -->`;
+}
+
+function parsePullRequestRepository(pullRequestUrl) {
+  const pathParts = new URL(pullRequestUrl).pathname.split('/').filter(Boolean);
+  if (pathParts.length < 4 || pathParts[2] !== 'pull') {
+    throw new Error(`Unexpected pull request URL: ${pullRequestUrl}`);
+  }
+  return { owner: pathParts[0], repository: pathParts[1] };
+}
+
+function hasReviewRequest(marker, comments) {
+  return comments.some(
+    (comment) =>
+      typeof comment?.body === 'string' && comment.body.includes(marker),
+  );
+}
+
+function validatePullRequestBoundary(
+  pullRequest,
+  remotePullRequest,
+  source,
+  receipt,
+) {
+  const errors = [];
+  if (remotePullRequest.headRefOid !== source.head) {
+    errors.push(
+      `Pull request #${pullRequest} targets ${remotePullRequest.headRefOid}, not local HEAD ${source.head}. Push first.`,
+    );
+  }
+  if (remotePullRequest.baseRefOid !== receipt.baseTip) {
+    errors.push(
+      `Pull request #${pullRequest} base ${remotePullRequest.baseRefOid} does not match reviewed base ${receipt.baseTip}.`,
+    );
+  }
+  return errors;
+}
+
 function requestCloudReview(options, cwd = process.cwd()) {
   const pullRequest = requirePullRequest(options);
   const source = checkReceipt(cwd);
-  const remoteHead = run(
-    'gh',
-    ['pr', 'view', pullRequest, '--json', 'headRefOid', '--jq', '.headRefOid'],
-    { cwd },
+  const remotePullRequest = JSON.parse(
+    run(
+      'gh',
+      ['pr', 'view', pullRequest, '--json', 'headRefOid,baseRefOid,url'],
+      { cwd },
+    ),
   );
-  if (remoteHead !== source.head) {
-    throw new Error(
-      `Pull request #${pullRequest} targets ${remoteHead}, not local HEAD ${source.head}. Push first.`,
-    );
+  const receipt = readReceipt(cwd);
+  const boundaryErrors = validatePullRequestBoundary(
+    pullRequest,
+    remotePullRequest,
+    source,
+    receipt,
+  );
+  if (boundaryErrors.length > 0) {
+    throw new Error(boundaryErrors.join('\n'));
   }
-  run('gh', ['pr', 'comment', pullRequest, '--body', '@codex review'], {
+  const marker = reviewRequestMarker(pullRequest, source.head, receipt.baseTip);
+  const { owner, repository } = parsePullRequestRepository(
+    remotePullRequest.url,
+  );
+  const commentPages = JSON.parse(
+    run(
+      'gh',
+      [
+        'api',
+        '--paginate',
+        '--slurp',
+        `repos/${owner}/${repository}/issues/${pullRequest}/comments`,
+      ],
+      { cwd },
+    ),
+  );
+  if (
+    options.reopen !== true &&
+    hasReviewRequest(marker, commentPages.flat())
+  ) {
+    process.stdout.write(
+      `Codex review was already requested for PR #${pullRequest} at ${source.head}.\n`,
+    );
+    return;
+  }
+  const body = `@codex review exact commit ${source.head}\n\n${marker}`;
+  run('gh', ['pr', 'comment', pullRequest, '--body', body], {
     cwd,
     inherit: true,
   });
@@ -268,10 +352,14 @@ if (require.main === module) {
 
 module.exports = {
   createReceipt,
+  hasReviewRequest,
   parseArguments,
+  parsePullRequestRepository,
   parsePushUpdates,
   prePush,
   receiptPath,
   requiresReceiptForHead,
+  reviewRequestMarker,
+  validatePullRequestBoundary,
   validateReceipt,
 };
