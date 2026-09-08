@@ -19,6 +19,26 @@ tasks. The same quality gates apply to human- and AI-authored changes.
    [AI change quality rubric](./ai-change-quality-rubric.md)
 10. Resolve review findings, update docs, and run risk-appropriate verification
 
+For a high-risk pull request, finish that flow with the model-independent
+handoff command after the candidate and its exact-head review evidence are
+committed:
+
+```bash
+npm run review:finalize -- --pr <number>
+```
+
+This command runs the definitive local gate, records an exact-head receipt,
+pushes that same commit, confirms that the pull request points to it, and only
+then posts `@codex review`. A tracked pre-push hook rejects a high-risk current
+branch push when its receipt is missing or stale. `npm install` configures that
+hook without replacing a pre-existing custom hook path.
+
+Use `npm run review:prepare` when only the local gate and receipt are needed,
+and `npm run review:request -- --pr <number>` when the verified commit is already
+on GitHub. A new commit or working-tree change invalidates the receipt. These
+commands do not replace independent review, GitHub approval, finding
+disposition, or the maintainer's merge decision.
+
 The independent reviewer must be a human or separate agent context that did not
 implement the change. If that reviewer is unavailable, high-risk work remains
 incomplete. A high-risk pull request additionally requires approval of its

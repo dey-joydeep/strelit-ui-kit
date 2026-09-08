@@ -258,6 +258,16 @@ Local reviewer/context identifiers are workflow attestations, not a security
 boundary: orchestrator task records and the different-identity GitHub approval
 are the authoritative proof of independence.
 
+Autonomous high-risk pull-request work MUST use `npm run review:finalize --
+--pr <number>` for the final local-gate, push, and cloud-review handoff. Do not
+invoke `git push` or post `@codex review` as separate finalization steps. The
+handoff records an exact-head receipt only after `verify:review-ready` succeeds;
+the tracked pre-push hook rejects a high-risk current-branch push when that
+receipt is absent or stale. This invocation rule applies regardless of the
+selected implementation model. It does not suppress cloud findings or replace
+the required independent GitHub approval, which the PR owner may override only
+under repository settings outside this local workflow.
+
 For a bug or PR review finding, the implementer MUST:
 
 1. Reproduce the reported case

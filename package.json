@@ -43,6 +43,7 @@
     "tslib": "^2.8.1"
   },
   "scripts": {
+    "prepare": "node ./scripts/install-git-hooks.js",
     "clean": "rimraf dist lib temp apitest/dist",
     "typecheck:cjs": "tsc -p tsconfig.cjs.json --noEmit",
     "typecheck:module:api": "tsc -p tsconfig.module.api.json --noEmit",
@@ -79,6 +80,10 @@
     "agent:ledger": "node ./scripts/agent-work-ledger.js",
     "verify:agent-ledger": "node ./scripts/agent-work-ledger.js validate",
     "verify:review-ready": "node ./scripts/verify-pr.js --review-ready",
+    "review:prepare": "node ./scripts/review-handoff.js prepare",
+    "review:check": "node ./scripts/review-handoff.js check",
+    "review:request": "node ./scripts/review-handoff.js request",
+    "review:finalize": "node ./scripts/review-handoff.js finalize",
     "apitest:build": "vite build --config ./vite.apitest.config.ts",
     "apitest:serve": "vite --config ./vite.apitest.config.ts",
     "apitest:smoke": "node ./scripts/smoke-apitest.js",
