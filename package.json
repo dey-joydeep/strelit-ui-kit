@@ -76,6 +76,7 @@
     "doc:typedoc:full": "rimraf .generated-docs/full && typedoc --options ./typedoc.full.json",
     "doc:typedoc:strip": "rimraf .generated-docs/strip && typedoc --options ./typedoc.stripInternal.json",
     "verify:ordered": "node ./scripts/verify-ordered.js",
+    "verify:package-runtime": "node ./scripts/verify-package-runtime.js",
     "verify:pr": "node ./scripts/verify-pr.js",
     "agent:ledger": "node ./scripts/agent-work-ledger.js",
     "verify:agent-ledger": "node ./scripts/agent-work-ledger.js validate",
@@ -87,6 +88,7 @@
     "apitest:build": "vite build --config ./vite.apitest.config.ts",
     "apitest:serve": "vite --config ./vite.apitest.config.ts",
     "apitest:smoke": "node ./scripts/smoke-apitest.js",
+    "apitest:browser-smoke": "playwright test",
     "migrate:golden-layout": "node ./scripts/migrate-golden-layout-to-strelit.js",
     "audit:compatibility": "node ./scripts/audit-compatibility.js --validate",
     "audit:compatibility:check": "node ./scripts/audit-compatibility.js --check",
@@ -97,6 +99,7 @@
   },
   "devDependencies": {
     "@microsoft/api-extractor": "^7.58.1",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^24.13.3",
     "@vitest/coverage-v8": "^4.0.7",
     "autoprefixer": "^10.4.21",

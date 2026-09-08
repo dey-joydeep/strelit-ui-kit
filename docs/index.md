@@ -18,7 +18,7 @@ Strelit UI Kit is a TypeScript docking and workspace layout library derived from
 - Load and save layouts
 - Focus components
 - Completely themeable
-- Supports the browser matrix in [`package.json`](../package.json): the latest Chrome and Firefox releases, the latest two major Edge, Safari, and iOS releases, and Firefox ESR
+- Targets the browser matrix in [`package.json`](../package.json): the latest Chrome and Firefox releases, the latest two major Edge, Safari, and iOS releases, and Firefox ESR. CI exercises the API demo in Chromium, Firefox, and WebKit; exact vendor versions and physical iOS devices remain release-validation targets rather than claims of per-device certification.
 - Responsive design
 
 # Installation / Usage
