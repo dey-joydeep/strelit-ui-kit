@@ -33,6 +33,38 @@ function npmInvocation(args) {
   return run('npm', args);
 }
 
+function parsePackOutput(output) {
+  const candidateOffsets = [];
+  for (let offset = 0; offset < output.length; offset += 1) {
+    if (
+      output[offset] === '[' &&
+      (offset === 0 || output[offset - 1] === '\n')
+    ) {
+      candidateOffsets.push(offset);
+    }
+  }
+
+  for (const offset of candidateOffsets) {
+    try {
+      const parsed = JSON.parse(output.slice(offset));
+      const filename = parsed?.[0]?.filename;
+      if (
+        Array.isArray(parsed) &&
+        parsed.length === 1 &&
+        typeof filename === 'string' &&
+        filename.length > 0 &&
+        path.basename(filename) === filename
+      ) {
+        return parsed;
+      }
+    } catch {
+      // npm can emit lifecycle output before its JSON result; try the next line.
+    }
+  }
+
+  throw new Error('npm pack did not produce a valid JSON package result.');
+}
+
 function verifyConsumer(consumerRoot, moduleKind) {
   const extension = moduleKind === 'require' ? 'cjs' : 'mjs';
   const source =
@@ -74,7 +106,7 @@ function main() {
       '--pack-destination',
       temporaryRoot,
     ]);
-    const packResult = JSON.parse(packOutput);
+    const packResult = parsePackOutput(packOutput);
     const archivePath = path.join(temporaryRoot, packResult[0].filename);
     const extractedRoot = path.join(temporaryRoot, 'extracted');
     fs.mkdirSync(extractedRoot);
@@ -112,4 +144,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { main, run, verifyConsumer };
+module.exports = { main, parsePackOutput, run, verifyConsumer };
