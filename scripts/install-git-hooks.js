@@ -7,7 +7,11 @@ const managedMarker = '# strelit-managed-pre-push';
 
 function installDefaultPrePush(cwd) {
   const hooksDirectory = nodePath.join(
-    runGit(['rev-parse', '--absolute-git-dir'], false, cwd).stdout.trim(),
+    runGit(
+      ['rev-parse', '--path-format=absolute', '--git-common-dir'],
+      false,
+      cwd,
+    ).stdout.trim(),
     'hooks',
   );
   const hookPath = nodePath.join(hooksDirectory, 'pre-push');

@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -276,6 +277,33 @@ describe('review handoff', () => {
       'previous-tracked',
     );
     expect(hookInstaller.install(cwd)).toBe('installed');
+  });
+
+  it('installs default hooks in the common Git directory for linked worktrees', () => {
+    const cwd = temporaryDirectory();
+    initializeReviewRepository(cwd);
+    mkdirSync(join(cwd, '.githooks'));
+    writeFileSync(join(cwd, '.githooks/pre-push'), '#!/bin/sh\nexit 0\n');
+    git(cwd, 'add', '.githooks/pre-push');
+    git(cwd, 'commit', '-m', 'add tracked hook');
+    const worktreeParent = temporaryDirectory();
+    const worktree = join(worktreeParent, 'linked');
+    git(cwd, 'worktree', 'add', '-b', 'linked', worktree);
+
+    expect(hookInstaller.install(worktree)).toBe('installed');
+
+    const commonHooksDirectory = join(
+      git(worktree, 'rev-parse', '--path-format=absolute', '--git-common-dir'),
+      'hooks',
+    );
+    const worktreeHooksDirectory = join(
+      git(worktree, 'rev-parse', '--absolute-git-dir'),
+      'hooks',
+    );
+    expect(
+      readFileSync(join(commonHooksDirectory, 'pre-push'), 'utf8'),
+    ).toContain('# strelit-managed-pre-push');
+    expect(existsSync(join(worktreeHooksDirectory, 'pre-push'))).toBe(false);
   });
 
   it('does not override a custom hook path', () => {
