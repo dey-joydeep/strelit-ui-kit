@@ -6,10 +6,11 @@
 
 1. TypeScript checks library, public modules, and API demo source without emitting files.
 2. Build produces CJS, ESM, declarations, styles, and the API Extractor report.
-3. Vitest validates runtime, migration, security-limit, and compatibility behavior.
-4. Compatibility audit validates generated baseline dispositions.
-5. Oxlint and strict TypeDoc validation reject lint warnings and undocumented public API.
-6. Prettier checks tracked source and documentation formatting.
+3. Package-runtime verification executes the packed CommonJS and ES module entry points through the published exports map.
+4. Vitest validates runtime, migration, security-limit, and compatibility behavior.
+5. Compatibility audit validates generated baseline dispositions.
+6. Oxlint and strict TypeDoc validation reject lint warnings and undocumented public API.
+7. Prettier checks tracked source and documentation formatting.
 
 The runner stops at the first failed stage and records later stages as skipped. `.verification/summary.json`, `.verification/latest.txt`, and numbered logs are disposable local artifacts and are never committed.
 

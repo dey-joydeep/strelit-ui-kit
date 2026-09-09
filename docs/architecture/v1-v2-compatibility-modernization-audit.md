@@ -296,10 +296,11 @@ is a broader consumer compilation target, and a v1 saved layout is migrated,
 loaded, persisted, converted back to the public schema, reloaded, and compared
 in Vitest.
 
-The final `npm run verify:ordered` run passed all six fail-fast stages:
-TypeScript compilation, build and API extraction, Vitest, compatibility
-snapshot validation, zero-warning type-aware Oxlint, and Prettier checking. The
-Vite API demo build, browser smoke, and TypeDoc generation also pass.
+The final `npm run verify:ordered` run passed all seven fail-fast stages:
+TypeScript compilation, build and API extraction, packed-package runtime
+imports, Vitest, compatibility snapshot validation, zero-warning type-aware
+Oxlint, and Prettier checking. The Vite API demo build, browser smoke, and
+TypeDoc generation also pass.
 Both CJS and ESM self-references resolve through the package export map, the
 publish dry run contains only release artifacts, and `npm audit` reports zero
 vulnerabilities.
