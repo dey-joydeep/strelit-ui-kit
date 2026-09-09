@@ -1,0 +1,129 @@
+{
+  "name": "strelit-ui-kit",
+  "version": "0.1.0",
+  "description": "Strelit UI layout workspace toolkit",
+  "keywords": [
+    "docking",
+    "layout",
+    "typescript",
+    "workspace",
+    "ui"
+  ],
+  "license": "MIT",
+  "author": "CTHub",
+  "main": "dist/cjs/index.js",
+  "module": "dist/esm/index.mjs",
+  "typings": "dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/esm/index.mjs",
+      "require": "./dist/cjs/index.js"
+    },
+    "./dist/css/*": "./dist/css/*",
+    "./dist/less/*": "./dist/less/*",
+    "./dist/scss/*": "./dist/scss/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/**/*"
+  ],
+  "sideEffects": [
+    "dist/**/*.css",
+    "dist/**/*.less",
+    "dist/**/*.scss"
+  ],
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "overrides": {
+    "esbuild": "^0.28.1"
+  },
+  "dependencies": {
+    "tslib": "^2.8.1"
+  },
+  "scripts": {
+    "prepare": "node ./scripts/install-git-hooks.js",
+    "clean": "rimraf dist lib temp apitest/dist",
+    "typecheck:cjs": "tsc -p tsconfig.cjs.json --noEmit",
+    "typecheck:module:api": "tsc -p tsconfig.module.api.json --noEmit",
+    "typecheck:apitest": "tsc -p apitest/tsconfig.json --noEmit",
+    "typecheck:tests": "tsc -p tsconfig.tests.json --noEmit",
+    "typecheck:bundle:prepare": "npm run build:types && api-extractor run --verbose",
+    "typecheck:bundle": "tsc -p tsconfig.bundle.json",
+    "typecheck": "npm run typecheck:cjs && npm run typecheck:module:api && npm run typecheck:apitest && npm run typecheck:tests",
+    "build:cjs": "tsup src/index.ts --format cjs --outDir dist/cjs --target es2020 --sourcemap --external tslib --clean false --splitting false",
+    "build:module": "tsup src/index.ts --format esm --outDir dist/esm --target es2020 --sourcemap --external tslib --clean false --splitting false",
+    "build:module:api": "tsc -p tsconfig.module.api.json",
+    "build:module:full": "tsc -p tsconfig.module.full.json",
+    "build:module:strip": "tsc -p tsconfig.module.strip.json",
+    "build:js": "tsup --config tsup.config.ts",
+    "build:types": "tsc -p tsconfig.types.json",
+    "build:styles": "node ./scripts/css.js",
+    "build": "npm run clean && npm run build:js && npm run build:types && npm run build:styles && api-extractor run --verbose && npm run typecheck:bundle",
+    "api:report": "api-extractor run --local --verbose",
+    "lint": "oxlint --type-aware --deny-warnings --ignore-path .gitignore . && npm run lint:docs",
+    "lint:fix": "oxlint --type-aware --fix --ignore-path .gitignore .",
+    "lint:docs": "typedoc --options ./typedoc.stripInternal.json --emit none",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "bench": "vitest bench --run test/bench",
+    "bench:watch": "vitest bench test/bench",
+    "coverage": "vitest run --coverage",
+    "doc": "npm run build && typedoc --options ./typedoc.stripInternal.json",
+    "doc:typedoc:full": "rimraf .generated-docs/full && typedoc --options ./typedoc.full.json",
+    "doc:typedoc:strip": "rimraf .generated-docs/strip && typedoc --options ./typedoc.stripInternal.json",
+    "verify:ordered": "node ./scripts/verify-ordered.js",
+    "verify:package-runtime": "node ./scripts/verify-package-runtime.js",
+    "verify:pr": "node ./scripts/verify-pr.js",
+    "agent:ledger": "node ./scripts/agent-work-ledger.js",
+    "verify:agent-ledger": "node ./scripts/agent-work-ledger.js validate",
+    "verify:review-ready": "node ./scripts/verify-pr.js --review-ready",
+    "review:prepare": "node ./scripts/review-handoff.js prepare",
+    "review:check": "node ./scripts/review-handoff.js check",
+    "review:request": "node ./scripts/review-handoff.js request",
+    "review:finalize": "node ./scripts/review-handoff.js finalize",
+    "apitest:build": "vite build --config ./vite.apitest.config.ts",
+    "apitest:serve": "vite --config ./vite.apitest.config.ts",
+    "apitest:smoke": "node ./scripts/smoke-apitest.js",
+    "apitest:browser-smoke": "playwright test",
+    "migrate:golden-layout": "node ./scripts/migrate-golden-layout-to-strelit.js",
+    "audit:compatibility": "node ./scripts/audit-compatibility.js --validate",
+    "audit:compatibility:check": "node ./scripts/audit-compatibility.js --check",
+    "audit:compatibility:refresh": "node ./scripts/audit-compatibility.js --write",
+    "sonar": "npx sonarqube-scanner",
+    "sonar:coverage": "npm run coverage && npm run sonar",
+    "sonar:issues": "node ./scripts/sonar-report.js"
+  },
+  "devDependencies": {
+    "@microsoft/api-extractor": "^7.58.1",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^24.13.3",
+    "@vitest/coverage-v8": "^4.0.7",
+    "autoprefixer": "^10.4.21",
+    "jsdom": "^27.0.1",
+    "less": "^4.4.2",
+    "markdown-it": "^14.3.0",
+    "oxlint": "^1.73.0",
+    "oxlint-tsgolint": "^0.24.0",
+    "postcss": "^8.5.6",
+    "prettier": "^3.6.2",
+    "rimraf": "^6.1.0",
+    "sonarqube-scanner": "^4.4.0",
+    "tsup": "^8.5.1",
+    "typedoc": "^0.28.14",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.10",
+    "vitest": "^4.0.7"
+  },
+  "browserslist": [
+    "last 1 Chrome version",
+    "last 1 Firefox version",
+    "last 2 Edge major versions",
+    "last 2 Safari major versions",
+    "last 2 iOS major versions",
+    "Firefox ESR"
+  ]
+}

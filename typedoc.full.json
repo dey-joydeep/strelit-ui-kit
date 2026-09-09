@@ -1,0 +1,9 @@
+{
+  "tsconfig": "./tsconfig.module.full.json",
+  "entryPoints": ["./src"],
+  "entryPointStrategy": "expand",
+  "out": ".generated-docs/full",
+  "readme": "README.md",
+  "excludePrivate": true,
+  "excludeProtected": true
+}

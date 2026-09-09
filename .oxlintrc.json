@@ -1,0 +1,47 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "env": {
+    "builtin": true,
+    "browser": true
+  },
+  "options": {
+    "typeAware": true
+  },
+  "plugins": ["typescript", "unicorn", "oxc", "jsdoc"],
+  "rules": {
+    "jsdoc/check-access": "error",
+    "jsdoc/check-tag-names": "error"
+  },
+  "ignorePatterns": [
+    ".codex/**",
+    ".generated-docs/**",
+    ".verification/**",
+    "dist/**",
+    "lib/**",
+    "temp/**"
+  ],
+  "overrides": [
+    {
+      "files": ["scripts/**/*.js"],
+      "env": {
+        "node": true,
+        "commonjs": true
+      }
+    },
+    {
+      "files": ["tsup.config.ts", "vite.apitest.config.ts", "vitest.config.ts"],
+      "env": {
+        "node": true
+      }
+    },
+    {
+      "files": ["test/**/*.ts"],
+      "env": {
+        "vitest": true
+      },
+      "rules": {
+        "jsdoc/check-tag-names": "off"
+      }
+    }
+  ]
+}
