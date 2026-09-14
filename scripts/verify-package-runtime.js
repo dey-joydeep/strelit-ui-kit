@@ -53,6 +53,8 @@ function parsePackOutput(output) {
         parsed.length === 1 &&
         typeof filename === 'string' &&
         filename.length > 0 &&
+        filename !== '.' &&
+        filename !== '..' &&
         path.basename(filename) === filename
       ) {
         return parsed;

@@ -25,6 +25,11 @@ describe('package runtime verification', () => {
     expect(() =>
       packageRuntime.parsePackOutput('[{"filename":"../outside.tgz"}]'),
     ).toThrow('npm pack did not produce a valid JSON package result.');
+    for (const filename of ['.', '..']) {
+      expect(() =>
+        packageRuntime.parsePackOutput(JSON.stringify([{ filename }])),
+      ).toThrow('npm pack did not produce a valid JSON package result.');
+    }
     expect(() =>
       packageRuntime.parsePackOutput(
         '[{"filename":"first.tgz"},{"filename":"second.tgz"}]',
