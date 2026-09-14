@@ -62,6 +62,45 @@ const hookInstaller =
   require('../../scripts/install-git-hooks.js') as HookInstallerModule;
 const temporaryPaths: string[] = [];
 
+function withEnvironment<T>(
+  overrides: Readonly<Record<string, string | undefined>>,
+  callback: () => T,
+): T {
+  const previous = new Map(
+    Object.keys(overrides).map((key) => [key, process.env[key]]),
+  );
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+  try {
+    return callback();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
+function prePushForFixture(input: string, cwd: string): void {
+  withEnvironment(
+    {
+      GITHUB_ACTIONS: undefined,
+      GITHUB_BASE_SHA: undefined,
+      GITHUB_DEFAULT_BRANCH: undefined,
+      STRELIT_REVIEW_BASE_REF: undefined,
+    },
+    () => handoff.prePush(input, cwd),
+  );
+}
+
 function temporaryDirectory(): string {
   const path = mkdtempSync(join(tmpdir(), 'strelit-review-handoff-'));
   temporaryPaths.push(path);
@@ -162,11 +201,22 @@ describe('review handoff', () => {
     git(cwd, 'commit', '-m', 'high risk');
     const head = git(cwd, 'rev-parse', 'HEAD');
 
-    for (const localRef of ['refs/heads/main', 'HEAD', head]) {
-      expect(() =>
-        handoff.prePush(`${localRef} ${head} refs/heads/topic ${base}\n`, cwd),
-      ).toThrow(/No review-ready receipt exists/u);
-    }
+    withEnvironment(
+      {
+        GITHUB_ACTIONS: 'true',
+        GITHUB_BASE_SHA: 'unavailable-fixture-base',
+      },
+      () => {
+        for (const localRef of ['refs/heads/main', 'HEAD', head]) {
+          expect(() =>
+            prePushForFixture(
+              `${localRef} ${head} refs/heads/topic ${base}\n`,
+              cwd,
+            ),
+          ).toThrow(/No review-ready receipt exists/u);
+        }
+      },
+    );
   });
 
   it('classifies the committed candidate independently of worktree edits', () => {
@@ -180,7 +230,7 @@ describe('review handoff', () => {
     const highRiskHead = git(highRiskCwd, 'rev-parse', 'HEAD');
     rmSync(highRiskPath);
     expect(() =>
-      handoff.prePush(
+      prePushForFixture(
         `HEAD ${highRiskHead} refs/heads/topic ${highRiskBase}\n`,
         highRiskCwd,
       ),
@@ -191,7 +241,7 @@ describe('review handoff', () => {
     mkdirSync(join(safeCwd, 'scripts'));
     writeFileSync(join(safeCwd, 'scripts/uncommitted.js'), 'dirty\n');
     expect(() =>
-      handoff.prePush(
+      prePushForFixture(
         `HEAD ${safeHead} refs/heads/topic ${safeHead}\n`,
         safeCwd,
       ),
