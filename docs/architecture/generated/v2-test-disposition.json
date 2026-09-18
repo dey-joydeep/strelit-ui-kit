@@ -1,0 +1,565 @@
+{
+  "baselineCommit": "f442a2d",
+  "entries": [
+    {
+      "source": "test/disabled/component-state-save-tests.js",
+      "title": "Can create a most basic layout",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/component-state-save-tests.ts"
+    },
+    {
+      "source": "test/disabled/component-state-save-tests.js",
+      "title": "returns the initial state",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/component-state-save-tests.ts"
+    },
+    {
+      "source": "test/disabled/component-state-save-tests.js",
+      "title": "emits stateChanged when a component updates its state",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/component-state-save-tests.ts"
+    },
+    {
+      "source": "test/disabled/component-state-save-tests.js",
+      "title": "returns the updated state",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/component-state-save-tests.ts"
+    },
+    {
+      "source": "test/disabled/component-state-save-tests.js",
+      "title": "Destroys the layout",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/component-state-save-tests.ts"
+    },
+    {
+      "source": "test/disabled/create-config.tests.js",
+      "title": "doesn\\",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/create-config-tests.ts"
+    },
+    {
+      "source": "test/disabled/create-from-config-tests.js",
+      "title": "creates the right primitive types: component only",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/create-from-config-tests.ts"
+    },
+    {
+      "source": "test/disabled/create-from-config-tests.js",
+      "title": "creates the right primitive types: stack and component",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/create-from-config-tests.ts"
+    },
+    {
+      "source": "test/disabled/create-from-config-tests.js",
+      "title": "creates the right primitive types: row and two component",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/create-from-config-tests.ts"
+    },
+    {
+      "source": "test/disabled/create-from-config-tests.js",
+      "title": "creates the right primitive types: stack -> column -> component",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/create-from-config-tests.ts"
+    },
+    {
+      "source": "test/disabled/disabled-selection-tests.js",
+      "title": "creates a layout",
+      "baselineStatus": "disabled",
+      "disposition": "replaced-by-focus-model-test",
+      "target": "test/specs/component-focus-tests.ts"
+    },
+    {
+      "source": "test/disabled/disabled-selection-tests.js",
+      "title": "attaches event listeners and retrieves stacks",
+      "baselineStatus": "disabled",
+      "disposition": "replaced-by-focus-model-test",
+      "target": "test/specs/component-focus-tests.ts"
+    },
+    {
+      "source": "test/disabled/disabled-selection-tests.js",
+      "title": "clicks a header, but nothing happens since enableSelection == false",
+      "baselineStatus": "disabled",
+      "disposition": "replaced-by-focus-model-test",
+      "target": "test/specs/component-focus-tests.ts"
+    },
+    {
+      "source": "test/disabled/disabled-selection-tests.js",
+      "title": "destroys the layout",
+      "baselineStatus": "disabled",
+      "disposition": "replaced-by-focus-model-test",
+      "target": "test/specs/component-focus-tests.ts"
+    },
+    {
+      "source": "test/disabled/enabled-selection-tests.js",
+      "title": "creates a layout",
+      "baselineStatus": "disabled",
+      "disposition": "replaced-by-focus-model-test",
+      "target": "test/specs/component-focus-tests.ts"
+    },
+    {
+      "source": "test/disabled/enabled-selection-tests.js",
+      "title": "attaches event listeners and retrieves stacks",
+      "baselineStatus": "disabled",
+      "disposition": "replaced-by-focus-model-test",
+      "target": "test/specs/component-focus-tests.ts"
+    },
+    {
+      "source": "test/disabled/enabled-selection-tests.js",
+      "title": "clicks a header and it selects a stack",
+      "baselineStatus": "disabled",
+      "disposition": "replaced-by-focus-model-test",
+      "target": "test/specs/component-focus-tests.ts"
+    },
+    {
+      "source": "test/disabled/enabled-selection-tests.js",
+      "title": "clicks changes selection",
+      "baselineStatus": "disabled",
+      "disposition": "replaced-by-focus-model-test",
+      "target": "test/specs/component-focus-tests.ts"
+    },
+    {
+      "source": "test/disabled/enabled-selection-tests.js",
+      "title": "changes selection programatically",
+      "baselineStatus": "disabled",
+      "disposition": "replaced-by-focus-model-test",
+      "target": "test/specs/component-focus-tests.ts"
+    },
+    {
+      "source": "test/disabled/enabled-selection-tests.js",
+      "title": "destroys the layout",
+      "baselineStatus": "disabled",
+      "disposition": "replaced-by-focus-model-test",
+      "target": "test/specs/component-focus-tests.ts"
+    },
+    {
+      "source": "test/disabled/event-bubble-tests.js",
+      "title": "creates a layout",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/event-bubble-tests.ts"
+    },
+    {
+      "source": "test/disabled/event-bubble-tests.js",
+      "title": "emits bubbling events",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/event-bubble-tests.ts"
+    },
+    {
+      "source": "test/disabled/event-bubble-tests.js",
+      "title": "stops propagation",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/event-bubble-tests.ts"
+    },
+    {
+      "source": "test/disabled/event-bubble-tests.js",
+      "title": "destroys the layout",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/event-bubble-tests.ts"
+    },
+    {
+      "source": "test/disabled/item-creation-events-tests.js",
+      "title": "creates a layout",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/component-creation-events-tests.ts"
+    },
+    {
+      "source": "test/disabled/item-creation-events-tests.js",
+      "title": "registeres listeners",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/component-creation-events-tests.ts"
+    },
+    {
+      "source": "test/disabled/item-creation-events-tests.js",
+      "title": "has called listeners",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/component-creation-events-tests.ts"
+    },
+    {
+      "source": "test/disabled/item-creation-events-tests.js",
+      "title": "provided the right arguments",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/component-creation-events-tests.ts"
+    },
+    {
+      "source": "test/disabled/item-creation-events-tests.js",
+      "title": "destroys the layout",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/component-creation-events-tests.ts"
+    },
+    {
+      "source": "test/disabled/minifier-tests.js",
+      "title": "has minification methods",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/minifier-tests.ts"
+    },
+    {
+      "source": "test/disabled/minifier-tests.js",
+      "title": "doesn\\",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/minifier-tests.ts"
+    },
+    {
+      "source": "test/disabled/minifier-tests.js",
+      "title": "minifies and unminifies the config directly",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/minifier-tests.ts"
+    },
+    {
+      "source": "test/disabled/minifier-tests.js",
+      "title": "doesn\\",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/minifier-tests.ts"
+    },
+    {
+      "source": "test/disabled/minifier-tests.js",
+      "title": "works with existing minified configurations",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/minifier-tests.ts"
+    },
+    {
+      "source": "test/disabled/popout-tests.js",
+      "title": "creates a layout",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/popout-tests.ts"
+    },
+    {
+      "source": "test/disabled/popout-tests.js",
+      "title": "opens testComponent in a new window",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/popout-tests.ts"
+    },
+    {
+      "source": "test/disabled/popout-tests.js",
+      "title": "serialises the new window",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/popout-tests.ts"
+    },
+    {
+      "source": "test/disabled/popout-tests.js",
+      "title": "closes the open window",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/popout-tests.ts"
+    },
+    {
+      "source": "test/disabled/popout-tests.js",
+      "title": "destroys the layout",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/popout-tests.ts"
+    },
+    {
+      "source": "test/disabled/selector-tests.js",
+      "title": "creates a layout with elements that have ids",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/query-helpers-tests.ts"
+    },
+    {
+      "source": "test/disabled/selector-tests.js",
+      "title": "finds an item by string id",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/query-helpers-tests.ts"
+    },
+    {
+      "source": "test/disabled/selector-tests.js",
+      "title": "returns an empty array if no item was found for id",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/query-helpers-tests.ts"
+    },
+    {
+      "source": "test/disabled/selector-tests.js",
+      "title": "finds items by an id from an array",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/query-helpers-tests.ts"
+    },
+    {
+      "source": "test/disabled/selector-tests.js",
+      "title": "finds items by type",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/query-helpers-tests.ts"
+    },
+    {
+      "source": "test/disabled/selector-tests.js",
+      "title": "returns an empty array if no item was found for type",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/query-helpers-tests.ts"
+    },
+    {
+      "source": "test/disabled/selector-tests.js",
+      "title": "finds the component instance by name",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/query-helpers-tests.ts"
+    },
+    {
+      "source": "test/disabled/selector-tests.js",
+      "title": "allows for chaining",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/query-helpers-tests.ts"
+    },
+    {
+      "source": "test/disabled/tab-tests.js",
+      "title": "creates a layout",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/tab-tests.ts"
+    },
+    {
+      "source": "test/disabled/tab-tests.js",
+      "title": "attached a drag listener to the first tab",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/tab-tests.ts"
+    },
+    {
+      "source": "test/disabled/tab-tests.js",
+      "title": "destroys the layout",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/tab-tests.ts"
+    },
+    {
+      "source": "test/disabled/title-tests.js",
+      "title": "creates a layout",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/title-tests.ts"
+    },
+    {
+      "source": "test/disabled/title-tests.js",
+      "title": "applies titles from configuration",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/title-tests.ts"
+    },
+    {
+      "source": "test/disabled/title-tests.js",
+      "title": "displays the title on the tab",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/title-tests.ts"
+    },
+    {
+      "source": "test/disabled/title-tests.js",
+      "title": "updates the title when calling setTitle on the item",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/title-tests.ts"
+    },
+    {
+      "source": "test/disabled/title-tests.js",
+      "title": "updates the title when calling setTitle from the container",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/title-tests.ts"
+    },
+    {
+      "source": "test/disabled/title-tests.js",
+      "title": "Persists the title",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/title-tests.ts"
+    },
+    {
+      "source": "test/disabled/title-tests.js",
+      "title": "supports html in title",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/title-tests.ts"
+    },
+    {
+      "source": "test/disabled/title-tests.js",
+      "title": "destroys the layout",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/title-tests.ts"
+    },
+    {
+      "source": "test/disabled/tree-manipulation-tests.js",
+      "title": "Creates an initial layout",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/tree-manipulation-tests.ts"
+    },
+    {
+      "source": "test/disabled/tree-manipulation-tests.js",
+      "title": "has the right initial structure",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/tree-manipulation-tests.ts"
+    },
+    {
+      "source": "test/disabled/tree-manipulation-tests.js",
+      "title": "adds a child to the stack",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/tree-manipulation-tests.ts"
+    },
+    {
+      "source": "test/disabled/tree-manipulation-tests.js",
+      "title": "replaces a component with a row of components",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/tree-manipulation-tests.ts"
+    },
+    {
+      "source": "test/disabled/tree-manipulation-tests.js",
+      "title": "Has setup parents correctly",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/tree-manipulation-tests.ts"
+    },
+    {
+      "source": "test/disabled/tree-manipulation-tests.js",
+      "title": "Destroys a component and its parent",
+      "baselineStatus": "disabled",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/tree-manipulation-tests.ts"
+    },
+    {
+      "source": "test/disabled/xss_tests.js",
+      "title": "escapes tags",
+      "baselineStatus": "disabled",
+      "disposition": "replaced-by-safe-native-rendering-test",
+      "target": "test/specs/title-tests.ts"
+    },
+    {
+      "source": "test/disabled/xss_tests.js",
+      "title": "escapes javascript urls",
+      "baselineStatus": "disabled",
+      "disposition": "replaced-by-safe-native-rendering-test",
+      "target": "test/specs/title-tests.ts"
+    },
+    {
+      "source": "test/disabled/xss_tests.js",
+      "title": "escapes expression statements",
+      "baselineStatus": "disabled",
+      "disposition": "replaced-by-safe-native-rendering-test",
+      "target": "test/specs/title-tests.ts"
+    },
+    {
+      "source": "test/disabled/xss_tests.js",
+      "title": "escapes onload statements",
+      "baselineStatus": "disabled",
+      "disposition": "replaced-by-safe-native-rendering-test",
+      "target": "test/specs/title-tests.ts"
+    },
+    {
+      "source": "test/disabled/xss_tests.js",
+      "title": "escapes onerror statements",
+      "baselineStatus": "disabled",
+      "disposition": "replaced-by-safe-native-rendering-test",
+      "target": "test/specs/title-tests.ts"
+    },
+    {
+      "source": "test/specs/component-creation-events-tests.ts",
+      "title": "results in an event emitted for each component in the layout",
+      "baselineStatus": "active",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/component-creation-events-tests.ts"
+    },
+    {
+      "source": "test/specs/drag-tests.ts",
+      "title": "creates a new component when dragged (static component config)",
+      "baselineStatus": "active",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/drag-tests.ts"
+    },
+    {
+      "source": "test/specs/drag-tests.ts",
+      "title": "creates a new component if dragged (deferred component config)",
+      "baselineStatus": "active",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/drag-tests.ts"
+    },
+    {
+      "source": "test/specs/empty-stack-tests.ts",
+      "title": "can be manipulated",
+      "baselineStatus": "active",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/empty-stack-tests.ts"
+    },
+    {
+      "source": "test/specs/empty-stack-tests.ts",
+      "title": "can have child added to the empty stack",
+      "baselineStatus": "active",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/empty-stack-tests.ts"
+    },
+    {
+      "source": "test/specs/event-emitter-tests.ts",
+      "title": "can be extended",
+      "baselineStatus": "active",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/event-emitter-tests.ts"
+    },
+    {
+      "source": "test/specs/event-emitter-tests.ts",
+      "title": "notifies callbacks",
+      "baselineStatus": "active",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/event-emitter-tests.ts"
+    },
+    {
+      "source": "test/specs/event-emitter-tests.ts",
+      "title": "triggers an \\",
+      "baselineStatus": "active",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/event-emitter-tests.ts"
+    },
+    {
+      "source": "test/specs/event-emitter-tests.ts",
+      "title": "unbinds events",
+      "baselineStatus": "active",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/event-emitter-tests.ts"
+    },
+    {
+      "source": "test/specs/event-emitter-tests.ts",
+      "title": "throws an exception when trying to unsubscribe for a non existing method",
+      "baselineStatus": "active",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/event-emitter-tests.ts"
+    },
+    {
+      "source": "test/specs/ground-item-tests.ts",
+      "title": "component gets wrapped in a stack",
+      "baselineStatus": "active",
+      "disposition": "ported-or-consolidated",
+      "target": "test/specs/ground-item-tests.ts"
+    }
+  ]
+}

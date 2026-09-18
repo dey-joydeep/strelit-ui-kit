@@ -1,0 +1,1276 @@
+name: Contribution Governance
+
+on:
+  issue_comment:
+    types:
+      - created
+      - edited
+      - deleted
+  pull_request_target:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+      - ready_for_review
+  pull_request_review:
+    types:
+      - submitted
+      - edited
+      - dismissed
+  pull_request_review_comment:
+    types:
+      - created
+      - edited
+      - deleted
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  pr-metadata:
+    if: ${{ github.event_name != 'issue_comment' || github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title and body
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pullNumber =
+              context.payload.pull_request?.number ?? context.payload.issue?.number;
+            if (!Number.isInteger(pullNumber)) {
+              core.setFailed('Contribution governance requires a pull request event.');
+              return;
+            }
+            const pr =
+              context.payload.pull_request ??
+              (
+                await github.rest.pulls.get({
+                  ...context.repo,
+                  pull_number: pullNumber
+                })
+              ).data;
+            const errors = [];
+
+            const title = (pr.title ?? '').trim();
+            const body = pr.body ?? '';
+            const placeholderOnly = /^(?:n\/a|none|pending|todo|tbd|not applicable)\.?$/i;
+            const renderedBodyResponse = await github.rest.markdown.render({
+              text: body,
+              mode: 'gfm',
+              context: `${context.repo.owner}/${context.repo.repo}`
+            });
+            const renderedBody = renderedBodyResponse.data;
+
+            function canonicalAnchorText(href, anchorHtml) {
+              const anchorText = anchorHtml.replace(/<[^>]*>/g, '').trim();
+              const reviewerMention = anchorText.match(
+                /^@([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))$/
+              );
+              const profileLink = href.match(
+                /^https:\/\/github\.com\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/?$/i
+              );
+              if (
+                reviewerMention !== null &&
+                profileLink !== null &&
+                reviewerMention[1].toLowerCase() === profileLink[1].toLowerCase()
+              ) {
+                return anchorText;
+              }
+
+              const issueReference = anchorText.match(/^#([1-9]\d*)$/);
+              const issueLink = href.match(
+                /^https:\/\/github\.com\/([^/\s]+)\/([^/\s]+)\/(?:issues|pull)\/([1-9]\d*)\/?$/i
+              );
+              if (
+                issueReference !== null &&
+                issueLink !== null &&
+                issueLink[1].toLowerCase() === context.repo.owner.toLowerCase() &&
+                issueLink[2].toLowerCase() === context.repo.repo.toLowerCase() &&
+                issueReference[1] === issueLink[3]
+              ) {
+                return anchorText;
+              }
+
+              return anchorText === href ? href : `${anchorText} (${href})`;
+            }
+
+            function htmlText(html) {
+              return html
+                .replace(
+                  /<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
+                  (_anchor, href, anchorHtml) => canonicalAnchorText(href, anchorHtml)
+                )
+                .replace(/<\/?(?:blockquote|br|div|h[1-6]|li|ol|p|pre|table|td|th|tr|ul)\b[^>]*>/gi, '\n')
+                .replace(/<[^>]*>/g, '')
+                .replace(/&nbsp;|&#160;/gi, ' ')
+                .replace(/&amp;/gi, '&')
+                .replace(/&lt;/gi, '<')
+                .replace(/&gt;/gi, '>')
+                .replace(/&quot;|&#34;/gi, '"')
+                .replace(/&#39;|&apos;/gi, "'")
+                .replace(/\r/g, '')
+                .replace(/[ \t]+\n/g, '\n')
+                .replace(/\n{3,}/g, '\n\n')
+                .trim();
+            }
+
+            function reviewFieldValues(review, label) {
+              const prefix = `${label}:`;
+              return review
+                .split('\n')
+                .map((line) => line.trim())
+                .filter((line) =>
+                  line.slice(0, prefix.length).localeCompare(prefix, undefined, {
+                    sensitivity: 'accent'
+                  }) === 0
+                )
+                .map((line) => line.slice(prefix.length).trim());
+            }
+
+            function canonicalReviewCount(review, label) {
+              const values = reviewFieldValues(review, label);
+              return values.length === 1 && /^(?:0|[1-9]\d*)$/.test(values[0])
+                ? Number(values[0])
+                : undefined;
+            }
+
+            const evidencePlaceholder = /^(?:n\/a|none|pending|todo|tbd|not applicable|done)\.?$/i;
+
+            function isIdentifiableHttpUrl(reference) {
+              if (!/^https?:\/\/\S+$/i.test(reference)) {
+                return false;
+              }
+              try {
+                const url = new URL(reference);
+                return (
+                  (url.protocol === 'http:' || url.protocol === 'https:') &&
+                  url.hostname.length > 0
+                );
+              } catch {
+                return false;
+              }
+            }
+
+            function isSafeRepositoryEvidencePath(reference) {
+              const pathMatch = reference.match(/^(.*?)(?::([1-9]\d*))?$/);
+              const repositoryPath = pathMatch?.[1] ?? '';
+              const segments = repositoryPath.split('/');
+              if (
+                repositoryPath.length === 0 ||
+                evidencePlaceholder.test(repositoryPath) ||
+                segments.some(
+                  (segment) =>
+                    segment === '' ||
+                    /^\.+$/.test(segment) ||
+                    !/^[A-Za-z0-9._-]+$/.test(segment)
+                )
+              ) {
+                return false;
+              }
+
+              return true;
+            }
+
+            function isIdentifiableEvidenceReference(reference) {
+              const markdownLink = reference.match(
+                /^\[([^\]\r\n]+)\]\((https?:\/\/\S+)\)$/i
+              );
+              const renderedLink = reference.match(/^(.+?) \((https?:\/\/\S+)\)$/i);
+              const linkedEvidence = markdownLink ?? renderedLink;
+              return (
+                isIdentifiableHttpUrl(reference) ||
+                (linkedEvidence !== null &&
+                  !evidencePlaceholder.test(linkedEvidence[1]) &&
+                  isIdentifiableHttpUrl(linkedEvidence[2])) ||
+                /^#[1-9]\d*$/.test(reference) ||
+                /^[0-9a-f]{7,40}$/i.test(reference) ||
+                isSafeRepositoryEvidencePath(reference) ||
+                /^artifact:[A-Za-z0-9][A-Za-z0-9._/#-]*$/i.test(reference)
+              );
+            }
+
+            function canonicalEvidenceUrl(reference) {
+              if (isIdentifiableHttpUrl(reference)) {
+                return reference;
+              }
+              const renderedLink = reference.match(/^.+? \((https?:\/\/\S+)\)$/i);
+              return renderedLink !== null && isIdentifiableHttpUrl(renderedLink[1])
+                ? renderedLink[1]
+                : '';
+            }
+
+            function validateFindingDispositionEvidence(
+              review,
+              requireStatusReconciliation = true
+            ) {
+              const validationErrors = [];
+              const findingsValues = reviewFieldValues(review, 'Findings');
+              if (findingsValues.length !== 1) {
+                validationErrors.push('A quality review must provide exactly one Findings line.');
+                return validationErrors;
+              }
+              const findingsMatch = findingsValues[0].match(
+                /^Critical (0|[1-9]\d*); High (0|[1-9]\d*); Medium (0|[1-9]\d*); Low (0|[1-9]\d*)$/
+              );
+              if (findingsMatch === null) {
+                validationErrors.push(
+                  'Findings must report canonical nonnegative counts for Critical, High, Medium, and Low severities.'
+                );
+                return validationErrors;
+              }
+
+              const severities = ['Critical', 'High', 'Medium', 'Low'];
+              const reportedBySeverity = new Map(
+                severities.map((severity, index) => [
+                  severity,
+                  Number(findingsMatch[index + 1])
+                ])
+              );
+              const totalReported = [...reportedBySeverity.values()].reduce(
+                (total, count) => total + count,
+                0
+              );
+              const dispositionValues = reviewFieldValues(review, 'Finding dispositions');
+              if (dispositionValues.length !== 1) {
+                validationErrors.push('A quality review must provide exactly one Finding dispositions line.');
+                return validationErrors;
+              }
+
+              const dispositionValue = dispositionValues[0];
+              const noFindingsDisposition = /^No findings(?: recorded)?\.?$/i.test(
+                dispositionValue
+              );
+              if (noFindingsDisposition) {
+                if (totalReported !== 0) {
+                  validationErrors.push(
+                    'Finding dispositions may state "No findings" only when all reported finding totals are zero.'
+                  );
+                  return validationErrors;
+                }
+              }
+
+              const records = noFindingsDisposition
+                ? []
+                : dispositionValue.split(';').map((record) => record.trim());
+              const parsedRecords = [];
+              const identifiers = new Set();
+              let invalidRecord = false;
+              for (const record of records) {
+                const match = record.match(
+                  /^(Critical|High|Medium|Low) ([A-Za-z0-9][A-Za-z0-9._/#-]*)\s*=>\s*(Open|Closed|Accepted|Deferred):\s*(.+)$/i
+                );
+                if (match === null) {
+                  invalidRecord = true;
+                  continue;
+                }
+                const severity =
+                  severities.find(
+                    (candidate) => candidate.toLowerCase() === match[1].toLowerCase()
+                  ) ?? match[1];
+                const identifier = match[2].toLowerCase();
+                const disposition = match[3].toLowerCase();
+                const evidence = match[4].trim();
+                const evidenceReferences = evidence
+                  .split(',')
+                  .map((reference) => reference.trim());
+                const identifiableEvidence =
+                  evidenceReferences.length > 0 &&
+                  evidenceReferences.every(isIdentifiableEvidenceReference);
+                if (identifiers.has(identifier)) {
+                  validationErrors.push(`Finding disposition ID must be unique: ${match[2]}.`);
+                }
+                identifiers.add(identifier);
+                if (!identifiableEvidence) {
+                  validationErrors.push(
+                    `Finding disposition ${match[2]} evidence must contain only comma-separated repository paths, URLs, issues, commits, or artifacts.`
+                  );
+                }
+                const allowedDispositions = {
+                  Critical: ['open', 'closed'],
+                  High: ['open', 'closed'],
+                  Medium: ['open', 'closed', 'accepted'],
+                  Low: ['open', 'closed', 'deferred']
+                };
+                if (!allowedDispositions[severity].includes(disposition)) {
+                  validationErrors.push(
+                    `Finding disposition ${match[2]} uses invalid ${match[3]} status for ${severity} severity.`
+                  );
+                }
+                parsedRecords.push({ disposition, severity });
+              }
+              if (invalidRecord) {
+                validationErrors.push(
+                  'Each finding disposition must use "<Severity> <ID> => <Disposition>: <evidence>" and entries must be separated by semicolons.'
+                );
+              }
+
+              const actualBySeverity = new Map(
+                severities.map((severity) => [
+                  severity,
+                  parsedRecords.filter((record) => record.severity === severity).length
+                ])
+              );
+              if (
+                severities.some(
+                  (severity) =>
+                    actualBySeverity.get(severity) !== reportedBySeverity.get(severity)
+                )
+              ) {
+                validationErrors.push(
+                  'Finding disposition records must reconcile with reported finding totals by severity.'
+                );
+              }
+
+              const criticalHighRecords = parsedRecords.filter(
+                (record) => record.severity === 'Critical' || record.severity === 'High'
+              );
+              const openCriticalHigh = canonicalReviewCount(
+                review,
+                'Open Critical/High findings'
+              );
+              const closedCriticalHigh = canonicalReviewCount(
+                review,
+                'Closed Critical/High findings'
+              );
+              if (
+                requireStatusReconciliation &&
+                (openCriticalHigh === undefined ||
+                  closedCriticalHigh === undefined ||
+                  criticalHighRecords.filter((record) => record.disposition === 'open')
+                    .length !== openCriticalHigh ||
+                  criticalHighRecords.filter((record) => record.disposition === 'closed')
+                    .length !== closedCriticalHigh ||
+                  criticalHighRecords.some(
+                    (record) => !['open', 'closed'].includes(record.disposition)
+                  ))
+              ) {
+                validationErrors.push(
+                  'Critical and High finding dispositions must reconcile with their open and closed totals.'
+                );
+              }
+
+              const mediumRecords = parsedRecords.filter(
+                (record) => record.severity === 'Medium'
+              );
+              const openMedium = canonicalReviewCount(review, 'Open Medium findings');
+              const closedMedium = canonicalReviewCount(review, 'Closed Medium findings');
+              const acceptedMedium = canonicalReviewCount(
+                review,
+                'Accepted Medium findings'
+              );
+              if (
+                requireStatusReconciliation &&
+                (openMedium === undefined ||
+                  closedMedium === undefined ||
+                  acceptedMedium === undefined ||
+                  mediumRecords.filter((record) => record.disposition === 'open').length !==
+                    openMedium ||
+                  mediumRecords.filter((record) => record.disposition === 'closed').length !==
+                    closedMedium ||
+                  mediumRecords.filter((record) => record.disposition === 'accepted')
+                    .length !== acceptedMedium ||
+                  mediumRecords.some(
+                    (record) => !['open', 'closed', 'accepted'].includes(record.disposition)
+                  ))
+              ) {
+                validationErrors.push(
+                  'Medium finding dispositions must reconcile with their open, closed, and accepted totals.'
+                );
+              }
+
+              return validationErrors;
+            }
+
+            const sectionHeadings = [
+              ...renderedBody.matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/gi)
+            ].map((heading) => ({
+              html: heading[0],
+              index: heading.index,
+              name: htmlText(heading[1])
+            }));
+
+            function getSectionHtml(section) {
+              const name = section.replace(/^##\s+/, '');
+              const matches = sectionHeadings.filter(
+                (heading) => heading.name === name
+              );
+              if (matches.length !== 1) {
+                return null;
+              }
+              const heading = matches[0];
+              const headingIndex = sectionHeadings.indexOf(heading);
+              const contentStart = heading.index + heading.html.length;
+              const nextSection = sectionHeadings[headingIndex + 1]?.index;
+              return renderedBody.slice(contentStart, nextSection ?? renderedBody.length);
+            }
+
+            function getSectionBody(section) {
+              const sectionHtml = getSectionHtml(section);
+              return sectionHtml === null ? null : htmlText(sectionHtml);
+            }
+
+            if (title.length < 12) {
+              errors.push('PR title is too short. Use a descriptive title.');
+            }
+
+            const requiredSections = [
+              '## Summary',
+              '## What Changed',
+              '## Why',
+              '## Behavioral Contract',
+              '## Risk Classification',
+              '## Failure and Boundary Cases',
+              '## Test Evidence',
+              '## Test Exception',
+              '## Review-Finding Expansion',
+              '## Out of Scope',
+              '## Scope Justification',
+              '## Independent Quality Review',
+              '## Review Coverage Manifest',
+              '## Domain Discovery Reports',
+              '## Verification'
+            ];
+
+            let previousSectionIndex = -1;
+            for (const section of requiredSections) {
+              const name = section.replace(/^##\s+/, '');
+              const headings = sectionHeadings.filter(
+                (heading) => heading.name === name
+              );
+              const sectionBody = getSectionBody(section);
+              if (headings.length === 0) {
+                errors.push(`PR body must include section: ${section}`);
+              } else if (headings.length > 1) {
+                errors.push(`PR body must include section exactly once: ${section}`);
+              } else if (headings[0].index <= previousSectionIndex) {
+                errors.push(`PR body sections are out of order at: ${section}`);
+              } else if (
+                sectionBody.length < 20 ||
+                placeholderOnly.test(sectionBody)
+              ) {
+                errors.push(
+                  `${section} must contain substantive evidence, not a placeholder.`
+                );
+              }
+              if (headings.length === 1) {
+                previousSectionIndex = headings[0].index;
+              }
+            }
+
+            const { owner, repo } = context.repo;
+            const pull_number = pr.number;
+            const files = await github.paginate(
+              github.rest.pulls.listFiles,
+              { owner, repo, pull_number, per_page: 100 }
+            );
+            const fileNames = [
+              ...new Set(
+                files.flatMap((file) =>
+                  file.status === 'renamed' && file.previous_filename
+                    ? [file.previous_filename, file.filename]
+                    : [file.filename]
+                )
+              )
+            ];
+            let riskPolicy;
+            try {
+              const riskPolicyResponse = await github.rest.repos.getContent({
+                owner,
+                repo,
+                path: '.github/change-risk.json',
+                ref: pr.base.sha
+              });
+              if (Array.isArray(riskPolicyResponse.data)) {
+                throw new Error('.github/change-risk.json must be a file.');
+              }
+              riskPolicy = JSON.parse(
+                Buffer.from(riskPolicyResponse.data.content, 'base64').toString(
+                  'utf8'
+                )
+              );
+            } catch (error) {
+              if (error?.status !== 404) {
+                throw error;
+              }
+              // A PR introducing this policy has no trusted base-branch file.
+              // Fail closed until the policy becomes part of the base branch.
+              riskPolicy = { high: ['.*'], medium: [], low: [] };
+            }
+            const highRiskPatterns = riskPolicy.high.map(
+              (pattern) => new RegExp(pattern)
+            );
+            const mediumRiskPatterns = riskPolicy.medium.map(
+              (pattern) => new RegExp(pattern)
+            );
+            const lowRiskPatterns = riskPolicy.low.map(
+              (pattern) => new RegExp(pattern)
+            );
+            const riskRank = { low: 0, medium: 1, high: 2 };
+            const classifyFile = (fileName) =>
+              highRiskPatterns.some((pattern) => pattern.test(fileName))
+                ? 'high'
+                : mediumRiskPatterns.some((pattern) => pattern.test(fileName))
+                  ? 'medium'
+                  : lowRiskPatterns.some((pattern) => pattern.test(fileName))
+                    ? 'low'
+                    : 'medium';
+            const computedRisk = fileNames.reduce(
+              (highest, fileName) => {
+                const fileRisk = classifyFile(fileName);
+                return riskRank[fileRisk] > riskRank[highest]
+                  ? fileRisk
+                  : highest;
+              },
+              'low'
+            );
+            const riskClassification =
+              getSectionBody('## Risk Classification') ?? '';
+            const declaredRiskMatch = riskClassification.match(
+              /Risk:\s*(Low|Medium|High)/i
+            );
+            if (declaredRiskMatch === null) {
+              errors.push(
+                'Risk Classification must contain Risk: **Low**, **Medium**, or **High**.'
+              );
+            } else {
+              const declaredRisk = declaredRiskMatch[1].toLowerCase();
+              if (riskRank[declaredRisk] < riskRank[computedRisk]) {
+                errors.push(
+                  `Declared risk ${declaredRisk} is below computed risk ${computedRisk}.`
+                );
+              }
+            }
+
+            const executableBehaviorChanged = fileNames.some(
+              (fileName) =>
+                /^scripts\//.test(fileName) ||
+                (/^src\//.test(fileName) && !/^src\/.*\.md$/i.test(fileName))
+            );
+            const testsChanged = fileNames.some((fileName) =>
+              /^(?:test|apitest)\//.test(fileName)
+            );
+            const testException = getSectionBody('## Test Exception') ?? '';
+
+            if (
+              executableBehaviorChanged &&
+              !testsChanged &&
+              /not applicable|tests were added/i.test(testException)
+            ) {
+              errors.push(
+                'Executable behavior changed without tests. Provide a substantive Test Exception.'
+              );
+            }
+
+            const isNonGeneratedPath = (fileName) =>
+              fileName !== 'package-lock.json' &&
+              !/^etc\/.*\.api\.md$/.test(fileName) &&
+              !/^docs\/architecture\/generated\//.test(fileName);
+            const renamedFileLineCount = async (fileName, ref) => {
+              try {
+                const response = await github.rest.repos.getContent({
+                  owner,
+                  repo,
+                  path: fileName,
+                  ref
+                });
+                if (
+                  Array.isArray(response.data) ||
+                  typeof response.data.content !== 'string' ||
+                  (response.data.encoding !== undefined &&
+                    response.data.encoding !== 'base64')
+                ) {
+                  return undefined;
+                }
+                const content = Buffer.from(response.data.content, 'base64');
+                if (content.includes(0)) {
+                  return 0;
+                }
+                if (content.length === 0) {
+                  return 0;
+                }
+                let lines = content[content.length - 1] === 10 ? 0 : 1;
+                for (const byte of content) {
+                  if (byte === 10) {
+                    lines++;
+                  }
+                }
+                return lines;
+              } catch (error) {
+                if (error?.status === 404) {
+                  return undefined;
+                }
+                throw error;
+              }
+            };
+            let nonGeneratedChanges = files
+              .filter(
+                (file) =>
+                  file.status !== 'renamed' &&
+                  isNonGeneratedPath(file.filename)
+              )
+              .reduce((total, file) => total + file.changes, 0);
+            if (files.length <= 50) {
+              for (const file of files.filter(
+                (candidate) =>
+                  candidate.status === 'renamed' &&
+                  candidate.previous_filename
+              )) {
+                for (const [fileName, ref] of [
+                  [file.previous_filename, pr.base.sha],
+                  [file.filename, pr.head.sha]
+                ]) {
+                  if (!isNonGeneratedPath(fileName)) {
+                    continue;
+                  }
+                  const lineCount = await renamedFileLineCount(fileName, ref);
+                  nonGeneratedChanges += lineCount ?? 1001;
+                }
+              }
+            }
+            const scopeJustification =
+              getSectionBody('## Scope Justification') ?? '';
+            const canonicalDomains = new Set([
+              'Runtime behavior, lifecycle, and ownership',
+              'Migration, configuration, and persistence',
+              'Public API, compatibility, and packaging',
+              'Tooling, CI, and verification',
+              'Tests and documentation'
+            ]);
+            const domainsForPath = (fileName) => {
+              const domains = new Set();
+              const sourceDocumentation = /^src\/.*\.md$/i.test(fileName);
+              const repositoryProse = /(?:^|\/)(?:(?:README|CHANGELOG|CONTRIBUTING|COMMUNITY|SECURITY|SUPPORT|VERSIONING|LICENSE|LICENSING|NOTICE|AUTHORS)(?:\.[^/]*)?|AGENTS\.md|[^/]+\.(?:md|mdx|txt|adoc|rst))$/i.test(fileName);
+              const governancePolicy =
+                /(?:^|\/)AGENTS\.md$/.test(fileName) ||
+                /^docs\/contributing\//.test(fileName) ||
+                fileName === 'docs/architecture/product-evolution-policy.md' ||
+                fileName === 'docs/architecture/compatibility-audit-maintenance.md';
+              if (/^src\//.test(fileName) && !sourceDocumentation) {
+                domains.add('Runtime behavior, lifecycle, and ownership');
+                domains.add('Public API, compatibility, and packaging');
+              }
+              if (/^(?:src\/ts\/config\/|scripts\/migrate-|test\/.*(?:migration|create-config))/.test(fileName)) {
+                domains.add('Migration, configuration, and persistence');
+              }
+              if (/^(?:src\/index\.ts|src\/ts\/(?:config\/|utils\/types\.ts)|etc\/|\.npmignore$|package(?:-lock)?\.json)/.test(fileName)) {
+                domains.add('Public API, compatibility, and packaging');
+              }
+              if (sourceDocumentation || governancePolicy || /^(?:\.github\/|scripts\/|tsconfig|vite|vitest|typedoc|api-extractor|oxlint|\.npmignore$|package(?:-lock)?\.json)/.test(fileName)) {
+                domains.add('Tooling, CI, and verification');
+              }
+              if (repositoryProse || /^(?:test\/|apitest\/|docs\/|README|\.code-review\/)/.test(fileName)) {
+                domains.add('Tests and documentation');
+              }
+              if (domains.size === 0) {
+                domains.add('Tooling, CI, and verification');
+              }
+              return domains;
+            };
+            const applicableDomains = new Set();
+            for (const fileName of fileNames) {
+              for (const domain of domainsForPath(fileName)) {
+                applicableDomains.add(domain);
+              }
+            }
+            const largeHighRisk =
+              computedRisk === 'high' &&
+              (fileNames.length > 50 ||
+                nonGeneratedChanges > 1000 ||
+                applicableDomains.size >= 3);
+
+            if (
+              nonGeneratedChanges > 1000 &&
+              /below the threshold|not applicable|none/i.test(
+                scopeJustification
+              )
+            ) {
+              errors.push(
+                `PR has ${nonGeneratedChanges} non-generated changed lines. Explain why it cannot be split.`
+              );
+            }
+
+            const verificationHtml = getSectionHtml('## Verification') ?? '';
+            const hasCheckedVerification =
+              /<li\b[^>]*>\s*<input\b(?=[^>]*\btype=["']checkbox["'])(?=[^>]*\bchecked(?:=["'][^"']*["'])?)[^>]*>\s*<code>npm run verify:pr<\/code>\s*<\/li>/i.test(
+                verificationHtml
+              );
+            if (!hasCheckedVerification) {
+              errors.push(
+                'Verification must confirm a successful npm run verify:pr with a checked box.'
+              );
+            }
+
+            const independentReview =
+              getSectionBody('## Independent Quality Review') ?? '';
+            const reviewModeMatch = independentReview.match(
+              /Review mode:[ \t]*(Independent|Self-review)/i
+            );
+            const reviewMode = reviewModeMatch?.[1].toLowerCase();
+            if (reviewMode === undefined) {
+              errors.push(
+                'Review mode must be **Independent** or **Self-review**; Pending is not complete.'
+              );
+            }
+
+            if (computedRisk === 'high' && reviewMode !== 'independent') {
+              errors.push(
+                'High-risk changes require Review mode: **Independent**.'
+              );
+            }
+
+            const reviewScope = independentReview
+              .match(/^Review scope:[ \t]*(Whole PR|Patch)/im)?.[1]
+              .toLowerCase();
+            const reviewPass = independentReview
+              .match(/^Review pass:[ \t]*(Fresh discovery|Finding closure)/im)?.[1]
+              .toLowerCase();
+            if (computedRisk === 'high' && reviewScope !== 'whole pr') {
+              errors.push(
+                'High-risk changes require Review scope: **Whole PR**; a patch-only review cannot satisfy the final gate.'
+              );
+            }
+            if (computedRisk === 'high' && reviewPass !== 'fresh discovery') {
+              errors.push(
+                'High-risk changes require Review pass: **Fresh discovery** after implementation and finding closure.'
+              );
+            }
+
+            if (reviewMode !== undefined) {
+              const reviewerMatch = independentReview.match(
+                /^Reviewer:[ \t]*(.+)$/im
+              );
+              const reviewer = reviewerMatch?.[1].trim() ?? '';
+              if (reviewer.length < 4 || placeholderOnly.test(reviewer)) {
+                errors.push(
+                  'A completed quality review requires an identified reviewer or agent task.'
+                );
+              }
+
+              if (
+                computedRisk === 'high' &&
+                /^(?:self|implementer|author|same context)$/i.test(reviewer)
+              ) {
+                errors.push(
+                  'High-risk changes require an identified independent reviewer or agent task.'
+                );
+              }
+
+              const boundary =
+                independentReview.match(/^Reviewed boundary:[ \t]*(.+)$/im)?.[1].trim() ?? '';
+              if (boundary.length < 4 || placeholderOnly.test(boundary)) {
+                errors.push(
+                  'Quality review must identify the reviewed commit or diff boundary.'
+                );
+              }
+
+              if (computedRisk === 'high' && boundary !== pr.head.sha) {
+                errors.push(
+                  'High-risk review boundary must equal the current PR head SHA.'
+                );
+              }
+
+              if (computedRisk === 'high') {
+                const coverageManifest =
+                  getSectionBody('## Review Coverage Manifest') ?? '';
+                const manifestEntries = coverageManifest
+                  .split('\n')
+                  .map((line) => line.trim())
+                  .filter((line) => line.startsWith('Path: '))
+                  .map((line) => {
+                    const fields = Object.fromEntries(
+                      line.split('|').map((field) => {
+                        const separator = field.indexOf(':');
+                        return [
+                          field.slice(0, separator).trim(),
+                          field.slice(separator + 1).trim()
+                        ];
+                      })
+                    );
+                    return fields;
+                  });
+                const entriesByPath = new Map();
+                const assignmentsByReviewer = new Map();
+                for (const entry of manifestEntries) {
+                  if (entriesByPath.has(entry.Path)) {
+                    errors.push(`Coverage manifest repeats path: ${entry.Path}`);
+                  } else {
+                    entriesByPath.set(entry.Path, entry);
+                  }
+                  for (const field of [
+                    'Path',
+                    'Contract',
+                    'Domains',
+                    'Assignments',
+                    'Adjacent',
+                    'Tests'
+                  ]) {
+                    if (!entry[field] || placeholderOnly.test(entry[field])) {
+                      errors.push(`Coverage manifest path ${entry.Path || '(missing)'} requires ${field}.`);
+                    }
+                  }
+                  const domains = (entry.Domains ?? '')
+                    .split(';')
+                    .map((value) => value.trim())
+                    .filter(Boolean);
+                  const expectedDomains = domainsForPath(entry.Path ?? '');
+                  if (
+                    domains.length !== expectedDomains.size ||
+                    domains.some((domain) => !expectedDomains.has(domain))
+                  ) {
+                    errors.push(`Coverage manifest path ${entry.Path} must declare exactly these domains: ${[...expectedDomains].join('; ')}`);
+                  }
+                  const assignments = new Map(
+                    (entry.Assignments ?? '')
+                      .split(';')
+                      .map((value) => value.trim())
+                      .filter(Boolean)
+                      .map((value) => {
+                        const parts = value.split(/\s*=>\s*/);
+                        return [parts[0], parts[1]];
+                      })
+                  );
+                  for (const domain of domains) {
+                    if (!canonicalDomains.has(domain)) {
+                      errors.push(`Coverage manifest path ${entry.Path} has invalid domain: ${domain}`);
+                    }
+                    const assignment = assignments.get(domain) ?? '';
+                    const validAssignment = /^@[A-Za-z0-9-]+$/.test(assignment);
+                    if (!validAssignment) {
+                      errors.push(`Coverage manifest path ${entry.Path} lacks an independent assignment for ${domain}.`);
+                    }
+                    const assignedReviewer = assignment
+                      .replace(/^@/, '')
+                      .toLowerCase();
+                    if (assignedReviewer === pr.user.login.toLowerCase()) {
+                      errors.push(`Coverage manifest path ${entry.Path} assigns review to the PR author.`);
+                    }
+                    if (
+                      validAssignment &&
+                      assignedReviewer !== pr.user.login.toLowerCase()
+                    ) {
+                      const assignedScope = assignmentsByReviewer.get(assignedReviewer) ?? {
+                        paths: new Set(),
+                        domains: new Set(),
+                        pairs: new Set()
+                      };
+                      assignedScope.paths.add(entry.Path);
+                      assignedScope.domains.add(domain);
+                      assignedScope.pairs.add(`${entry.Path}\u0000${domain}`);
+                      assignmentsByReviewer.set(assignedReviewer, assignedScope);
+                    }
+                    if (
+                      !largeHighRisk &&
+                      assignedReviewer !== reviewer.replace(/^@/, '').toLowerCase()
+                    ) {
+                      errors.push(`Non-large high-risk coverage for ${entry.Path} must be assigned to the declared reviewer.`);
+                    }
+                  }
+                  if (assignments.size !== domains.length) {
+                    errors.push(`Coverage manifest path ${entry.Path} has assignments that do not match its domains.`);
+                  }
+                }
+                for (const fileName of fileNames) {
+                  if (!entriesByPath.has(fileName)) {
+                    errors.push(`Coverage manifest is missing changed path: ${fileName}`);
+                  }
+                }
+                for (const path of entriesByPath.keys()) {
+                  if (!fileNames.includes(path)) {
+                    errors.push(`Coverage manifest contains unchanged path: ${path}`);
+                  }
+                }
+
+                const coverageGaps = Number(
+                  independentReview.match(/^Coverage gaps:[ \t]*(\d+)$/im)?.[1]
+                );
+                if (coverageGaps !== 0) {
+                  errors.push('High-risk review requires Coverage gaps: **0**.');
+                }
+
+                if (largeHighRisk) {
+                  const reports = (getSectionBody('## Domain Discovery Reports') ?? '')
+                    .split('\n')
+                    .map((line) => line.trim())
+                    .filter((line) => line.startsWith('Reviewer: '))
+                    .map((line) =>
+                      Object.fromEntries(
+                        line.split('|').map((field) => {
+                          const separator = field.indexOf(':');
+                          return [
+                            field.slice(0, separator).trim(),
+                            field.slice(separator + 1).trim()
+                          ];
+                        })
+                      )
+                    );
+                  const reportReviewers = new Set(
+                    reports.map((report) => report.Reviewer?.replace(/^@/, '').toLowerCase())
+                  );
+                  if (reportReviewers.size !== reports.length) {
+                    errors.push('Large high-risk PRs require exactly one domain discovery report per reviewer.');
+                  }
+                  if (assignmentsByReviewer.size < 2) {
+                    errors.push('Large high-risk PRs require assignments to at least two independent domain discovery reviewers.');
+                  }
+                  for (const report of reports) {
+                    if (report.Base !== pr.base.sha || report.Head !== pr.head.sha) {
+                      errors.push(`Domain discovery report for ${report.Reviewer} must target the exact base and head SHAs.`);
+                    }
+                    for (const field of ['Paths', 'Domains', 'Coverage', 'Adjacent', 'Commands', 'Findings', 'Uninspected']) {
+                      if (!report[field] || placeholderOnly.test(report[field])) {
+                        errors.push(`Domain discovery report for ${report.Reviewer} requires ${field}.`);
+                      }
+                    }
+                    const reportReviewer = (report.Reviewer ?? '')
+                      .replace(/^@/, '')
+                      .toLowerCase();
+                    const assignedScope = assignmentsByReviewer.get(reportReviewer);
+                    if (assignedScope === undefined) {
+                      errors.push(`Domain discovery report for ${report.Reviewer} has no non-author coverage assignment.`);
+                      continue;
+                    }
+                    const reportedPaths = new Set(
+                      (report.Paths ?? '')
+                        .split(';')
+                        .map((value) => value.trim())
+                        .filter(Boolean)
+                    );
+                    const reportedDomains = new Set(
+                      (report.Domains ?? '')
+                        .split(';')
+                        .map((value) => value.trim())
+                        .filter(Boolean)
+                    );
+                    const coverageValues = (report.Coverage ?? '')
+                      .split(';')
+                      .map((value) => value.trim())
+                      .filter(Boolean);
+                    const reportedPairs = new Set();
+                    let validCoverage = coverageValues.length > 0;
+                    for (const value of coverageValues) {
+                      const separator = value.indexOf('=>');
+                      const path = value.slice(0, separator).trim();
+                      const domain = value.slice(separator + 2).trim();
+                      if (
+                        separator < 1 ||
+                        path.length === 0 ||
+                        !canonicalDomains.has(domain)
+                      ) {
+                        validCoverage = false;
+                      } else {
+                        reportedPairs.add(`${path}\u0000${domain}`);
+                      }
+                    }
+                    if (!validCoverage) {
+                      errors.push(`Domain discovery report for ${report.Reviewer} Coverage must use path => domain pairs.`);
+                    }
+                    const exactPaths =
+                      reportedPaths.size === assignedScope.paths.size &&
+                      [...assignedScope.paths].every((path) => reportedPaths.has(path));
+                    const exactDomains =
+                      reportedDomains.size === assignedScope.domains.size &&
+                      [...assignedScope.domains].every((domain) => reportedDomains.has(domain));
+                    const exactPairs =
+                      reportedPairs.size === assignedScope.pairs.size &&
+                      [...assignedScope.pairs].every((pair) => reportedPairs.has(pair));
+                    if (!exactPaths || !exactDomains || !exactPairs) {
+                      errors.push(`Domain discovery report for ${report.Reviewer} must exactly match its assigned paths, domains, and coverage pairs.`);
+                    }
+                  }
+                  for (const assignedReviewer of assignmentsByReviewer.keys()) {
+                    if (!reportReviewers.has(assignedReviewer)) {
+                      errors.push(`Coverage assignment @${assignedReviewer} has no domain discovery report.`);
+                    }
+                  }
+                  const reportedDomainUnion = new Set(
+                    reports.flatMap((report) =>
+                      (report.Domains ?? '').split(';').map((value) => value.trim())
+                    )
+                  );
+                  for (const domain of applicableDomains) {
+                    if (!reportedDomainUnion.has(domain)) {
+                      errors.push(`Large high-risk review is missing domain coverage: ${domain}`);
+                    }
+                  }
+                  const synthesisReviewer =
+                    independentReview.match(/^Synthesis reviewer:[ \t]*@?([A-Za-z0-9-]+)$/im)?.[1].toLowerCase() ?? '';
+                  const declaredReviewer = reviewer.replace(/^@/, '').toLowerCase();
+                  if (
+                    synthesisReviewer.length === 0 ||
+                    synthesisReviewer !== declaredReviewer ||
+                    reportReviewers.has(synthesisReviewer)
+                  ) {
+                    errors.push('Large high-risk PRs require an unused synthesis reviewer who is also the declared final reviewer.');
+                  }
+                }
+              }
+
+              if (!/Rubric result:[ \t]*Pass/i.test(independentReview)) {
+                errors.push(
+                  'A completed quality review requires Rubric result: **Pass**.'
+                );
+              }
+
+              if (!/Dimensions below 2:[ \t]*0/i.test(independentReview)) {
+                errors.push(
+                  'A completed quality review cannot have rubric dimensions below 2.'
+                );
+              }
+
+              const findingsMatch = independentReview.match(
+                /Findings:[ \t]*Critical (\d+); High (\d+); Medium (\d+); Low (\d+)/i
+              );
+              if (findingsMatch === null) {
+                errors.push(
+                  'A completed quality review must report finding counts by severity.'
+                );
+              }
+
+              if (!/Verdict:[ \t]*Pass/i.test(independentReview)) {
+                errors.push(
+                  'A completed quality review requires Verdict: **Pass**.'
+                );
+              }
+
+              const openCriticalHighMatch = independentReview.match(
+                /^Open Critical\/High findings:[ \t]*(\d+)[ \t]*$/im
+              );
+              const openCriticalHigh = Number(openCriticalHighMatch?.[1]);
+              if (!Number.isInteger(openCriticalHigh) || openCriticalHigh !== 0) {
+                errors.push(
+                  'High-risk changes cannot have open Critical or High review findings.'
+                );
+              }
+
+              const closedCriticalHigh = Number(
+                independentReview.match(/^Closed Critical\/High findings:[ \t]*(\d+)$/im)?.[1]
+              );
+              if (
+                computedRisk === 'high' &&
+                findingsMatch !== null &&
+                (!Number.isInteger(closedCriticalHigh) ||
+                  !Number.isInteger(openCriticalHigh) ||
+                  openCriticalHigh + closedCriticalHigh !==
+                    Number(findingsMatch[1]) + Number(findingsMatch[2]))
+              ) {
+                errors.push('Critical and High finding counts must reconcile with their open and closed totals.');
+              }
+
+              if (computedRisk === 'high' && findingsMatch !== null) {
+                const totalMedium = Number(findingsMatch[3]);
+                const openMedium = Number(
+                  independentReview.match(/^Open Medium findings:[ \t]*(\d+)$/im)?.[1]
+                );
+                const closedMedium = Number(
+                  independentReview.match(/^Closed Medium findings:[ \t]*(\d+)$/im)?.[1]
+                );
+                const acceptedMedium = Number(
+                  independentReview.match(/^Accepted Medium findings:[ \t]*(\d+)$/im)?.[1]
+                );
+                if (
+                  !Number.isInteger(openMedium) ||
+                  !Number.isInteger(closedMedium) ||
+                  !Number.isInteger(acceptedMedium) ||
+                  openMedium + closedMedium + acceptedMedium !== totalMedium
+                ) {
+                  errors.push('Medium finding counts must be numeric and reconcile with the total Medium findings.');
+                }
+                if (openMedium !== 0) {
+                  errors.push('High-risk changes cannot have open Medium findings.');
+                }
+                if (acceptedMedium > 0) {
+                  const acceptanceEvidenceValue =
+                    independentReview.match(/^Medium acceptance evidence:[ \t]*(.+)$/im)?.[1].trim() ?? '';
+                  const acceptanceEvidence = canonicalEvidenceUrl(acceptanceEvidenceValue);
+                  const comments = await github.paginate(
+                    github.rest.issues.listComments,
+                    { owner, repo, issue_number: pull_number, per_page: 100 }
+                  );
+                  const acceptedByAuthor = comments.some(
+                    (comment) =>
+                      comment.user?.login?.toLowerCase() === pr.user.login.toLowerCase() &&
+                      comment.html_url === acceptanceEvidence &&
+                      new RegExp(`Accepted Medium findings:[ \\t]*${acceptedMedium}(?:\\D|$)`, 'i').test(comment.body ?? '') &&
+                      /Rationale:[ \t]*\S+/i.test(comment.body ?? '')
+                  );
+                  if (!acceptedByAuthor) {
+                    errors.push('Accepted Medium findings require linked acceptance evidence from the PR author with the matching count and rationale.');
+                  }
+                }
+              }
+
+              errors.push(
+                ...validateFindingDispositionEvidence(
+                  independentReview,
+                  computedRisk === 'high'
+                )
+              );
+
+              const evidenceFields = [
+                'Review artifact',
+                'Finding dispositions',
+                'Residual risks'
+              ];
+              for (const label of evidenceFields) {
+                const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const value =
+                  independentReview
+                    .match(new RegExp(`^${escapedLabel}:[ \\t]*(.+)$`, 'im'))?.[1]
+                    .trim() ?? '';
+                if (value.length < 4 || placeholderOnly.test(value)) {
+                  errors.push(
+                    `Quality review must provide substantive ${label.toLowerCase()}.`
+                  );
+                }
+              }
+
+              if (computedRisk === 'high') {
+                const reviews = await github.paginate(
+                  github.rest.pulls.listReviews,
+                  { owner, repo, pull_number, per_page: 100 }
+                );
+                const declaredReviewer = reviewer
+                  .replace(/^@/, '')
+                  .toLowerCase();
+                const author = pr.user.login.toLowerCase();
+                const decisiveReviews = reviews.filter(
+                  (review) =>
+                    review.commit_id === pr.head.sha &&
+                    review.user?.login !== undefined &&
+                    review.user.login.toLowerCase() !== author &&
+                    review.user.login.toLowerCase() === declaredReviewer &&
+                    ['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(
+                      review.state
+                    )
+                );
+                const latestDecisiveReview = decisiveReviews.at(-1);
+                const latestApprovalSubmittedAt = Date.parse(
+                  latestDecisiveReview?.submitted_at ?? ''
+                );
+                const reviewComments = await github.paginate(
+                  github.rest.pulls.listReviewComments,
+                  { owner, repo, pull_number, per_page: 100 }
+                );
+                const hasLaterExternalReviewComment = reviewComments.some(
+                  (comment) => {
+                    const commentUpdatedAt = Date.parse(
+                      comment.updated_at ?? comment.created_at ?? ''
+                    );
+                    return (
+                      comment.commit_id === pr.head.sha &&
+                      comment.user?.login !== undefined &&
+                      comment.user.login.toLowerCase() !== author &&
+                      Number.isFinite(commentUpdatedAt) &&
+                      (!Number.isFinite(latestApprovalSubmittedAt) ||
+                        commentUpdatedAt >= latestApprovalSubmittedAt)
+                    );
+                  }
+                );
+                const hasLaterExternalReviewBody = reviews.some((review) => {
+                  const reviewSubmittedAt = Date.parse(
+                    review.submitted_at ?? ''
+                  );
+                  const hasFindingBody =
+                    review.state === 'COMMENTED' &&
+                    (review.body ?? '').trim().length > 0;
+                  return (
+                    review.commit_id === pr.head.sha &&
+                    review.user?.login !== undefined &&
+                    review.user.login.toLowerCase() !== author &&
+                    (hasFindingBody || review.state === 'CHANGES_REQUESTED') &&
+                    Number.isFinite(reviewSubmittedAt) &&
+                    (!Number.isFinite(latestApprovalSubmittedAt) ||
+                      reviewSubmittedAt >= latestApprovalSubmittedAt)
+                  );
+                });
+                const conversationComments = await github.paginate(
+                  github.rest.issues.listComments,
+                  { owner, repo, issue_number: pull_number, per_page: 100 }
+                );
+                const hasLaterExternalConversationComment =
+                  conversationComments.some((comment) => {
+                    const commentUpdatedAt = Date.parse(
+                      comment.updated_at ?? comment.created_at ?? ''
+                    );
+                    return (
+                      comment.user?.login !== undefined &&
+                      comment.user.login.toLowerCase() !== author &&
+                      Number.isFinite(commentUpdatedAt) &&
+                      (!Number.isFinite(latestApprovalSubmittedAt) ||
+                        commentUpdatedAt >= latestApprovalSubmittedAt)
+                    );
+                  });
+                const hasLaterExternalFeedback =
+                  hasLaterExternalReviewComment ||
+                  hasLaterExternalReviewBody ||
+                  hasLaterExternalConversationComment;
+                const hasCurrentIndependentApproval =
+                  latestDecisiveReview?.state === 'APPROVED' &&
+                  !hasLaterExternalFeedback;
+                if (!hasCurrentIndependentApproval) {
+                  errors.push(
+                    'High-risk changes require approval on the current head from the declared reviewer, using a GitHub identity different from the PR author.'
+                  );
+                }
+                if (hasLaterExternalFeedback) {
+                  errors.push(
+                    'High-risk approval is stale because external review feedback was created or edited at or after it.'
+                  );
+                }
+              }
+            } else {
+              if (reviewModeMatch === null) {
+                errors.push(
+                  'Every change requires a completed self-review or independent review.'
+                );
+              }
+            }
+
+            if (errors.length > 0) {
+              core.setFailed(errors.join('\n'));
+            }
+
+  commit-messages:
+    if: ${{ github.event_name != 'issue_comment' || github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate commit messages in PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pull_number =
+              context.payload.pull_request?.number ?? context.payload.issue.number;
+            const commits = await github.paginate(
+              github.rest.pulls.listCommits,
+              { owner, repo, pull_number, per_page: 100 }
+            );
+
+            const commitPattern = /^(?:[A-Z][^.\n]{4,100}\.|(?:build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(?:\([^)]+\))?!?: .{3,100})$/;
+            const grandfatheredCommits = new Set([
+              '6e934e6f1af4b8c0ace9c199cb5008b16a16f592',
+              'f23a006a99634a5aa9920b935ce5e35a880d9b9e',
+              '17a5c0821aefcef62e9aa703b9fcb52bfb9d8d5d',
+              'ce374cc1b27507057c8122fd25050f9e629b0480',
+              '5ec1bc7259e6700197bd2d877df1fa9ba139b94e',
+              '44c1b34246cd8db9c3e0bacafda27b6ae26b49da'
+            ]);
+            const invalid = commits
+              .filter((commit) => !grandfatheredCommits.has(commit.sha))
+              .map((commit) => commit.commit.message.split('\n')[0])
+              .filter((message) => !commitPattern.test(message));
+
+            if (invalid.length > 0) {
+              core.setFailed(
+                [
+                  'Commit messages must use either:',
+                  '- a short imperative sentence ending with a period, or',
+                  '- a conventional-commit style subject.',
+                  '',
+                  'Invalid commit subjects:',
+                  ...invalid.map((message) => `- ${message}`)
+                ].join('\n')
+              );
+            }

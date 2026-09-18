@@ -1,0 +1,73 @@
+{
+  "baselineVersion": "1.5.9",
+  "entries": [
+    {
+      "symbol": "GoldenLayout.createContentItem",
+      "disposition": "preserved-behavior",
+      "target": "StrelitLayout.createContentItem"
+    },
+    {
+      "symbol": "GoldenLayout.createDragSource",
+      "disposition": "migrated-or-redesigned",
+      "target": "LayoutManager.newDragSource"
+    },
+    {
+      "symbol": "GoldenLayout.createPopout",
+      "disposition": "preserved-behavior",
+      "target": "StrelitLayout.createPopout"
+    },
+    {
+      "symbol": "GoldenLayout.destroy",
+      "disposition": "preserved-behavior",
+      "target": "StrelitLayout.destroy"
+    },
+    {
+      "symbol": "GoldenLayout.getComponent",
+      "disposition": "preserved-behavior",
+      "target": "StrelitLayout.getComponent"
+    },
+    {
+      "symbol": "GoldenLayout.init",
+      "disposition": "migrated-or-redesigned",
+      "target": "StrelitLayout constructor initialization"
+    },
+    {
+      "symbol": "GoldenLayout.registerComponent",
+      "disposition": "migrated-or-redesigned",
+      "target": "StrelitLayout.registerComponentConstructor or registerComponentFactoryFunction"
+    },
+    {
+      "symbol": "GoldenLayout.selectItem",
+      "disposition": "migrated-or-redesigned",
+      "target": "component focus API"
+    },
+    {
+      "symbol": "GoldenLayout.toConfig",
+      "disposition": "migrated-or-redesigned",
+      "target": "LayoutManager.saveLayout"
+    },
+    {
+      "symbol": "GoldenLayout.updateSize",
+      "disposition": "migrated-or-redesigned",
+      "target": "LayoutManager.setSize"
+    },
+    {
+      "symbol": "GoldenLayout.__lm",
+      "disposition": "removed-internal",
+      "target": null,
+      "rationale": "Unrestricted internal class exposure is intentionally unsupported."
+    },
+    {
+      "symbol": "type: 'react-component'",
+      "disposition": "manual-migration",
+      "target": "modern framework adapter over virtual components",
+      "rationale": "The v1 global React integration is unsafe and cannot be transformed without application framework context."
+    },
+    {
+      "symbol": "nested stack content",
+      "disposition": "manual-migration",
+      "target": "composite workspace or nested StrelitLayout boundary",
+      "rationale": "Raw nested stacks have ambiguous focus, drag, and persistence semantics."
+    }
+  ]
+}

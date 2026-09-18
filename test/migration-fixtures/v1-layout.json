@@ -1,0 +1,27 @@
+{
+  "content": [
+    {
+      "type": "stack",
+      "activeItemIndex": 0,
+      "content": [
+        {
+          "type": "component",
+          "componentName": "editor",
+          "componentState": { "text": "hello" },
+          "title": "Editor",
+          "width": 60,
+          "minWidth": 120,
+          "id": ["editor-pane", "__glMaximised"]
+        }
+      ]
+    }
+  ],
+  "settings": {
+    "hasHeaders": true,
+    "showCloseIcon": false
+  },
+  "dimensions": {
+    "minItemWidth": 10,
+    "minItemHeight": 5
+  }
+}

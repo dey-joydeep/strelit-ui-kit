@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Strelit Change Discipline'
+  short_description: 'Contract-driven implementation and review fixes'
+  default_prompt: 'Use $strelit-change-discipline to implement this Strelit change with risk-based tests and verification.'

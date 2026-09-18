@@ -1,0 +1,80 @@
+# Strelit UI Kit
+
+Strelit UI Kit is a TypeScript docking and workspace layout library derived from the Golden Layout codebase and being modernized as a standalone product line under `CTHub`.
+
+## Current State
+
+- TypeScript-first source in `src/`
+- Fast test runner with `Vitest`
+- API demo app served with `Vite`
+- Linting with `Oxlint`
+- JSDoc access and tag validation during linting
+- Formatting with `Prettier`
+- API surface checks with `api-extractor`
+- HTML docs generated with `TypeDoc`
+- Migration guide and codemod available for Golden Layout adopters
+
+## Versioning
+
+This repository uses Strelit's own version line. It is not a continuation of an upstream "version 2" product name.
+
+- `0.x` is used while public API, configuration, and styling contracts are still being intentionally modernized.
+- `1.0.0` should be used for the first stable Strelit release with an explicitly supported public contract.
+- After `1.0.0`, semantic versioning applies normally:
+  - major for breaking API, config, or styling changes
+  - minor for backward-compatible features
+  - patch for backward-compatible fixes
+
+See [VERSIONING.md](./VERSIONING.md) for the repo policy.
+
+## Development
+
+Install dependencies:
+
+```bash
+npm ci
+```
+
+Main workflows:
+
+```bash
+npm run test
+npm run bench
+npm run lint
+npm run build
+npm run doc
+npm run apitest:serve
+npm run migrate:golden-layout -- --target ../my-app --dry-run
+```
+
+Public API documentation is generated with TypeDoc. `npm run lint` rejects undocumented public reflections, and new or changed public APIs must include a meaningful contract, including relevant failure and resource-limit behavior.
+
+Benchmark workflows:
+
+```bash
+npm run bench
+npm run bench:watch
+```
+
+This runs the benchmark specs in `test/bench`, including both config-oriented and JSDOM-backed layout benchmarks.
+
+## Output
+
+`npm run build` generates:
+
+- CommonJS output in `dist/cjs`
+- ESM output in `dist/esm`
+- rolled-up declarations in `dist/types`
+- CSS/LESS/SCSS assets in `dist`
+
+## Notes
+
+- Strelit exposes its own API and configuration contract; Golden Layout compatibility is handled by the migration tool rather than the runtime.
+- The original upstream license notices are preserved where required.
+
+## Migration
+
+If you are moving an existing Golden Layout based application onto Strelit UI Kit:
+
+- read [docs/migration/index.md](./docs/migration/index.md)
+- run `npm run migrate:golden-layout -- --target <path> --dry-run`

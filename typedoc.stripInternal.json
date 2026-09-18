@@ -1,0 +1,30 @@
+{
+  "tsconfig": "./tsconfig.module.strip.json",
+  "entryPoints": ["./src/index.ts"],
+  "excludeInternal": true,
+  "out": ".generated-docs/strip",
+  "readme": "README.md",
+  "excludePrivate": true,
+  "excludeProtected": true,
+  "validation": {
+    "notDocumented": true
+  },
+  "treatValidationWarningsAsErrors": true,
+  "intentionallyNotDocumented": [
+    "Tab.reorderEnabled",
+    "ContentItem.id",
+    "ComponentItem.id",
+    "ComponentParentableItem.id",
+    "RowOrColumn.id",
+    "Stack.id"
+  ],
+  "exclude": [
+    "./src/ts/controls/drop-target-indicator.ts",
+    "./src/ts/controls/header-button.ts",
+    "./src/ts/controls/splitter.ts",
+    "./src/ts/controls/transition-indicator.ts",
+    "./src/ts/errors/internal-error.ts",
+    "./src/ts/utils/config-minifier.ts",
+    "./src/ts/utils/drag-listener.ts"
+  ]
+}

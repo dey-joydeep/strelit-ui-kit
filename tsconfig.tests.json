@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "target": "es2022",
+    "lib": ["es2022", "dom"],
+    "noEmit": true
+  },
+  "include": [
+    "test/specs/**/*.ts",
+    "test/bench/**/*.ts",
+    "test/vitest.setup.ts"
+  ]
+}
