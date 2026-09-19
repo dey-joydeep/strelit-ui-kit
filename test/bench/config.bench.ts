@@ -1,10 +1,14 @@
-import { bench, describe } from 'vitest';
-import {
-  type LayoutConfig,
+import { createRequire } from 'node:module';
+import { test, describe } from 'vitest';
+import type * as StrelitModule from '../../src';
+
+const require = createRequire(import.meta.url);
+const {
   minifyResolvedLayoutConfig,
   resolveLayoutConfig,
   unminifyResolvedLayoutConfig,
-} from '../../src';
+} = require('strelit-ui-kit') as typeof StrelitModule;
+type LayoutConfig = StrelitModule.LayoutConfig;
 
 function createLargeGridConfig(rows: number, cols: number): LayoutConfig {
   const rowContents = [];
@@ -46,15 +50,21 @@ const resolvedConfig = resolveLayoutConfig(largeConfig);
 const minifiedConfig = minifyResolvedLayoutConfig(resolvedConfig);
 
 describe('Strelit UI Kit - Core Algorithmic Benchmarks (100-Component Layout)', () => {
-  bench('resolveLayoutConfig(100 components)', () => {
-    resolveLayoutConfig(largeConfig);
+  test('resolveLayoutConfig(100 components)', async ({ bench }) => {
+    await bench('resolveLayoutConfig', () => {
+      resolveLayoutConfig(largeConfig);
+    }).run();
   });
 
-  bench('minifyResolvedLayoutConfig(100 components)', () => {
-    minifyResolvedLayoutConfig(resolvedConfig);
+  test('minifyResolvedLayoutConfig(100 components)', async ({ bench }) => {
+    await bench('minifyResolvedLayoutConfig', () => {
+      minifyResolvedLayoutConfig(resolvedConfig);
+    }).run();
   });
 
-  bench('unminifyResolvedLayoutConfig(100 components)', () => {
-    unminifyResolvedLayoutConfig(minifiedConfig);
+  test('unminifyResolvedLayoutConfig(100 components)', async ({ bench }) => {
+    await bench('unminifyResolvedLayoutConfig', () => {
+      unminifyResolvedLayoutConfig(minifiedConfig);
+    }).run();
   });
 });

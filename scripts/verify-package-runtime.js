@@ -20,17 +20,36 @@ function run(command, args, cwd = repoRoot) {
   return result.stdout;
 }
 
-function npmInvocation(args) {
-  if (process.platform === 'win32') {
-    return run(process.env.ComSpec || 'cmd.exe', [
-      '/d',
-      '/s',
-      '/c',
-      'npm',
-      ...args,
-    ]);
+function npmCommand(
+  args,
+  platform = process.platform,
+  npmExecPath = process.env.npm_execpath,
+) {
+  if (platform !== 'win32') {
+    return { command: 'npm', args };
   }
-  return run('npm', args);
+  // npm run supplies its JavaScript entrypoint. Direct invocation also works
+  // with the npm installation bundled beside Node, without interpreting paths.
+  const cli =
+    npmExecPath ||
+    path.join(
+      path.dirname(process.execPath),
+      'node_modules',
+      'npm',
+      'bin',
+      'npm-cli.js',
+    );
+  if (!fs.existsSync(cli)) {
+    throw new Error(
+      'Cannot locate npm JavaScript entrypoint; run through npm run verify:package-runtime.',
+    );
+  }
+  return { command: process.execPath, args: [cli, ...args] };
+}
+
+function npmInvocation(args) {
+  const invocation = npmCommand(args);
+  return run(invocation.command, invocation.args);
 }
 
 function parsePackOutput(output) {
@@ -146,4 +165,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { main, parsePackOutput, run, verifyConsumer };
+module.exports = { main, npmCommand, parsePackOutput, run, verifyConsumer };
