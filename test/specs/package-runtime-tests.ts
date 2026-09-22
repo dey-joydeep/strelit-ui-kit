@@ -1,14 +1,14 @@
 // @vitest-environment node
 
 import { createRequire } from 'node:module';
-import { resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 interface PackageRuntimeModule {
   npmCommand(
     args: string[],
     platform?: string,
-    npmExecPath?: string,
+    fileExists?: (fileName: string) => boolean,
   ): { command: string; args: string[] };
   run(command: string, args: string[]): string;
   parsePackOutput(output: string): Array<{ filename: string }>;
@@ -19,26 +19,43 @@ const packageRuntime =
   require('../../scripts/verify-package-runtime.js') as PackageRuntimeModule;
 
 describe('package runtime verification', () => {
-  it('passes Windows pack destinations literally without a command interpreter', () => {
-    for (const destination of [
-      'E:/temp/a&ver&rem',
-      'E:/temp/with spaces',
-      'E:/temp/%PATH%',
-    ]) {
-      const args = ['pack', '--pack-destination', destination];
-      const cli = resolve('node_modules/vitest/vitest.mjs');
-      const invocation = packageRuntime.npmCommand(args, 'win32', cli);
-      expect(invocation).toEqual({
-        command: process.execPath,
-        args: [cli, ...args],
-      });
-      expect(
-        packageRuntime.run(invocation.command, [
-          '-e',
-          'process.stdout.write(process.argv[1])',
-          destination,
-        ]),
-      ).toBe(destination);
+  it('uses bundled npm and passes Windows destinations without a command interpreter', () => {
+    const bundledNpm = join(
+      dirname(process.execPath),
+      'node_modules',
+      'npm',
+      'bin',
+      'npm-cli.js',
+    );
+    const poisonedNpmExecPath = process.env.npm_execpath;
+    process.env.npm_execpath = resolve('.tmp/attacker-controlled.js');
+
+    try {
+      for (const destination of [
+        'E:/temp/a&ver&rem',
+        'E:/temp/with spaces',
+        'E:/temp/%PATH%',
+      ]) {
+        const args = ['pack', '--pack-destination', destination];
+        const invocation = packageRuntime.npmCommand(args, 'win32', () => true);
+        expect(invocation).toEqual({
+          command: process.execPath,
+          args: [bundledNpm, ...args],
+        });
+        expect(
+          packageRuntime.run(invocation.command, [
+            '-e',
+            'process.stdout.write(process.argv[1])',
+            destination,
+          ]),
+        ).toBe(destination);
+      }
+    } finally {
+      if (poisonedNpmExecPath === undefined) {
+        delete process.env.npm_execpath;
+      } else {
+        process.env.npm_execpath = poisonedNpmExecPath;
+      }
     }
   });
 
@@ -48,11 +65,7 @@ describe('package runtime verification', () => {
       args: ['--version'],
     });
     expect(() =>
-      packageRuntime.npmCommand(
-        ['--version'],
-        'win32',
-        resolve('.tmp/nonexistent-npm-cli.js'),
-      ),
+      packageRuntime.npmCommand(['--version'], 'win32', () => false),
     ).toThrow('Cannot locate npm JavaScript entrypoint');
   });
 

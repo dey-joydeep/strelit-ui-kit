@@ -23,23 +23,21 @@ function run(command, args, cwd = repoRoot) {
 function npmCommand(
   args,
   platform = process.platform,
-  npmExecPath = process.env.npm_execpath,
+  fileExists = fs.existsSync,
 ) {
   if (platform !== 'win32') {
     return { command: 'npm', args };
   }
-  // npm run supplies its JavaScript entrypoint. Direct invocation also works
-  // with the npm installation bundled beside Node, without interpreting paths.
-  const cli =
-    npmExecPath ||
-    path.join(
-      path.dirname(process.execPath),
-      'node_modules',
-      'npm',
-      'bin',
-      'npm-cli.js',
-    );
-  if (!fs.existsSync(cli)) {
+  // Resolve npm from the trusted Node installation instead of allowing an
+  // inherited environment variable to select arbitrary JavaScript.
+  const cli = path.join(
+    path.dirname(process.execPath),
+    'node_modules',
+    'npm',
+    'bin',
+    'npm-cli.js',
+  );
+  if (!fileExists(cli)) {
     throw new Error(
       'Cannot locate npm JavaScript entrypoint; run through npm run verify:package-runtime.',
     );
