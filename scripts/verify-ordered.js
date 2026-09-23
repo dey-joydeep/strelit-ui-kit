@@ -5,57 +5,74 @@ const { npmCommand } = require('./npm-command.js');
 
 const repoRoot = path.resolve(__dirname, '..');
 const outputDir = path.join(repoRoot, '.verification');
-const summaryPath = path.join(outputDir, 'summary.json');
-const latestPath = path.join(outputDir, 'latest.txt');
 
-const steps = [
+const stepDefinitions = [
   {
     id: 'typecheck',
-    ...npmCommand(['run', 'typecheck']),
+    script: 'typecheck',
     logFile: '01-typecheck.log',
   },
   {
     id: 'build',
-    ...npmCommand(['run', 'build']),
+    script: 'build',
     logFile: '02-build.log',
   },
   {
     id: 'package-runtime',
-    ...npmCommand(['run', 'verify:package-runtime']),
+    script: 'verify:package-runtime',
     logFile: '03-package-runtime.log',
   },
   {
     id: 'test',
-    ...npmCommand(['run', 'test']),
+    script: 'test',
     logFile: '04-test.log',
   },
   {
     id: 'compatibility-audit',
-    ...npmCommand(['run', 'audit:compatibility']),
+    script: 'audit:compatibility',
     logFile: '05-compatibility-audit.log',
   },
   {
     id: 'lint',
-    ...npmCommand(['run', 'lint']),
+    script: 'lint',
     logFile: '06-lint.log',
   },
   {
     id: 'format-check',
-    ...npmCommand(['run', 'format:check']),
+    script: 'format:check',
     logFile: '07-format-check.log',
   },
 ];
 
+function createOutputPaths(directory = outputDir) {
+  return {
+    outputDir: directory,
+    summaryPath: path.join(directory, 'summary.json'),
+    latestPath: path.join(directory, 'latest.txt'),
+  };
+}
+
+function createSteps(
+  platform = process.platform,
+  fileExists = fs.existsSync,
+  nodeExecutable = process.execPath,
+) {
+  return stepDefinitions.map(({ script, ...step }) => ({
+    ...step,
+    ...npmCommand(['run', script], platform, fileExists, nodeExecutable),
+  }));
+}
+
 /** Recreates the disposable verification output directory for each run. */
-function resetOutputDir() {
-  fs.rmSync(outputDir, { recursive: true, force: true });
-  fs.mkdirSync(outputDir, { recursive: true });
+function resetOutputDir(paths) {
+  fs.rmSync(paths.outputDir, { recursive: true, force: true });
+  fs.mkdirSync(paths.outputDir, { recursive: true });
 }
 
 /** Overwrites machine-readable and concise human-readable run summaries. */
-function writeSummary(results) {
+function writeSummary(results, paths) {
   const hasFailure = results.some((result) => result.status === 'failed');
-  const isComplete = results.length === steps.length;
+  const isComplete = results.length === stepDefinitions.length;
   const summary = {
     generatedAt: new Date().toISOString(),
     repoRoot,
@@ -63,7 +80,7 @@ function writeSummary(results) {
     steps: results,
   };
 
-  fs.writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
+  fs.writeFileSync(paths.summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
 
   const latestLines = [
     `Verification run: ${summary.generatedAt}`,
@@ -79,13 +96,13 @@ function writeSummary(results) {
     );
   }
 
-  fs.writeFileSync(latestPath, latestLines.join('\n'));
+  fs.writeFileSync(paths.latestPath, latestLines.join('\n'));
 }
 
 /** Runs one verification stage while mirroring output to its dedicated log. */
-function runStep(step) {
+function runStep(step, paths) {
   return new Promise((resolve) => {
-    const logPath = path.join(outputDir, step.logFile);
+    const logPath = path.join(paths.outputDir, step.logFile);
     const logStream = fs.createWriteStream(logPath, { flags: 'w' });
     const startedAt = new Date();
     const startedMs = Date.now();
@@ -139,16 +156,21 @@ function runStep(step) {
 }
 
 /** Runs verification sequentially and marks all later stages skipped on failure. */
-async function main() {
-  resetOutputDir();
+async function main(options = {}) {
+  const paths = options.paths ?? createOutputPaths();
+  const setExitCode =
+    options.setExitCode ?? ((code) => (process.exitCode = code));
+
+  resetOutputDir(paths);
+  const steps = (options.createVerificationSteps ?? createSteps)();
 
   const results = [];
 
   for (let index = 0; index < steps.length; index++) {
     const step = steps[index];
-    const result = await runStep(step);
+    const result = await runStep(step, paths);
     results.push(result);
-    writeSummary(results);
+    writeSummary(results, paths);
 
     if (result.status !== 'passed') {
       for (
@@ -165,34 +187,53 @@ async function main() {
           startedAt: null,
           finishedAt: null,
           durationMs: 0,
-          logPath: path.join(outputDir, skippedStep.logFile),
+          logPath: path.join(paths.outputDir, skippedStep.logFile),
         });
       }
 
-      writeSummary(results);
-      process.exitCode = 1;
+      writeSummary(results, paths);
+      setExitCode(1);
       return;
     }
   }
 }
 
-main().catch((error) => {
-  resetOutputDir();
-  const fatalLogPath = path.join(outputDir, 'fatal.log');
-  const message = `${error.stack ?? error.message}\n`;
-  fs.writeFileSync(fatalLogPath, message);
-  writeSummary([
-    {
-      id: 'fatal',
-      command: 'node ./scripts/verify-ordered.js',
-      status: 'failed',
-      exitCode: 1,
-      startedAt: null,
-      finishedAt: new Date().toISOString(),
-      durationMs: 0,
-      logPath: fatalLogPath,
-    },
-  ]);
-  process.stderr.write(message);
-  process.exitCode = 1;
-});
+async function run(options = {}) {
+  const paths = options.paths ?? createOutputPaths();
+  const setExitCode =
+    options.setExitCode ?? ((code) => (process.exitCode = code));
+  const writeError =
+    options.writeError ?? ((message) => process.stderr.write(message));
+
+  try {
+    await main({ ...options, paths, setExitCode });
+  } catch (error) {
+    resetOutputDir(paths);
+    const fatalLogPath = path.join(paths.outputDir, 'fatal.log');
+    const message = `${error.stack ?? error.message}\n`;
+    fs.writeFileSync(fatalLogPath, message);
+    writeSummary(
+      [
+        {
+          id: 'fatal',
+          command: 'node ./scripts/verify-ordered.js',
+          status: 'failed',
+          exitCode: 1,
+          startedAt: null,
+          finishedAt: new Date().toISOString(),
+          durationMs: 0,
+          logPath: fatalLogPath,
+        },
+      ],
+      paths,
+    );
+    writeError(message);
+    setExitCode(1);
+  }
+}
+
+if (require.main === module) {
+  void run();
+}
+
+module.exports = { createOutputPaths, createSteps, run };
