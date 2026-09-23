@@ -34,10 +34,13 @@
     "dist/**/*.scss"
   ],
   "engines": {
-    "node": ">=20.19.0"
+    "node": "^24.0.0"
   },
   "overrides": {
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.1",
+    "sonarqube-scanner": {
+      "adm-zip": "0.6.1"
+    }
   },
   "dependencies": {
     "tslib": "^2.8.1"
@@ -69,8 +72,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "bench": "vitest bench --run test/bench",
-    "bench:watch": "vitest bench test/bench",
+    "bench": "npm run build:js && vitest bench --run test/bench",
     "coverage": "vitest run --coverage",
     "doc": "npm run build && typedoc --options ./typedoc.stripInternal.json",
     "doc:typedoc:full": "rimraf .generated-docs/full && typedoc --options ./typedoc.full.json",
@@ -93,7 +95,7 @@
     "audit:compatibility": "node ./scripts/audit-compatibility.js --validate",
     "audit:compatibility:check": "node ./scripts/audit-compatibility.js --check",
     "audit:compatibility:refresh": "node ./scripts/audit-compatibility.js --write",
-    "sonar": "npx sonarqube-scanner",
+    "sonar": "sonar-scanner-npm",
     "sonar:coverage": "npm run coverage && npm run sonar",
     "sonar:issues": "node ./scripts/sonar-report.js"
   },
@@ -101,7 +103,7 @@
     "@microsoft/api-extractor": "^7.58.1",
     "@playwright/test": "^1.63.0",
     "@types/node": "^24.13.3",
-    "@vitest/coverage-v8": "^4.0.7",
+    "@vitest/coverage-v8": "^5.0.1",
     "autoprefixer": "^10.4.21",
     "jsdom": "^27.0.1",
     "less": "^4.4.2",
@@ -111,12 +113,13 @@
     "postcss": "^8.5.6",
     "prettier": "^3.6.2",
     "rimraf": "^6.1.0",
-    "sonarqube-scanner": "^4.4.0",
+    "sonarqube-scanner": "^5.0.0",
     "tsup": "^8.5.1",
     "typedoc": "^0.28.14",
     "typescript": "^5.9.3",
     "vite": "^7.1.10",
-    "vitest": "^4.0.7"
+    "vitest": "^5.0.1",
+    "yaml": "^2.9.1"
   },
   "browserslist": [
     "last 1 Chrome version",

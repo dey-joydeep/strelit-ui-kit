@@ -12,6 +12,9 @@ export default defineConfig({
     globals: false,
     restoreMocks: true,
     clearMocks: true,
+    benchmark: {
+      include: ['test/bench/**/*.bench.ts'],
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],

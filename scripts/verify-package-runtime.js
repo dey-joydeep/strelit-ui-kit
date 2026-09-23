@@ -20,17 +20,34 @@ function run(command, args, cwd = repoRoot) {
   return result.stdout;
 }
 
-function npmInvocation(args) {
-  if (process.platform === 'win32') {
-    return run(process.env.ComSpec || 'cmd.exe', [
-      '/d',
-      '/s',
-      '/c',
-      'npm',
-      ...args,
-    ]);
+function npmCommand(
+  args,
+  platform = process.platform,
+  fileExists = fs.existsSync,
+) {
+  if (platform !== 'win32') {
+    return { command: 'npm', args };
   }
-  return run('npm', args);
+  // Resolve npm from the trusted Node installation instead of allowing an
+  // inherited environment variable to select arbitrary JavaScript.
+  const cli = path.join(
+    path.dirname(process.execPath),
+    'node_modules',
+    'npm',
+    'bin',
+    'npm-cli.js',
+  );
+  if (!fileExists(cli)) {
+    throw new Error(
+      'Cannot locate npm JavaScript entrypoint; run through npm run verify:package-runtime.',
+    );
+  }
+  return { command: process.execPath, args: [cli, ...args] };
+}
+
+function npmInvocation(args) {
+  const invocation = npmCommand(args);
+  return run(invocation.command, invocation.args);
 }
 
 function parsePackOutput(output) {
@@ -146,4 +163,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { main, parsePackOutput, run, verifyConsumer };
+module.exports = { main, npmCommand, parsePackOutput, run, verifyConsumer };

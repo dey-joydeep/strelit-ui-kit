@@ -29,6 +29,10 @@ See [VERSIONING.md](./VERSIONING.md) for the repo policy.
 
 ## Development
 
+Node.js 24.x is required. The next release raises the previous Node.js 20.19
+minimum as the project's updated development and verification baseline; browser
+APIs and saved-layout formats are unchanged.
+
 Install dependencies:
 
 ```bash
@@ -53,10 +57,10 @@ Benchmark workflows:
 
 ```bash
 npm run bench
-npm run bench:watch
 ```
 
-This runs the benchmark specs in `test/bench`, including both config-oriented and JSDOM-backed layout benchmarks.
+This builds the package and runs the benchmark specs in `test/bench`, including
+both config-oriented and JSDOM-backed layout benchmarks.
 
 ## Output
 

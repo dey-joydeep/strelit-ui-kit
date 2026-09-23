@@ -2,6 +2,10 @@
 
 ## Requirements
 
+Use Node.js 24.x for development and package tooling. CI verifies Node.js 24 on
+Linux and Windows. The Node.js baseline does not change browser APIs or
+saved-layout formats.
+
 ### JS Code
 
 - Author strict TypeScript and target the repository's supported modern runtime
