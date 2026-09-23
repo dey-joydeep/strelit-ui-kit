@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -19,6 +20,19 @@ const packageRuntime =
   require('../../scripts/verify-package-runtime.js') as PackageRuntimeModule;
 
 describe('package runtime verification', () => {
+  it('keeps repository npm launchers independent of executable-selecting environment variables', () => {
+    for (const script of [
+      'scripts/review-handoff.js',
+      'scripts/verify-ordered.js',
+      'scripts/verify-package-runtime.js',
+      'scripts/verify-pr.js',
+    ]) {
+      const source = readFileSync(resolve(script), 'utf8');
+      expect(source).toContain("require('./npm-command.js')");
+      expect(source).not.toMatch(/process\.env\.(?:ComSpec|npm_execpath)/u);
+    }
+  });
+
   it('uses bundled npm and passes Windows destinations without a command interpreter', () => {
     const bundledNpm = join(
       dirname(process.execPath),
@@ -28,7 +42,9 @@ describe('package runtime verification', () => {
       'npm-cli.js',
     );
     const poisonedNpmExecPath = process.env.npm_execpath;
+    const poisonedComSpec = process.env.ComSpec;
     process.env.npm_execpath = resolve('.tmp/attacker-controlled.js');
+    process.env.ComSpec = resolve('.tmp/attacker-controlled.exe');
 
     try {
       for (const destination of [
@@ -56,6 +72,11 @@ describe('package runtime verification', () => {
       } else {
         process.env.npm_execpath = poisonedNpmExecPath;
       }
+      if (poisonedComSpec === undefined) {
+        delete process.env.ComSpec;
+      } else {
+        process.env.ComSpec = poisonedComSpec;
+      }
     }
   });
 
@@ -66,7 +87,7 @@ describe('package runtime verification', () => {
     });
     expect(() =>
       packageRuntime.npmCommand(['--version'], 'win32', () => false),
-    ).toThrow('Cannot locate npm JavaScript entrypoint');
+    ).toThrow('Cannot locate npm JavaScript entrypoint beside');
   });
 
   it('parses npm pack JSON after lifecycle output', () => {

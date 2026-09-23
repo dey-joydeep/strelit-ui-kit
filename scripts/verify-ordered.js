@@ -1,64 +1,47 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const { npmCommand } = require('./npm-command.js');
 
 const repoRoot = path.resolve(__dirname, '..');
 const outputDir = path.join(repoRoot, '.verification');
 const summaryPath = path.join(outputDir, 'summary.json');
 const latestPath = path.join(outputDir, 'latest.txt');
 
-const npmCommand =
-  process.platform === 'win32'
-    ? {
-        command: process.env.ComSpec || 'cmd.exe',
-        argsPrefix: ['/d', '/s', '/c', 'npm'],
-      }
-    : {
-        command: 'npm',
-        argsPrefix: [],
-      };
-
 const steps = [
   {
     id: 'typecheck',
-    command: npmCommand.command,
-    args: [...npmCommand.argsPrefix, 'run', 'typecheck'],
+    ...npmCommand(['run', 'typecheck']),
     logFile: '01-typecheck.log',
   },
   {
     id: 'build',
-    command: npmCommand.command,
-    args: [...npmCommand.argsPrefix, 'run', 'build'],
+    ...npmCommand(['run', 'build']),
     logFile: '02-build.log',
   },
   {
     id: 'package-runtime',
-    command: npmCommand.command,
-    args: [...npmCommand.argsPrefix, 'run', 'verify:package-runtime'],
+    ...npmCommand(['run', 'verify:package-runtime']),
     logFile: '03-package-runtime.log',
   },
   {
     id: 'test',
-    command: npmCommand.command,
-    args: [...npmCommand.argsPrefix, 'run', 'test'],
+    ...npmCommand(['run', 'test']),
     logFile: '04-test.log',
   },
   {
     id: 'compatibility-audit',
-    command: npmCommand.command,
-    args: [...npmCommand.argsPrefix, 'run', 'audit:compatibility'],
+    ...npmCommand(['run', 'audit:compatibility']),
     logFile: '05-compatibility-audit.log',
   },
   {
     id: 'lint',
-    command: npmCommand.command,
-    args: [...npmCommand.argsPrefix, 'run', 'lint'],
+    ...npmCommand(['run', 'lint']),
     logFile: '06-lint.log',
   },
   {
     id: 'format-check',
-    command: npmCommand.command,
-    args: [...npmCommand.argsPrefix, 'run', 'format:check'],
+    ...npmCommand(['run', 'format:check']),
     logFile: '07-format-check.log',
   },
 ];

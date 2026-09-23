@@ -7,6 +7,7 @@ const {
   domainsForPath,
 } = require('./change-review-policy.js');
 const agentLedger = require('./agent-work-ledger.js');
+const { npmCommand } = require('./npm-command.js');
 
 const riskRank = {
   low: 0,
@@ -134,16 +135,7 @@ function executedCommandNames(scripts) {
 }
 
 function runNpmScript(script) {
-  const invocation =
-    process.platform === 'win32'
-      ? {
-          command: process.env.ComSpec || 'cmd.exe',
-          args: ['/d', '/s', '/c', 'npm', 'run', script],
-        }
-      : {
-          command: 'npm',
-          args: ['run', script],
-        };
+  const invocation = npmCommand(['run', script]);
   const result = spawnSync(invocation.command, invocation.args, {
     cwd: process.cwd(),
     stdio: 'inherit',
