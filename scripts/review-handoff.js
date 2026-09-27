@@ -11,6 +11,7 @@ const nodePath = require('node:path');
 const agentLedger = require('./agent-work-ledger.js');
 const reviewPolicy = require('./change-review-policy.js');
 const changeDiscipline = require('./verify-pr.js');
+const { npmCommand } = require('./npm-command.js');
 
 const receiptVersion = 2;
 
@@ -18,6 +19,7 @@ function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd ?? process.cwd(),
     encoding: 'utf8',
+    env: options.env ?? process.env,
     shell: false,
     stdio: options.inherit ? 'inherit' : 'pipe',
   });
@@ -33,14 +35,12 @@ function run(command, args, options = {}) {
 }
 
 function runNpmScript(script, args = [], cwd = process.cwd()) {
-  const invocation =
-    process.platform === 'win32'
-      ? {
-          command: process.env.ComSpec || 'cmd.exe',
-          args: ['/d', '/s', '/c', 'npm', 'run', script, ...args],
-        }
-      : { command: 'npm', args: ['run', script, ...args] };
-  run(invocation.command, invocation.args, { cwd, inherit: true });
+  const invocation = npmCommand(['run', script, ...args]);
+  run(invocation.command, invocation.args, {
+    cwd,
+    env: invocation.env,
+    inherit: true,
+  });
 }
 
 function gitOutput(args, cwd = process.cwd()) {
