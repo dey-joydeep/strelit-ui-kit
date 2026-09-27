@@ -112,6 +112,7 @@ function runStep(step, paths) {
 
     const child = spawn(step.command, step.args, {
       cwd: repoRoot,
+      env: step.env,
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: false,
     });

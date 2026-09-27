@@ -10,24 +10,64 @@ function npmCommand(
   platform = process.platform,
   fileExists = fs.existsSync,
   nodeExecutable = process.execPath,
+  environment = process.env,
 ) {
+  let command;
+  let commandArgs;
+
   if (platform !== 'win32') {
-    return { command: 'npm', args };
+    command = 'npm';
+    commandArgs = args;
+  } else {
+    const cli = path.win32.join(
+      path.win32.dirname(nodeExecutable),
+      'node_modules',
+      'npm',
+      'bin',
+      'npm-cli.js',
+    );
+    if (!fileExists(cli)) {
+      throw new Error(
+        'Cannot locate npm JavaScript entrypoint beside the active Node executable.',
+      );
+    }
+    command = nodeExecutable;
+    commandArgs = [cli, ...args];
   }
 
-  const cli = path.join(
-    path.dirname(nodeExecutable),
-    'node_modules',
-    'npm',
-    'bin',
-    'npm-cli.js',
-  );
-  if (!fileExists(cli)) {
-    throw new Error(
-      'Cannot locate npm JavaScript entrypoint beside the active Node executable.',
-    );
+  const scriptShell =
+    platform === 'win32'
+      ? '\\\\.\\GLOBALROOT\\SystemRoot\\System32\\cmd.exe'
+      : '/bin/sh';
+  if (!fileExists(scriptShell)) {
+    throw new Error(`Cannot locate trusted npm script shell: ${scriptShell}`);
   }
-  return { command: nodeExecutable, args: [cli, ...args] };
+
+  const env = Object.fromEntries(
+    Object.entries(environment).filter(([key]) => {
+      const normalized = key.toLowerCase().replaceAll('_', '-');
+      return (
+        normalized !== 'npm-config-script-shell' && normalized !== 'comspec'
+      );
+    }),
+  );
+  env.npm_config_script_shell = scriptShell;
+  if (platform === 'win32') {
+    env.ComSpec = scriptShell;
+  }
+
+  return {
+    command,
+    args:
+      platform === 'win32'
+        ? [
+            commandArgs[0],
+            `--script-shell=${scriptShell}`,
+            ...commandArgs.slice(1),
+          ]
+        : [`--script-shell=${scriptShell}`, ...commandArgs],
+    env,
+  };
 }
 
 module.exports = { npmCommand };

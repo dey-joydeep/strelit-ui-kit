@@ -138,6 +138,7 @@ function runNpmScript(script) {
   const invocation = npmCommand(['run', script]);
   const result = spawnSync(invocation.command, invocation.args, {
     cwd: process.cwd(),
+    env: invocation.env,
     stdio: 'inherit',
     shell: false,
   });

@@ -6,10 +6,11 @@ const { npmCommand } = require('./npm-command.js');
 
 const repoRoot = path.resolve(__dirname, '..');
 
-function run(command, args, cwd = repoRoot) {
+function run(command, args, cwd = repoRoot, env = process.env) {
   const result = spawnSync(command, args, {
     cwd,
     encoding: 'utf8',
+    env,
     shell: false,
   });
   if (result.error !== undefined || result.status !== 0) {
@@ -23,7 +24,7 @@ function run(command, args, cwd = repoRoot) {
 
 function npmInvocation(args) {
   const invocation = npmCommand(args);
-  return run(invocation.command, invocation.args);
+  return run(invocation.command, invocation.args, repoRoot, invocation.env);
 }
 
 function parsePackOutput(output) {

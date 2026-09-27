@@ -19,6 +19,7 @@ function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd ?? process.cwd(),
     encoding: 'utf8',
+    env: options.env ?? process.env,
     shell: false,
     stdio: options.inherit ? 'inherit' : 'pipe',
   });
@@ -35,7 +36,11 @@ function run(command, args, options = {}) {
 
 function runNpmScript(script, args = [], cwd = process.cwd()) {
   const invocation = npmCommand(['run', script, ...args]);
-  run(invocation.command, invocation.args, { cwd, inherit: true });
+  run(invocation.command, invocation.args, {
+    cwd,
+    env: invocation.env,
+    inherit: true,
+  });
 }
 
 function gitOutput(args, cwd = process.cwd()) {
