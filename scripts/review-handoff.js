@@ -217,8 +217,51 @@ function requirePullRequest(options) {
   return options.pr;
 }
 
-function reviewRequestMarker(pullRequest, head, baseTip) {
-  return `<!-- strelit-codex-review-request pr=${pullRequest} head=${head} base=${baseTip} -->`;
+function closedClassIds(ledger, head) {
+  if (ledger.currentHead !== head) {
+    throw new Error(
+      `Review ledger targets ${ledger.currentHead}, not cloud handoff head ${head}.`,
+    );
+  }
+  if (ledger.reviewGate?.mode !== 'pull-request') {
+    throw new Error('Cloud handoff requires a pull-request review gate.');
+  }
+  const sameStringSet = (left, right) =>
+    left.length === right.length &&
+    left.every((value) => right.includes(value));
+  const reviews = ledger.units.filter(
+    (unit) =>
+      unit.kind === 'review' &&
+      unit.status === 'completed' &&
+      unit.head === head &&
+      unit.sourceFingerprint === ledger.currentFingerprint &&
+      unit.review?.scope === 'whole-pr' &&
+      unit.review.pass === 'fresh-discovery' &&
+      unit.checkpoint?.verdict === 'pass' &&
+      unit.checkpoint.reviewedBase === ledger.baseHead &&
+      unit.checkpoint.reviewedHead === head &&
+      sameStringSet(unit.assignedPaths, ledger.reviewGate.requiredPaths) &&
+      sameStringSet(unit.review.domains, ledger.reviewGate.applicableDomains),
+  );
+  if (reviews.length !== 1) {
+    throw new Error(
+      `Expected one gate-qualified final review for cloud handoff; found ${reviews.length}.`,
+    );
+  }
+  const [review] = reviews;
+  return [
+    ...new Set((review.checkpoint.classClosures ?? []).map(({ id }) => id)),
+  ].sort((left, right) => left.localeCompare(right));
+}
+
+function reviewRequestMarker(pullRequest, head, baseTip, classIds = []) {
+  if (classIds.some((id) => !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(id))) {
+    throw new Error(
+      'Closed defect-class IDs must be lowercase hyphenated slugs.',
+    );
+  }
+  const classes = classIds.length === 0 ? 'none' : classIds.join(',');
+  return `<!-- strelit-codex-review-request pr=${pullRequest} head=${head} base=${baseTip} classes=${classes} -->`;
 }
 
 function parsePullRequestRepository(pullRequestUrl) {
@@ -276,7 +319,16 @@ function requestCloudReview(options, cwd = process.cwd()) {
   if (boundaryErrors.length > 0) {
     throw new Error(boundaryErrors.join('\n'));
   }
-  const marker = reviewRequestMarker(pullRequest, source.head, receipt.baseTip);
+  const classIds = closedClassIds(
+    agentLedger.execute('status', {}, cwd),
+    source.head,
+  );
+  const marker = reviewRequestMarker(
+    pullRequest,
+    source.head,
+    receipt.baseTip,
+    classIds,
+  );
   const { owner, repository } = parsePullRequestRepository(
     remotePullRequest.url,
   );
@@ -301,7 +353,8 @@ function requestCloudReview(options, cwd = process.cwd()) {
     );
     return;
   }
-  const body = `@codex review exact commit ${source.head}\n\n${marker}`;
+  const classSummary = classIds.length === 0 ? 'none' : classIds.join(', ');
+  const body = `@codex review exact commit ${source.head}\n\nClosed defect classes: ${classSummary}\n\n${marker}`;
   run('gh', ['pr', 'comment', pullRequest, '--body', body], {
     cwd,
     inherit: true,
@@ -351,6 +404,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  closedClassIds,
   createReceipt,
   hasReviewRequest,
   parseArguments,

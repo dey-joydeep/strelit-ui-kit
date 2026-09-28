@@ -28,10 +28,30 @@ interface ChangeDisciplineModule {
     risk: 'low' | 'medium' | 'high',
     environment?: Record<string, string | undefined>,
   ): boolean;
-  verificationScriptsForRisk(risk: 'low' | 'medium' | 'high'): string[];
+  verificationProfileForFiles(fileNames: string[]): 'governance' | 'product';
+  verificationScriptsForRisk(
+    risk: 'low' | 'medium' | 'high',
+    verificationProfile?: 'governance' | 'product',
+  ): string[];
 }
 
 interface ChangeReviewPolicyModule {
+  classifyTrustedChange(
+    fileNames: string[],
+    baseHead: string,
+    cwd?: string,
+  ): {
+    risk: 'low' | 'medium' | 'high';
+    verificationProfile: 'governance' | 'product';
+  };
+  reviewFocusForBase(
+    baseHead: string,
+    cwd?: string,
+  ): Array<{
+    pattern: string;
+    findingCount: number;
+    classes: string[];
+  }>;
   validateFindingDispositionEvidence(
     review: string,
     requireStatusReconciliation?: boolean,
@@ -477,7 +497,7 @@ describe('contribution governance workflow', () => {
     expect(rubric).toContain('## Hard Gates');
     expect(rubric).toContain('## Measuring Quality Over Time');
     expect(rubric).toContain('score below 2');
-    expect(rubric).toContain('fresh discovery pass');
+    expect(rubric).toMatch(/fresh whole-PR\s+discovery pass/);
   });
 
   it('keeps documented finding-disposition examples valid in both validators', async () => {
@@ -591,20 +611,21 @@ describe('contribution governance workflow', () => {
     expect(componentBindingSkill).not.toContain("container.on('destroy'");
   });
 
-  it('documents definitive PR verification after ledger synthesis', () => {
+  it('documents definitive PR verification after the final fresh review', () => {
     const verificationGuide = readFileSync(
       resolve('docs/contributing/verification-pipeline.md'),
       'utf8',
     );
-    const synthesis = verificationGuide.indexOf(
-      'obtain an unused independent synthesis',
+    const finalReview = verificationGuide.indexOf(
+      'Obtain one independent fresh whole-PR review',
     );
     const definitiveVerification = verificationGuide.indexOf(
       'Finish the ledger and run `npm run verify:pr`',
     );
 
-    expect(synthesis).toBeGreaterThan(-1);
-    expect(definitiveVerification).toBeGreaterThan(synthesis);
+    expect(finalReview).toBeGreaterThan(-1);
+    expect(definitiveVerification).toBeGreaterThan(finalReview);
+    expect(verificationGuide).not.toContain('unused independent synthesis');
   });
 
   it('binds compatibility decisions to an explicit product-evolution phase', () => {
@@ -1528,7 +1549,7 @@ describe('contribution governance workflow', () => {
     );
   });
 
-  it('classifies src documentation with exactly tooling and test/documentation domains', async () => {
+  it('classifies src documentation as low-risk prose', async () => {
     const review = [
       'Review mode: **Independent**',
       'Reviewer: @reviewer-user',
@@ -1573,9 +1594,8 @@ describe('contribution governance workflow', () => {
       reviews,
     );
 
-    expect(rejected).toContain(
-      'Coverage manifest path src/TOOLCHAIN.md must declare exactly these domains: Tooling, CI, and verification; Tests and documentation',
-    );
+    expect(changeDiscipline.classifyFileRisk('src/TOOLCHAIN.md')).toBe('low');
+    expect(rejected).toEqual([]);
     expect(accepted).toEqual([]);
   });
 
@@ -2413,6 +2433,7 @@ describe('risk-based PR verification', () => {
     ['docs/contributing/workflow.md', 'high'],
     ['docs/architecture/product-evolution-policy.md', 'high'],
     ['docs/architecture/compatibility-audit-maintenance.md', 'high'],
+    ['test/specs/agent-work-ledger-tests.ts', 'high'],
     ['.github/workflows/CI.yml', 'high'],
     ['.github/CODEOWNERS', 'high'],
     ['.npmignore', 'high'],
@@ -2453,6 +2474,161 @@ describe('risk-based PR verification', () => {
       'apitest:build',
       'apitest:smoke',
     ]);
+    expect(
+      changeDiscipline.verificationScriptsForRisk('high', 'governance'),
+    ).toEqual(['verify:agent-ledger', 'verify:governance']);
+  });
+
+  it('uses focused governance verification only for an explicit pure-governance diff', () => {
+    expect(
+      changeDiscipline.verificationProfileForFiles([
+        '.github/change-risk.json',
+        'docs/contributing/verification-pipeline.md',
+        'scripts/verify-pr.js',
+        'test/specs/contribution-governance-tests.ts',
+      ]),
+    ).toBe('governance');
+    expect(
+      changeDiscipline.verificationProfileForFiles([
+        'AGENTS.md',
+        'src/ts/layout-manager.ts',
+      ]),
+    ).toBe('product');
+    expect(
+      changeDiscipline.verificationProfileForFiles(['unknown-file.xyz']),
+    ).toBe('product');
+    expect(changeDiscipline.verificationProfileForFiles([])).toBe('product');
+    expect(
+      changeDiscipline.classifyChangeRisk([
+        'test/specs/agent-work-ledger-tests.ts',
+      ]),
+    ).toBe('high');
+  });
+
+  it('uses the trusted base policy when the candidate broadens its governance profile', () => {
+    const repository = mkdtempSync(join(tmpdir(), 'strelit-trusted-risk-'));
+    try {
+      execFileSync('git', ['init'], { cwd: repository });
+      execFileSync('git', ['config', 'user.email', 'fixture@example.com'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['config', 'user.name', 'Fixture'], {
+        cwd: repository,
+      });
+      mkdirSync(join(repository, '.github'), { recursive: true });
+      mkdirSync(join(repository, 'src', 'ts'), { recursive: true });
+      writeFileSync(
+        join(repository, '.github', 'change-risk.json'),
+        readFileSync(resolve('.github/change-risk.json'), 'utf8'),
+      );
+      writeFileSync(
+        join(repository, 'src', 'ts', 'layout-manager.ts'),
+        'base\n',
+      );
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Base policy.'], {
+        cwd: repository,
+      });
+      const base = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+
+      writeFileSync(
+        join(repository, '.github', 'change-risk.json'),
+        JSON.stringify({
+          high: [],
+          medium: [],
+          low: ['.*'],
+          verificationProfiles: { governance: ['.*'] },
+          reviewFocus: [],
+        }),
+      );
+      writeFileSync(
+        join(repository, 'src', 'ts', 'layout-manager.ts'),
+        'candidate\n',
+      );
+
+      expect(
+        changeReviewPolicy.classifyTrustedChange(
+          ['.github/change-risk.json', 'src/ts/layout-manager.ts'],
+          base,
+          repository,
+        ),
+      ).toEqual({ risk: 'high', verificationProfile: 'product' });
+
+      const malformedPolicy = JSON.parse(
+        readFileSync(resolve('.github/change-risk.json'), 'utf8'),
+      ) as Record<string, unknown>;
+      delete malformedPolicy.high;
+      writeFileSync(
+        join(repository, '.github', 'change-risk.json'),
+        JSON.stringify(malformedPolicy),
+      );
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Malformed base policy.'], {
+        cwd: repository,
+      });
+      const malformedBase = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      expect(
+        changeReviewPolicy.classifyTrustedChange(
+          ['AGENTS.md'],
+          malformedBase,
+          repository,
+        ),
+      ).toEqual({ risk: 'high', verificationProfile: 'product' });
+    } finally {
+      rmSync(repository, { force: true, recursive: true });
+    }
+  });
+
+  it('keeps review-focus declarations from the trusted base policy', () => {
+    const repository = mkdtempSync(join(tmpdir(), 'strelit-trusted-focus-'));
+    try {
+      execFileSync('git', ['init'], { cwd: repository });
+      execFileSync('git', ['config', 'user.email', 'fixture@example.com'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['config', 'user.name', 'Fixture'], {
+        cwd: repository,
+      });
+      mkdirSync(join(repository, '.github'), { recursive: true });
+      writeFileSync(
+        join(repository, '.github', 'change-risk.json'),
+        readFileSync(resolve('.github/change-risk.json'), 'utf8'),
+      );
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Base focus policy.'], {
+        cwd: repository,
+      });
+      const base = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+
+      const candidatePolicy = JSON.parse(
+        readFileSync(resolve('.github/change-risk.json'), 'utf8'),
+      ) as { reviewFocus: unknown[] };
+      candidatePolicy.reviewFocus = [];
+      writeFileSync(
+        join(repository, '.github', 'change-risk.json'),
+        JSON.stringify(candidatePolicy),
+      );
+
+      expect(changeReviewPolicy.reviewFocusForBase(base, repository)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            pattern: '^src/ts/layout-manager\\.ts$',
+            classes: ['partial-failure rollback', 'popout ownership'],
+          }),
+        ]),
+      );
+    } finally {
+      rmSync(repository, { force: true, recursive: true });
+    }
   });
 
   it('requires the definitive ledger gate only for local high-risk work', () => {

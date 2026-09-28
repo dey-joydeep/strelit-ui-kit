@@ -45,6 +45,17 @@ For review fixes, state the invariant, defect class, equivalent cases searched,
 and regression coverage. Otherwise explain why this is not a review-finding fix.
 -->
 
+## Defect Class Closures
+
+<!--
+For each confirmed class use one line:
+Class: ID | Name: concise class | Query: actual sibling search | Hits: N |
+Dispositioned: N | Summary: fixed, duplicate, false-positive, accepted, or
+deferred outcomes. Every hit must be dispositioned before closure.
+-->
+
+No confirmed defect classes.
+
 ## Out of Scope
 
 <!-- List related behavior intentionally left unchanged and why. -->
@@ -138,6 +149,10 @@ Finding dispositions: High H-1 => Closed: test/specs/contribution-governance-tes
 ## Review Coverage Manifest
 
 <!--
+This section remains temporarily for the existing GitHub metadata workflow.
+Local review no longer uses per-path/domain assignment. Removing the GitHub
+fields requires the separately authorized workflow-enforcement stage.
+
 High-risk PRs require exactly one line per changed path in this format:
 Path: path/from/repository/root | Contract: behavioral contract inspected | Domains: Domain one; Domain two | Assignments: Domain one => @reviewer-one; Domain two => @reviewer-two | Adjacent: inspected call paths | Tests: relevant test evidence
 

@@ -13,9 +13,9 @@ const canonicalDomains = Object.freeze([
 
 const riskRank = { low: 0, medium: 1, high: 2 };
 const riskPatterns = Object.fromEntries(
-  Object.entries(riskPolicy).map(([risk, patterns]) => [
+  ['high', 'medium', 'low'].map((risk) => [
     risk,
-    patterns.map((pattern) => new RegExp(pattern)),
+    riskPolicy[risk].map((pattern) => new RegExp(pattern)),
   ]),
 );
 
@@ -293,6 +293,9 @@ function validateFindingDispositionEvidence(
 
 function classifyFileRisk(fileName) {
   const normalized = normalizeFileName(fileName);
+  if (/^src\/.*\.(?:md|mdx|txt|adoc|rst)$/i.test(normalized)) {
+    return 'low';
+  }
   for (const risk of ['high', 'medium', 'low']) {
     if (riskPatterns[risk].some((pattern) => pattern.test(normalized))) {
       return risk;
@@ -306,6 +309,135 @@ function classifyChangeRisk(fileNames) {
     const fileRisk = classifyFileRisk(fileName);
     return riskRank[fileRisk] > riskRank[highestRisk] ? fileRisk : highestRisk;
   }, 'low');
+}
+
+function verificationProfileForFiles(fileNames, policy = riskPolicy) {
+  if (fileNames.length === 0) {
+    return 'product';
+  }
+  const configuredPatterns = policy.verificationProfiles?.governance;
+  if (
+    !Array.isArray(configuredPatterns) ||
+    configuredPatterns.some((pattern) => typeof pattern !== 'string')
+  ) {
+    return 'product';
+  }
+  try {
+    const patterns = configuredPatterns.map((pattern) => new RegExp(pattern));
+    return fileNames.every((fileName) => {
+      const normalized = normalizeFileName(fileName);
+      return patterns.some((pattern) => pattern.test(normalized));
+    })
+      ? 'governance'
+      : 'product';
+  } catch {
+    return 'product';
+  }
+}
+
+function classifyFileRiskWithPolicy(fileName, policy) {
+  const normalized = normalizeFileName(fileName);
+  try {
+    for (const risk of ['high', 'medium', 'low']) {
+      const configuredPatterns = policy[risk];
+      if (
+        !Array.isArray(configuredPatterns) ||
+        configuredPatterns.some((pattern) => typeof pattern !== 'string')
+      ) {
+        return 'high';
+      }
+      if (
+        configuredPatterns.some((pattern) =>
+          new RegExp(pattern).test(normalized),
+        )
+      ) {
+        return risk;
+      }
+    }
+  } catch {
+    return 'high';
+  }
+  return 'medium';
+}
+
+function hasValidRiskPolicyShape(policy) {
+  try {
+    return (
+      policy !== null &&
+      typeof policy === 'object' &&
+      ['high', 'medium', 'low'].every(
+        (risk) =>
+          Array.isArray(policy[risk]) &&
+          policy[risk].every((pattern) => {
+            if (typeof pattern !== 'string') {
+              return false;
+            }
+            new RegExp(pattern);
+            return true;
+          }),
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
+function readTrustedRiskPolicy(baseHead, cwd) {
+  try {
+    return JSON.parse(
+      gitText(['show', `${baseHead}:.github/change-risk.json`], cwd),
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+function classifyTrustedChange(fileNames, baseHead, cwd = process.cwd()) {
+  const policy = readTrustedRiskPolicy(baseHead, cwd);
+  if (!hasValidRiskPolicyShape(policy)) {
+    return { risk: 'high', verificationProfile: 'product' };
+  }
+
+  const verificationProfile = verificationProfileForFiles(fileNames, policy);
+  const risk = fileNames.reduce((highestRisk, fileName) => {
+    const fileRisk = classifyFileRiskWithPolicy(fileName, policy);
+    return riskRank[fileRisk] > riskRank[highestRisk] ? fileRisk : highestRisk;
+  }, 'low');
+  return {
+    risk: verificationProfile === 'governance' ? 'high' : risk,
+    verificationProfile,
+  };
+}
+
+function reviewFocusForBase(baseHead, cwd = process.cwd()) {
+  const policy = readTrustedRiskPolicy(baseHead, cwd);
+  if (policy?.reviewFocus === undefined) {
+    return [];
+  }
+  if (!Array.isArray(policy.reviewFocus)) {
+    throw new Error('Trusted reviewFocus policy must be an array.');
+  }
+  try {
+    return policy.reviewFocus.map((entry) => {
+      if (
+        entry === null ||
+        typeof entry !== 'object' ||
+        typeof entry.pattern !== 'string' ||
+        !Number.isSafeInteger(entry.findingCount) ||
+        entry.findingCount < 0 ||
+        !Array.isArray(entry.classes) ||
+        entry.classes.some(
+          (className) =>
+            typeof className !== 'string' || className.trim().length === 0,
+        )
+      ) {
+        throw new Error('invalid entry');
+      }
+      return { ...entry, matcher: new RegExp(entry.pattern) };
+    });
+  } catch {
+    throw new Error('Trusted reviewFocus policy contains an invalid entry.');
+  }
 }
 
 function gitBuffer(args, cwd) {
@@ -498,28 +630,33 @@ function createPullRequestReviewGate(baseHead, implementer, cwd) {
     throw new Error(`Cannot determine merge base for ${baseHead}.`);
   }
   const requiredPaths = collectChangedFiles(mergeBase, cwd);
-  const requiredCoverage = requiredPaths.map((path) => ({
-    path,
-    domains: domainsForPath(path),
-  }));
-  const applicableDomains = [
-    ...new Set(requiredCoverage.flatMap((entry) => entry.domains)),
-  ].sort((left, right) => left.localeCompare(right));
+  const requiredCoverage = requiredPaths.map((path) => domainsForPath(path));
+  const applicableDomains = [...new Set(requiredCoverage.flat())].sort(
+    (left, right) => left.localeCompare(right),
+  );
   const nonGeneratedLines = collectNonGeneratedLines(mergeBase, cwd);
-  const risk = classifyChangeRisk(requiredPaths);
+  const trustedClassification = classifyTrustedChange(
+    requiredPaths,
+    mergeBase,
+    cwd,
+  );
+  const trustedReviewFocus = reviewFocusForBase(mergeBase, cwd);
   return {
     mode: 'pull-request',
     implementer,
-    risk,
+    risk: trustedClassification.risk,
+    verificationProfile: trustedClassification.verificationProfile,
     requiredPaths,
-    requiredCoverage,
     applicableDomains,
     nonGeneratedLines,
-    largeHighRisk:
-      risk === 'high' &&
-      (requiredPaths.length > 50 ||
-        nonGeneratedLines > 1000 ||
-        applicableDomains.length >= 3),
+    reviewFocus: requiredPaths.flatMap((path) =>
+      trustedReviewFocus
+        .filter((entry) => entry.matcher.test(path))
+        .map(({ matcher: _matcher, pattern: _pattern, ...entry }) => ({
+          path,
+          ...entry,
+        })),
+    ),
   };
 }
 
@@ -527,11 +664,14 @@ module.exports = {
   canonicalDomains,
   classifyChangeRisk,
   classifyFileRisk,
+  classifyTrustedChange,
   collectChangedFiles,
   collectCommittedChangedFiles,
   collectNonGeneratedLines,
   createPullRequestReviewGate,
   domainsForPath,
   normalizeFileName,
+  reviewFocusForBase,
+  verificationProfileForFiles,
   validateFindingDispositionEvidence,
 };

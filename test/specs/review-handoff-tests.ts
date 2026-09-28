@@ -19,6 +19,33 @@ interface SourceState {
 }
 
 interface ReviewHandoffModule {
+  closedClassIds(
+    ledger: {
+      baseHead: string;
+      currentFingerprint: string;
+      currentHead: string;
+      reviewGate?: {
+        mode: string;
+        requiredPaths: string[];
+        applicableDomains: string[];
+      };
+      units: Array<{
+        kind: string;
+        status: string;
+        head: string;
+        sourceFingerprint?: string;
+        assignedPaths?: string[];
+        review?: { scope: string; pass: string; domains?: string[] };
+        checkpoint?: {
+          verdict?: string;
+          reviewedBase?: string;
+          reviewedHead?: string;
+          classClosures?: Array<{ id: string }>;
+        };
+      }>;
+    },
+    head: string,
+  ): string[];
   hasReviewRequest(marker: string, comments: Array<{ body?: string }>): boolean;
   parsePushUpdates(input: string): Array<{
     localRef: string;
@@ -36,6 +63,7 @@ interface ReviewHandoffModule {
     pullRequest: string,
     head: string,
     baseTip: string,
+    classIds?: string[],
   ): string;
   validateReceipt(
     receipt: Record<string, unknown> | undefined,
@@ -378,6 +406,71 @@ describe('review handoff', () => {
         },
       ]),
     ).toBe(false);
+  });
+
+  it('keys the cloud request by the frozen defect-class set', () => {
+    const ledger = {
+      baseHead: 'base-a',
+      currentHead: 'head-a',
+      currentFingerprint: 'fingerprint-a',
+      reviewGate: {
+        mode: 'pull-request',
+        requiredPaths: ['scripts/review-handoff.js'],
+        applicableDomains: ['Tooling, CI, and verification'],
+      },
+      units: [
+        {
+          kind: 'review',
+          status: 'completed',
+          head: 'head-a',
+          sourceFingerprint: 'fingerprint-a',
+          assignedPaths: ['README.md'],
+          review: {
+            scope: 'whole-pr',
+            pass: 'fresh-discovery',
+            domains: ['Tests and documentation'],
+          },
+          checkpoint: {
+            verdict: 'pass',
+            reviewedBase: 'base-a',
+            reviewedHead: 'head-a',
+            classClosures: [{ id: 'stale-set' }],
+          },
+        },
+        {
+          kind: 'review',
+          status: 'completed',
+          head: 'head-a',
+          sourceFingerprint: 'fingerprint-a',
+          assignedPaths: ['scripts/review-handoff.js'],
+          review: {
+            scope: 'whole-pr',
+            pass: 'fresh-discovery',
+            domains: ['Tooling, CI, and verification'],
+          },
+          checkpoint: {
+            verdict: 'pass',
+            reviewedBase: 'base-a',
+            reviewedHead: 'head-a',
+            classClosures: [{ id: 'rollback' }, { id: 'compatibility' }],
+          },
+        },
+      ],
+    };
+    const classIds = handoff.closedClassIds(ledger, 'head-a');
+    expect(classIds).toEqual(['compatibility', 'rollback']);
+    expect(
+      handoff.reviewRequestMarker('1', 'head-a', 'base-a', classIds),
+    ).toContain('classes=compatibility,rollback');
+    expect(() => handoff.closedClassIds(ledger, 'head-b')).toThrow(
+      'not cloud handoff head head-b',
+    );
+    expect(() =>
+      handoff.closedClassIds({ ...ledger, reviewGate: undefined }, 'head-a'),
+    ).toThrow('requires a pull-request review gate');
+    expect(() =>
+      handoff.reviewRequestMarker('1', 'head-a', 'base-a', ['unsafe,class']),
+    ).toThrow('lowercase hyphenated slugs');
   });
 
   it('requires an explicit reopen option for intentional repeat requests', () => {
