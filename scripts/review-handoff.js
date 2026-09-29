@@ -163,8 +163,9 @@ function requiresReceiptForHead(head, cwd = process.cwd()) {
     process.env.STRELIT_REVIEW_BASE_REF,
     cwd,
   );
-  const paths = reviewPolicy.collectCommittedChangedFiles(baseRef, head, cwd);
-  const risk = changeDiscipline.resolveVerificationRisk(paths);
+  const mergeBase = gitOutput(['merge-base', baseRef, head], cwd);
+  const paths = reviewPolicy.collectCommittedChangedFiles(mergeBase, head, cwd);
+  const risk = reviewPolicy.classifyTrustedChange(paths, mergeBase, cwd).risk;
   return changeDiscipline.requiresLocalReviewGate(risk, {});
 }
 

@@ -149,8 +149,17 @@ function initializeReviewRepository(cwd: string): string {
   git(cwd, 'init');
   git(cwd, 'config', 'user.email', 'review@example.test');
   git(cwd, 'config', 'user.name', 'Review Test');
+  mkdirSync(join(cwd, '.github'));
+  writeFileSync(
+    join(cwd, '.github/change-risk.json'),
+    `${JSON.stringify({
+      high: ['^scripts/', '^\\.github/'],
+      medium: ['^test/'],
+      low: ['^README\\.md$'],
+    })}\n`,
+  );
   writeFileSync(join(cwd, 'README.md'), 'base\n');
-  git(cwd, 'add', 'README.md');
+  git(cwd, 'add', '.github/change-risk.json', 'README.md');
   git(cwd, 'commit', '-m', 'base');
   git(cwd, 'branch', '-M', 'main');
   const base = git(cwd, 'rev-parse', 'HEAD');
@@ -251,6 +260,27 @@ describe('review handoff', () => {
         }
       },
     );
+  });
+
+  it('uses the trusted base policy when the candidate downgrades its risk', () => {
+    const cwd = temporaryDirectory();
+    const base = initializeReviewRepository(cwd);
+    writeFileSync(
+      join(cwd, '.github/change-risk.json'),
+      `${JSON.stringify({ high: [], medium: [], low: ['.*'] })}\n`,
+    );
+    mkdirSync(join(cwd, 'scripts'));
+    writeFileSync(
+      join(cwd, 'scripts/high-risk.js'),
+      'module.exports = true;\n',
+    );
+    git(cwd, 'add', '.github/change-risk.json', 'scripts/high-risk.js');
+    git(cwd, 'commit', '-m', 'downgrade candidate policy');
+    const head = git(cwd, 'rev-parse', 'HEAD');
+
+    expect(() =>
+      prePushForFixture(`HEAD ${head} refs/heads/topic ${base}\n`, cwd),
+    ).toThrow(/No review-ready receipt exists/u);
   });
 
   it('classifies the committed candidate independently of worktree edits', () => {
