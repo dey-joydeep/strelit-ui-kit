@@ -249,8 +249,41 @@ function closedClassIds(ledger, head) {
     );
   }
   const [review] = reviews;
+  const closureReviews = ledger.units.filter((unit) => {
+    if (
+      unit.kind !== 'review' ||
+      unit.checkpoint?.verdict !== 'pass' ||
+      unit.review?.pass !== 'finding-closure'
+    ) {
+      return false;
+    }
+    if (
+      unit.status === 'completed' &&
+      unit.head === head &&
+      unit.sourceFingerprint === ledger.currentFingerprint
+    ) {
+      return true;
+    }
+    if (
+      unit.status !== 'carried-forward' ||
+      unit.carryForward?.toHead !== head
+    ) {
+      return false;
+    }
+    const coveredPaths = new Set([
+      ...unit.assignedPaths,
+      ...unit.adjacentPaths,
+    ]);
+    return !unit.carryForward.changedPaths.some((path) =>
+      coveredPaths.has(path),
+    );
+  });
   return [
-    ...new Set((review.checkpoint.classClosures ?? []).map(({ id }) => id)),
+    ...new Set(
+      [review, ...closureReviews].flatMap((unit) =>
+        (unit.checkpoint.classClosures ?? []).map(({ id }) => id),
+      ),
+    ),
   ].sort((left, right) => left.localeCompare(right));
 }
 

@@ -35,6 +35,12 @@ interface ReviewHandoffModule {
         head: string;
         sourceFingerprint?: string;
         assignedPaths?: string[];
+        adjacentPaths?: string[];
+        carryForward?: {
+          fromHead: string;
+          toHead: string;
+          changedPaths: string[];
+        };
         review?: { scope: string; pass: string; domains?: string[] };
         checkpoint?: {
           verdict?: string;
@@ -424,6 +430,67 @@ describe('review handoff', () => {
           status: 'completed',
           head: 'head-a',
           sourceFingerprint: 'fingerprint-a',
+          assignedPaths: ['scripts/review-handoff.js'],
+          adjacentPaths: [],
+          review: {
+            scope: 'domain',
+            pass: 'finding-closure',
+            domains: ['Tooling, CI, and verification'],
+          },
+          checkpoint: {
+            verdict: 'pass',
+            classClosures: [{ id: 'handoff-history' }],
+          },
+        },
+        {
+          kind: 'review',
+          status: 'carried-forward',
+          head: 'head-previous',
+          sourceFingerprint: 'fingerprint-previous',
+          assignedPaths: ['scripts/agent-work-ledger.js'],
+          adjacentPaths: [],
+          carryForward: {
+            fromHead: 'head-previous',
+            toHead: 'head-a',
+            changedPaths: ['scripts/review-handoff.js'],
+          },
+          review: {
+            scope: 'domain',
+            pass: 'finding-closure',
+            domains: ['Tooling, CI, and verification'],
+          },
+          checkpoint: {
+            verdict: 'pass',
+            classClosures: [{ id: 'ledger-history' }],
+          },
+        },
+        {
+          kind: 'review',
+          status: 'carried-forward',
+          head: 'head-previous',
+          sourceFingerprint: 'fingerprint-previous',
+          assignedPaths: ['scripts/review-handoff.js'],
+          adjacentPaths: [],
+          carryForward: {
+            fromHead: 'head-previous',
+            toHead: 'head-a',
+            changedPaths: ['scripts/review-handoff.js'],
+          },
+          review: {
+            scope: 'domain',
+            pass: 'finding-closure',
+            domains: ['Tooling, CI, and verification'],
+          },
+          checkpoint: {
+            verdict: 'pass',
+            classClosures: [{ id: 'invalidated-history' }],
+          },
+        },
+        {
+          kind: 'review',
+          status: 'completed',
+          head: 'head-a',
+          sourceFingerprint: 'fingerprint-a',
           assignedPaths: ['README.md'],
           review: {
             scope: 'whole-pr',
@@ -458,10 +525,17 @@ describe('review handoff', () => {
       ],
     };
     const classIds = handoff.closedClassIds(ledger, 'head-a');
-    expect(classIds).toEqual(['compatibility', 'rollback']);
+    expect(classIds).toEqual([
+      'compatibility',
+      'handoff-history',
+      'ledger-history',
+      'rollback',
+    ]);
     expect(
       handoff.reviewRequestMarker('1', 'head-a', 'base-a', classIds),
-    ).toContain('classes=compatibility,rollback');
+    ).toContain(
+      'classes=compatibility,handoff-history,ledger-history,rollback',
+    );
     expect(() => handoff.closedClassIds(ledger, 'head-b')).toThrow(
       'not cloud handoff head head-b',
     );

@@ -290,7 +290,7 @@ jobs:
                 const allowedDispositions = {
                   Critical: ['open', 'closed'],
                   High: ['open', 'closed'],
-                  Medium: ['open', 'closed', 'accepted'],
+                  Medium: ['open', 'closed', 'accepted', 'deferred'],
                   Low: ['open', 'closed', 'deferred']
                 };
                 if (!allowedDispositions[severity].includes(disposition)) {
@@ -360,23 +360,30 @@ jobs:
                 review,
                 'Accepted Medium findings'
               );
+              const deferredMedium = canonicalReviewCount(
+                review,
+                'Deferred Medium findings'
+              );
               if (
                 requireStatusReconciliation &&
                 (openMedium === undefined ||
                   closedMedium === undefined ||
                   acceptedMedium === undefined ||
+                  deferredMedium === undefined ||
                   mediumRecords.filter((record) => record.disposition === 'open').length !==
                     openMedium ||
                   mediumRecords.filter((record) => record.disposition === 'closed').length !==
                     closedMedium ||
                   mediumRecords.filter((record) => record.disposition === 'accepted')
                     .length !== acceptedMedium ||
+                  mediumRecords.filter((record) => record.disposition === 'deferred')
+                    .length !== deferredMedium ||
                   mediumRecords.some(
-                    (record) => !['open', 'closed', 'accepted'].includes(record.disposition)
+                    (record) => !['open', 'closed', 'accepted', 'deferred'].includes(record.disposition)
                   ))
               ) {
                 validationErrors.push(
-                  'Medium finding dispositions must reconcile with their open, closed, and accepted totals.'
+                  'Medium finding dispositions must reconcile with their open, closed, accepted, and deferred totals.'
                 );
               }
 
@@ -1069,11 +1076,15 @@ jobs:
                 const acceptedMedium = Number(
                   independentReview.match(/^Accepted Medium findings:[ \t]*(\d+)$/im)?.[1]
                 );
+                const deferredMedium = Number(
+                  independentReview.match(/^Deferred Medium findings:[ \t]*(\d+)$/im)?.[1]
+                );
                 if (
                   !Number.isInteger(openMedium) ||
                   !Number.isInteger(closedMedium) ||
                   !Number.isInteger(acceptedMedium) ||
-                  openMedium + closedMedium + acceptedMedium !== totalMedium
+                  !Number.isInteger(deferredMedium) ||
+                  openMedium + closedMedium + acceptedMedium + deferredMedium !== totalMedium
                 ) {
                   errors.push('Medium finding counts must be numeric and reconcile with the total Medium findings.');
                 }

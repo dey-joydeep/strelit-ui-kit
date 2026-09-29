@@ -197,7 +197,7 @@ function validateFindingDispositionEvidence(
     const allowedDispositions = {
       Critical: ['open', 'closed'],
       High: ['open', 'closed'],
-      Medium: ['open', 'closed', 'accepted'],
+      Medium: ['open', 'closed', 'accepted', 'deferred'],
       Low: ['open', 'closed', 'deferred'],
     };
     if (!allowedDispositions[severity].includes(disposition)) {
@@ -267,24 +267,33 @@ function validateFindingDispositionEvidence(
     review,
     'Accepted Medium findings',
   );
+  const deferredMedium = canonicalReviewCount(
+    review,
+    'Deferred Medium findings',
+  );
   if (
     requireStatusReconciliation &&
     (openMedium === undefined ||
       closedMedium === undefined ||
       acceptedMedium === undefined ||
+      deferredMedium === undefined ||
       mediumRecords.filter((record) => record.disposition === 'open').length !==
         openMedium ||
       mediumRecords.filter((record) => record.disposition === 'closed')
         .length !== closedMedium ||
       mediumRecords.filter((record) => record.disposition === 'accepted')
         .length !== acceptedMedium ||
+      mediumRecords.filter((record) => record.disposition === 'deferred')
+        .length !== deferredMedium ||
       mediumRecords.some(
         (record) =>
-          !['open', 'closed', 'accepted'].includes(record.disposition),
+          !['open', 'closed', 'accepted', 'deferred'].includes(
+            record.disposition,
+          ),
       ))
   ) {
     errors.push(
-      'Medium finding dispositions must reconcile with their open, closed, and accepted totals.',
+      'Medium finding dispositions must reconcile with their open, closed, accepted, and deferred totals.',
     );
   }
 
@@ -293,9 +302,6 @@ function validateFindingDispositionEvidence(
 
 function classifyFileRisk(fileName) {
   const normalized = normalizeFileName(fileName);
-  if (/^src\/.*\.(?:md|mdx|txt|adoc|rst)$/i.test(normalized)) {
-    return 'low';
-  }
   for (const risk of ['high', 'medium', 'low']) {
     if (riskPatterns[risk].some((pattern) => pattern.test(normalized))) {
       return risk;

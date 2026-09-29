@@ -124,6 +124,7 @@ function createPullRequestBody(
     'Open Medium findings: 0',
     'Closed Medium findings: 0',
     'Accepted Medium findings: 0',
+    'Deferred Medium findings: 0',
     'Medium acceptance evidence: Not applicable',
   ].filter((defaultLine) => {
     const label = defaultLine.slice(0, defaultLine.indexOf(':') + 1);
@@ -333,6 +334,7 @@ function createLargeHighRiskBody(manifest: string, reports: string): string {
     'Open Medium findings: 0',
     'Closed Medium findings: 0',
     'Accepted Medium findings: 0',
+    'Deferred Medium findings: 0',
     'Review artifact: Synthesis review',
     'Finding dispositions: No findings',
     'Residual risks: No known residual risks',
@@ -490,6 +492,10 @@ describe('contribution governance workflow', () => {
     expect(template).toContain('Review pass: **Pending**');
     expect(template).toContain('Rubric result: **Pending**');
     expect(template).toContain('Open Critical/High findings: **Pending**');
+    expect(template).toContain(
+      'No Critical or High finding and no open Medium finding remains',
+    );
+    expect(template).not.toContain('no unaccepted Medium finding remains');
     expect(agents).toContain('A same-context role change does not qualify');
     expect(agents).toMatch(/leave the\s+high-risk change incomplete/);
     expect(skill).toContain('Independent Quality Review');
@@ -1614,19 +1620,82 @@ describe('contribution governance workflow', () => {
       'Open Medium findings: 1',
       'Closed Medium findings: 0',
       'Accepted Medium findings: 0',
+      'Deferred Medium findings: 0',
       'Review artifact: Whole PR review',
       'Finding dispositions: One Medium remains open',
       'Residual risks: Open Medium finding',
     ].join('\n');
 
-    const failures = await runPullRequestMetadataPolicy(
-      createPullRequestBody('High', review),
-      [{ filename: 'src/ts/layout-manager.ts', changes: 12 }],
-    );
+    const body = createPullRequestBody('High', review)
+      .replace(
+        'Regression tests were added for executable behavior.',
+        'The governance policy harness executes this workflow contract.',
+      )
+      .replace(
+        /## Review Coverage Manifest[\s\S]*?## Domain Discovery Reports/,
+        '## Review Coverage Manifest\n\nPath: .github/workflows/contribution-governance.yml | Contract: PR metadata validation | Domains: Tooling, CI, and verification | Assignments: Tooling, CI, and verification => @reviewer-user | Adjacent: local policy validator | Tests: governance policy suite\n\n## Domain Discovery Reports',
+      );
+    const failures = await runPullRequestMetadataPolicy(body, [
+      {
+        filename: '.github/workflows/contribution-governance.yml',
+        changes: 12,
+      },
+    ]);
 
     expect(failures).toContain(
       'High-risk changes cannot have open Medium findings.',
     );
+  });
+
+  it('accepts traceable deferred Medium findings for high-risk work', async () => {
+    const review = [
+      'Review mode: **Independent**',
+      'Reviewer: @reviewer-user',
+      'Review scope: **Whole PR**',
+      'Review pass: **Fresh discovery**',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 0; High 0; Medium 1; Low 0',
+      'Open Critical/High findings: 0',
+      'Closed Critical/High findings: 0',
+      'Open Medium findings: 0',
+      'Closed Medium findings: 0',
+      'Accepted Medium findings: 0',
+      'Deferred Medium findings: 1',
+      'Review artifact: Whole PR review',
+      'Finding dispositions: Medium M-1 => Deferred: #123',
+      'Residual risks: Follow-up tracked in #123',
+    ].join('\n');
+
+    const body = createPullRequestBody('High', review)
+      .replace(
+        'Regression tests were added for executable behavior.',
+        'The governance policy harness executes this workflow contract.',
+      )
+      .replace(
+        /## Review Coverage Manifest[\s\S]*?## Domain Discovery Reports/,
+        '## Review Coverage Manifest\n\nPath: .github/workflows/contribution-governance.yml | Contract: PR metadata validation | Domains: Tooling, CI, and verification | Assignments: Tooling, CI, and verification => @reviewer-user | Adjacent: local policy validator | Tests: governance policy suite\n\n## Domain Discovery Reports',
+      );
+    const failures = await runPullRequestMetadataPolicy(
+      body,
+      [
+        {
+          filename: '.github/workflows/contribution-governance.yml',
+          changes: 12,
+        },
+      ],
+      [
+        {
+          commit_id: pullRequestHead,
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+      ],
+    );
+
+    expect(failures).toEqual([]);
   });
 
   it('rejects no-finding disposition prose when findings were reported', async () => {
@@ -1645,6 +1714,7 @@ describe('contribution governance workflow', () => {
       'Open Medium findings: 0',
       'Closed Medium findings: 0',
       'Accepted Medium findings: 0',
+      'Deferred Medium findings: 0',
       'Review artifact: Whole PR review',
       'Finding dispositions: No findings',
       'Residual risks: No known residual risks',
@@ -1683,6 +1753,7 @@ describe('contribution governance workflow', () => {
       'Open Medium findings: 0',
       'Closed Medium findings: 0',
       'Accepted Medium findings: 1',
+      'Deferred Medium findings: 0',
       'Medium acceptance evidence: https://github.test/comment/1',
       'Review artifact: [whole-PR review](https://github.test/review/1)',
       'Finding dispositions: Critical C-1 => Closed: README.md, package.json, Makefile, Dockerfile; High H-1 => Closed: AGENTS.md:10; Medium M-1 => Accepted: [acceptance comment](https://github.test/comment/1); Low L-1 => Deferred: #123',
@@ -1787,6 +1858,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Review artifact: Complete scoped review',
         `Finding dispositions: Low L-1 => Deferred: ${evidence}`,
         'Residual risks: Deferred finding remains tracked',
@@ -1822,6 +1894,7 @@ describe('contribution governance workflow', () => {
       'Open Medium findings: 0',
       'Closed Medium findings: 2',
       'Accepted Medium findings: 0',
+      'Deferred Medium findings: 0',
       'Review artifact: Whole PR review',
       'Finding dispositions: Critical C-1 => Closed: https://github.test/review/C-1; High H-1 => Closed: test/specs/layout-lifecycle-tests.ts; Medium M-1 => Closed: test/specs/contribution-governance-tests.ts; Medium M-2 => Closed: test/specs/contribution-governance-tests.ts; Low L-1 => Deferred: #123',
       'Residual risks: Deferred Low hardening remains tracked',
@@ -1928,10 +2001,10 @@ describe('contribution governance workflow', () => {
     [
       'Medium',
       { filename: 'test/specs/layout-lifecycle-tests.ts', changes: 12 },
-      'Findings: Critical 0; High 0; Medium 1; Low 0',
-      'Finding dispositions: Medium M-1 => Closed: test/specs/contribution-governance-tests.ts',
-      'Finding dispositions: Medium M-1 => Deferred: #123',
-      'Finding disposition M-1 uses invalid Deferred status for Medium severity.',
+      'Findings: Critical 1; High 0; Medium 0; Low 0',
+      'Finding dispositions: Critical C-1 => Closed: test/specs/contribution-governance-tests.ts',
+      'Finding dispositions: Critical C-1 => Deferred: #123',
+      'Finding disposition C-1 uses invalid Deferred status for Critical severity.',
     ],
     [
       'Low',
@@ -2004,6 +2077,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Finding dispositions: No findings',
       ].join('\n'),
       'Finding dispositions may state "No findings" only when all reported finding totals are zero.',
@@ -2017,6 +2091,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Finding dispositions: Critical C-1 => Closed: test/specs/contribution-governance-tests.ts',
       ].join('\n'),
       'Finding disposition records must reconcile with reported finding totals by severity.',
@@ -2030,6 +2105,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Finding dispositions: Critical REVIEW-1 => Closed: test/specs/contribution-governance-tests.ts; High review-1 => Closed: test/specs/contribution-governance-tests.ts',
       ].join('\n'),
       'Finding disposition ID must be unique: review-1.',
@@ -2044,6 +2120,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Finding dispositions: Critical C-1 => Closed: test/specs/contribution-governance-tests.ts',
       ].join('\n'),
       'Critical and High finding dispositions must reconcile with their open and closed totals.',
@@ -2057,9 +2134,10 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 1',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Finding dispositions: Medium M-1 => Accepted: https://github.test/comment/1',
       ].join('\n'),
-      'Medium finding dispositions must reconcile with their open, closed, and accepted totals.',
+      'Medium finding dispositions must reconcile with their open, closed, accepted, and deferred totals.',
     ],
     [
       'arbitrary completion prose without an evidence locator',
@@ -2070,6 +2148,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Finding dispositions: Low L-1 => Deferred: done',
       ].join('\n'),
       'Finding disposition L-1 evidence must contain only comma-separated repository paths, URLs, issues, commits, or artifacts.',
@@ -2084,6 +2163,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Finding dispositions: No findings',
       ].join('\n'),
       'A quality review must provide exactly one Findings line.',
@@ -2098,6 +2178,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Finding dispositions: No findings',
       ].join('\n'),
       'Critical and High finding dispositions must reconcile with their open and closed totals.',
@@ -2111,6 +2192,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Finding dispositions: Critical C-1 => Closed: pending #123',
       ].join('\n'),
       'Finding disposition C-1 evidence must contain only comma-separated repository paths, URLs, issues, commits, or artifacts.',
@@ -2124,6 +2206,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 1',
+        'Deferred Medium findings: 0',
         'Finding dispositions: Medium M-1 => Accepted: TODO https://github.test/issues/1',
       ].join('\n'),
       'Finding disposition M-1 evidence must contain only comma-separated repository paths, URLs, issues, commits, or artifacts.',
@@ -2167,6 +2250,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Review artifact: Whole PR review',
         'Finding dispositions: Recorded findings closed or open as counted',
         'Residual risks: No known residual risks',
@@ -2222,6 +2306,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 1',
+        'Deferred Medium findings: 0',
         'Medium acceptance evidence: https://github.test/comment/1',
         'Review artifact: Whole PR review',
         'Finding dispositions: Medium M-1 => Accepted: https://github.test/comment/1',
@@ -2426,6 +2511,9 @@ describe('risk-based PR verification', () => {
     ['src/ts/layout-manager.ts', 'high'],
     ['scripts/migrate-golden-layout-to-strelit.js', 'high'],
     ['scripts/AGENTS.md', 'high'],
+    ['src/AGENTS.md', 'high'],
+    ['src/guides/AGENTS.md', 'high'],
+    ['src/guides/README.md', 'low'],
     ['AGENTS.md', 'high'],
     ['.github/pull_request_template.md', 'high'],
     ['.github/change-risk.json', 'high'],
