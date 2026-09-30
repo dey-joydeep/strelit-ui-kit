@@ -2970,6 +2970,148 @@ describe('risk-based PR verification', () => {
     }
   });
 
+  it('refreshes target-tip policy during finish without prior recovery', () => {
+    const repository = mkdtempSync(join(tmpdir(), 'strelit-finish-policy-'));
+    try {
+      execFileSync('git', ['init'], { cwd: repository });
+      execFileSync('git', ['config', 'user.email', 'fixture@example.com'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['config', 'user.name', 'Fixture'], {
+        cwd: repository,
+      });
+      mkdirSync(join(repository, '.github'), { recursive: true });
+      mkdirSync(join(repository, 'src'), { recursive: true });
+      writeFileSync(join(repository, '.gitignore'), '.tmp/\n');
+      writeFileSync(
+        join(repository, '.github', 'change-risk.json'),
+        JSON.stringify({
+          high: [],
+          medium: [],
+          low: ['.*'],
+          verificationProfiles: { governance: [] },
+          reviewFocus: [],
+        }),
+      );
+      writeFileSync(join(repository, 'src', 'critical.ts'), 'base\n');
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Base policy.'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['branch', '-M', 'main'], { cwd: repository });
+      const base = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      execFileSync('git', ['checkout', '-b', 'feature'], { cwd: repository });
+      writeFileSync(join(repository, 'src', 'critical.ts'), 'candidate\n');
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Candidate change.'], {
+        cwd: repository,
+      });
+      const featureHead = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+
+      let ledger = agentWorkLedger.execute(
+        'init',
+        {
+          base,
+          head: featureHead,
+          implementer: 'implementer',
+          mode: 'pr',
+          root: '.tmp/agent-work',
+          task: 'finish-target-policy',
+        },
+        repository,
+      );
+      expect(ledger.reviewGate?.risk).toBe('low');
+
+      for (const kind of ['verification', 'synthesis']) {
+        agentWorkLedger.execute(
+          'add',
+          {
+            contracts: `${kind} evidence`,
+            kind,
+            paths: 'src/critical.ts',
+            root: '.tmp/agent-work',
+            unit: kind,
+          },
+          repository,
+        );
+        agentWorkLedger.execute(
+          'start',
+          {
+            owner: 'fixture',
+            root: '.tmp/agent-work',
+            unit: kind,
+          },
+          repository,
+        );
+        const fixtureLedger = JSON.parse(
+          readFileSync(
+            join(repository, '.tmp', 'agent-work', 'active.json'),
+            'utf8',
+          ),
+        ) as {
+          currentFingerprint: string;
+        };
+        const reportPath = join(repository, '.tmp', `${kind}-report.json`);
+        writeFileSync(
+          reportPath,
+          JSON.stringify({
+            lastVerifiedHead: featureHead,
+            sourceFingerprint: fixtureLedger.currentFingerprint,
+            inspectedPaths: ['src/critical.ts'],
+            remainingPaths: [],
+            commands: [],
+            findingSummary: `${kind} evidence passed.`,
+            findings: [],
+            uninspected: [],
+          }),
+        );
+        agentWorkLedger.execute(
+          'complete',
+          {
+            owner: 'fixture',
+            report: reportPath,
+            root: '.tmp/agent-work',
+            unit: kind,
+          },
+          repository,
+        );
+      }
+
+      execFileSync('git', ['checkout', 'main'], { cwd: repository });
+      writeFileSync(
+        join(repository, '.github', 'change-risk.json'),
+        JSON.stringify({
+          high: ['^src/'],
+          medium: [],
+          low: [],
+          verificationProfiles: { governance: [] },
+          reviewFocus: [],
+        }),
+      );
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Require high-risk review.'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['checkout', 'feature'], { cwd: repository });
+
+      expect(() =>
+        agentWorkLedger.execute(
+          'finish',
+          { root: '.tmp/agent-work' },
+          repository,
+        ),
+      ).toThrow('exact-source whole-PR fresh-discovery attempt');
+    } finally {
+      rmSync(repository, { force: true, recursive: true });
+    }
+  });
+
   it('requires the definitive ledger gate only for local high-risk work', () => {
     expect(
       changeDiscipline.requiresLocalReviewGate('high', {
