@@ -1583,7 +1583,17 @@ function validatePullRequestGate(
       `${finalReview.id} did not inspect every declared focus class.`,
     );
   }
-  validateClassClosureEvidence(finalReview);
+  const applicableReviewsWithFindings = ledger.units.filter(
+    (unit) =>
+      unit.kind === 'review' &&
+      (unit.checkpoint?.findings?.length ?? 0) > 0 &&
+      (currentCompleted(unit) ||
+        (unit.status === 'carried-forward' &&
+          unit.carryForward?.toHead === sourceState.head)),
+  );
+  for (const review of applicableReviewsWithFindings) {
+    validateClassClosureEvidence(review);
+  }
 
   const requiredVerification =
     gate.verificationProfile === 'governance'

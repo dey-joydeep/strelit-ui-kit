@@ -2229,6 +2229,87 @@ describe('agent work ledger', () => {
     );
   });
 
+  it('requires structured closure on applicable focused review evidence', () => {
+    const source = {
+      head: firstHead,
+      fingerprint: 'a'.repeat(64),
+      workingPaths: [],
+    };
+    const path = 'src/ts/layout-manager.ts';
+    const domains = ['Runtime behavior, lifecycle, and ownership'];
+    const ledger: Ledger = {
+      schemaVersion: 1,
+      taskId: 'focused-class-closure',
+      baseHead: secondHead,
+      currentHead: source.head,
+      currentFingerprint: source.fingerprint,
+      workingPaths: [],
+      status: 'active',
+      updatedAt: '2026-08-13T00:00:00.000Z',
+      reviewGate: {
+        mode: 'pull-request',
+        implementer: 'codex-main',
+        risk: 'high',
+        verificationProfile: 'product',
+        requiredPaths: [path],
+        applicableDomains: domains,
+        nonGeneratedLines: 12,
+        reviewFocus: [],
+      },
+      units: [],
+    };
+    const focused = completedUnit('focused-review', 'review', [path]);
+    focused.review = {
+      reviewer: 'reviewer-a',
+      scope: 'domain',
+      pass: 'finding-closure',
+      domains,
+    };
+    retargetCompletedUnit(focused, source, [path]);
+    focused.checkpoint!.findings = [
+      {
+        classId: 'rollback',
+        severity: 'medium',
+        status: 'closed',
+        summary: 'Rollback ownership was repaired.',
+      },
+    ];
+    const finalReview = completedUnit('whole-review', 'review', [path]);
+    finalReview.adjacentPaths = ['src/ts/controls/browser-popout.ts'];
+    finalReview.requiredCommands = ['source inspection'];
+    finalReview.review = {
+      reviewer: 'reviewer-b',
+      scope: 'whole-pr',
+      pass: 'fresh-discovery',
+      domains,
+    };
+    retargetCompletedUnit(finalReview, source, [
+      path,
+      ...finalReview.adjacentPaths,
+    ]);
+    finalReview.checkpoint!.inspectedClasses = [];
+    bindReviewBoundary(finalReview, ledger);
+    ledger.units.push(focused, finalReview);
+
+    expect(() =>
+      ledgerModule.validatePullRequestGate(ledger, source, gateOptions(ledger)),
+    ).toThrow('focused-review findings require defect-class closure evidence');
+
+    focused.checkpoint!.classClosures = [
+      {
+        id: 'rollback',
+        name: 'rollback failures',
+        searchQuery: 'rg rollback src/ts',
+        hitCount: 1,
+        dispositionedCount: 1,
+        dispositionSummary: 'The matching defect was fixed.',
+      },
+    ];
+    expect(() =>
+      ledgerModule.validatePullRequestGate(ledger, source, gateOptions(ledger)),
+    ).not.toThrow();
+  });
+
   it('rejects paths outside the repository and malformed dependencies', () => {
     expect(() => ledgerModule.normalizePath('../outside.json')).toThrow(
       'repository-relative',

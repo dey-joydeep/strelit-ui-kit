@@ -194,11 +194,7 @@ function main() {
   const baseRef = options.reviewReady
     ? resolveBaseRef(process.env.STRELIT_REVIEW_BASE_REF)
     : resolveBaseRef(options.base);
-  const changedFiles = collectChangedFiles(baseRef);
-  const expectedBaseHead = runGit(
-    ['merge-base', baseRef, 'HEAD'],
-    false,
-  ).stdout.trim();
+  const { expectedBaseHead, changedFiles } = verificationBoundary(baseRef);
   const trustedClassification = classifyTrustedChange(
     changedFiles,
     expectedBaseHead,
@@ -269,6 +265,18 @@ function main() {
   }
 }
 
+function verificationBoundary(baseRef, cwd = process.cwd()) {
+  const expectedBaseHead = runGit(
+    ['merge-base', baseRef, 'HEAD'],
+    false,
+    cwd,
+  ).stdout.trim();
+  return {
+    expectedBaseHead,
+    changedFiles: collectChangedFiles(expectedBaseHead, cwd),
+  };
+}
+
 if (require.main === module) {
   try {
     main();
@@ -288,6 +296,7 @@ module.exports = {
   resolveBaseRef,
   resolveVerificationRisk,
   requiresLocalReviewGate,
+  verificationBoundary,
   verificationProfileForFiles,
   verificationScriptsForRisk,
 };

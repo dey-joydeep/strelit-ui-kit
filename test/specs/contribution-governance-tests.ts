@@ -28,6 +28,10 @@ interface ChangeDisciplineModule {
     risk: 'low' | 'medium' | 'high',
     environment?: Record<string, string | undefined>,
   ): boolean;
+  verificationBoundary(
+    baseRef: string,
+    cwd?: string,
+  ): { expectedBaseHead: string; changedFiles: string[] };
   verificationProfileForFiles(fileNames: string[]): 'governance' | 'product';
   verificationScriptsForRisk(
     risk: 'low' | 'medium' | 'high',
@@ -3021,6 +3025,61 @@ describe('risk-based PR verification', () => {
       expect(changeDiscipline.collectChangedFiles(base, repository)).toEqual(
         expect.arrayContaining(['src/critical.ts', 'docs/critical.ts']),
       );
+    } finally {
+      rmSync(repository, { force: true, recursive: true });
+    }
+  });
+
+  it('collects verification paths from the merge base when the target advances', () => {
+    const repository = mkdtempSync(join(tmpdir(), 'strelit-merge-base-risk-'));
+    try {
+      execFileSync('git', ['init'], { cwd: repository });
+      execFileSync('git', ['config', 'user.email', 'tests@example.invalid'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['config', 'user.name', 'Strelit Tests'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['config', 'core.autocrlf', 'false'], {
+        cwd: repository,
+      });
+      writeFileSync(join(repository, 'README.md'), 'base\n');
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Create base.'], {
+        cwd: repository,
+      });
+      const mergeBase = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      execFileSync('git', ['checkout', '-b', 'feature'], { cwd: repository });
+      writeFileSync(join(repository, 'AGENTS.md'), 'feature policy\n');
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Change feature policy.'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['checkout', '-'], { cwd: repository });
+      mkdirSync(join(repository, 'src'));
+      writeFileSync(
+        join(repository, 'src', 'upstream.ts'),
+        'upstream change\n',
+      );
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Advance target.'], {
+        cwd: repository,
+      });
+      const targetTip = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      execFileSync('git', ['checkout', 'feature'], { cwd: repository });
+
+      expect(
+        changeDiscipline.verificationBoundary(targetTip, repository),
+      ).toEqual({
+        expectedBaseHead: mergeBase,
+        changedFiles: ['AGENTS.md'],
+      });
     } finally {
       rmSync(repository, { force: true, recursive: true });
     }
