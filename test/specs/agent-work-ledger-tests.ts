@@ -2291,6 +2291,12 @@ describe('agent work ledger', () => {
     bindReviewBoundary(finalReview, ledger);
     ledger.units.push(focused, finalReview);
 
+    delete focused.checkpoint!.verdict;
+    expect(() =>
+      ledgerModule.validatePullRequestGate(ledger, source, gateOptions(ledger)),
+    ).toThrow('finding-closure evidence requires a passing verdict');
+    focused.checkpoint!.verdict = 'pass';
+
     expect(() =>
       ledgerModule.validatePullRequestGate(ledger, source, gateOptions(ledger)),
     ).toThrow('focused-review findings require defect-class closure evidence');
@@ -2308,6 +2314,74 @@ describe('agent work ledger', () => {
     expect(() =>
       ledgerModule.validatePullRequestGate(ledger, source, gateOptions(ledger)),
     ).not.toThrow();
+  });
+
+  it('cannot finish high-risk PR work after only a focused review', () => {
+    withTemporaryRepository((repository) => {
+      const base = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      writeFileSync(
+        join(repository, 'src', 'ts', 'layout-manager.ts'),
+        'layout changed\n',
+      );
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Change layout.'], {
+        cwd: repository,
+      });
+      const head = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      ledgerModule.execute(
+        'init',
+        {
+          task: 'focused-only',
+          base,
+          head,
+          mode: 'pr',
+          implementer: 'codex-main',
+        },
+        repository,
+      );
+      ledgerModule.execute(
+        'add',
+        {
+          unit: 'focused-review',
+          kind: 'review',
+          paths: 'src/ts/layout-manager.ts',
+          adjacent: 'src/ts/controls/browser-popout.ts',
+          contracts: 'Close a known finding.',
+          commands: 'npm test',
+          reviewer: 'reviewer-a',
+          scope: 'domain',
+          pass: 'finding-closure',
+          domains: 'Runtime behavior, lifecycle, and ownership',
+        },
+        repository,
+      );
+      ledgerModule.execute(
+        'start',
+        { unit: 'focused-review', owner: 'reviewer-a' },
+        repository,
+      );
+      ledgerModule.execute(
+        'complete',
+        {
+          unit: 'focused-review',
+          report: writeReport(repository, { verdict: 'pass' }),
+        },
+        repository,
+      );
+
+      expect(() => ledgerModule.execute('finish', {}, repository)).toThrow(
+        'requires exactly one exact-source whole-PR fresh-discovery attempt',
+      );
+      expect(ledgerModule.execute('status', {}, repository).status).toBe(
+        'active',
+      );
+    });
   });
 
   it('rejects paths outside the repository and malformed dependencies', () => {

@@ -53,6 +53,7 @@ interface ReviewHandoffModule {
     head: string,
   ): string[];
   hasReviewRequest(marker: string, comments: Array<{ body?: string }>): boolean;
+  ledgerDigest(ledger: Record<string, unknown>): string;
   parsePushUpdates(input: string): Array<{
     localRef: string;
     localSha: string;
@@ -63,6 +64,7 @@ interface ReviewHandoffModule {
     command: string;
     options: Record<string, string | boolean>;
   };
+  parseUpstream(upstream: string): { remote: string; branch: string };
   receiptPath(cwd?: string): string;
   prePush(input: string, cwd?: string): void;
   reviewRequestMarker(
@@ -76,6 +78,7 @@ interface ReviewHandoffModule {
     source: SourceState,
     expectedBaseHead: string,
     expectedBaseTip: string,
+    expectedLedgerDigest: string,
   ): string[];
   validatePullRequestBoundary(
     pullRequest: string,
@@ -177,26 +180,35 @@ describe('review handoff', () => {
   it('rejects missing, stale-head, stale-source, and stale-base receipts', () => {
     const source = { head: 'head-a', fingerprint: 'fingerprint-a' };
     expect(
-      handoff.validateReceipt(undefined, source, 'base-a', 'base-tip-a'),
+      handoff.validateReceipt(
+        undefined,
+        source,
+        'base-a',
+        'base-tip-a',
+        'ledger-a',
+      ),
     ).toEqual(['No review-ready receipt exists for this checkout.']);
     expect(
       handoff.validateReceipt(
         {
-          version: 2,
+          version: 3,
           head: 'head-b',
           fingerprint: 'fingerprint-b',
           baseHead: 'base-b',
           baseTip: 'base-tip-b',
+          ledgerDigest: 'ledger-b',
         },
         source,
         'base-a',
         'base-tip-a',
+        'ledger-a',
       ),
     ).toEqual([
       'The review-ready receipt targets a different commit.',
       'The review-ready receipt is stale for the current source state.',
       'The review-ready receipt targets a different pull-request base.',
       'The review-ready receipt targets a different pull-request base tip.',
+      'The review-ready receipt targets different local review evidence.',
     ]);
   });
 
@@ -205,17 +217,46 @@ describe('review handoff', () => {
     expect(
       handoff.validateReceipt(
         {
-          version: 2,
+          version: 3,
           head: source.head,
           fingerprint: source.fingerprint,
           baseHead: 'base-a',
           baseTip: 'base-tip-a',
+          ledgerDigest: 'ledger-a',
         },
         source,
         'base-a',
         'base-tip-a',
+        'ledger-a',
       ),
     ).toEqual([]);
+  });
+
+  it('binds a receipt to the exact reviewed ledger evidence', () => {
+    const reviewed = { status: 'complete', units: [{ id: 'final-review' }] };
+    const replacement = {
+      status: 'complete',
+      units: [{ id: 'replacement-review' }],
+    };
+    const source = { head: 'head-a', fingerprint: 'fingerprint-a' };
+    expect(
+      handoff.validateReceipt(
+        {
+          version: 3,
+          head: source.head,
+          fingerprint: source.fingerprint,
+          baseHead: 'base-a',
+          baseTip: 'base-tip-a',
+          ledgerDigest: handoff.ledgerDigest(reviewed),
+        },
+        source,
+        'base-a',
+        'base-tip-a',
+        handoff.ledgerDigest(replacement),
+      ),
+    ).toEqual([
+      'The review-ready receipt targets different local review evidence.',
+    ]);
   });
 
   it('rejects a cloud request when the PR head or base differs', () => {
@@ -331,6 +372,18 @@ describe('review handoff', () => {
         remoteSha: '000',
       },
     ]);
+  });
+
+  it('parses an upstream independently of the local branch name', () => {
+    expect(
+      handoff.parseUpstream('origin/codex/review-governance-right-sizing'),
+    ).toEqual({
+      remote: 'origin',
+      branch: 'codex/review-governance-right-sizing',
+    });
+    expect(() => handoff.parseUpstream('origin')).toThrow(
+      'Unexpected upstream branch',
+    );
   });
 
   it('forwards hook input without passing Git hook positional arguments', () => {

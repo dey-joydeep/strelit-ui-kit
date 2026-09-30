@@ -1,5 +1,5 @@
 const { spawnSync } = require('node:child_process');
-const { randomUUID } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
 const {
   mkdirSync,
   readFileSync,
@@ -13,7 +13,11 @@ const reviewPolicy = require('./change-review-policy.js');
 const changeDiscipline = require('./verify-pr.js');
 const { npmCommand } = require('./npm-command.js');
 
-const receiptVersion = 2;
+const receiptVersion = 3;
+
+function ledgerDigest(ledger) {
+  return createHash('sha256').update(JSON.stringify(ledger)).digest('hex');
+}
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -45,6 +49,29 @@ function runNpmScript(script, args = [], cwd = process.cwd()) {
 
 function gitOutput(args, cwd = process.cwd()) {
   return run('git', args, { cwd });
+}
+
+function parseUpstream(upstream) {
+  const separator = upstream.indexOf('/');
+  if (separator <= 0 || separator === upstream.length - 1) {
+    throw new Error(`Unexpected upstream branch: ${upstream}`);
+  }
+  return {
+    remote: upstream.slice(0, separator),
+    branch: upstream.slice(separator + 1),
+  };
+}
+
+function pushCurrentUpstream(cwd = process.cwd()) {
+  const upstream = gitOutput(
+    ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'],
+    cwd,
+  );
+  const { remote, branch } = parseUpstream(upstream);
+  run('git', ['push', remote, `HEAD:refs/heads/${branch}`], {
+    cwd,
+    inherit: true,
+  });
 }
 
 function receiptPath(cwd = process.cwd()) {
@@ -93,6 +120,7 @@ function assertCleanCommittedHead(cwd = process.cwd()) {
 
 function createReceipt(cwd = process.cwd()) {
   const source = assertCleanCommittedHead(cwd);
+  const ledger = agentLedger.execute('status', {}, cwd);
   const baseRef = changeDiscipline.resolveBaseRef(
     process.env.STRELIT_REVIEW_BASE_REF,
     cwd,
@@ -103,11 +131,18 @@ function createReceipt(cwd = process.cwd()) {
     fingerprint: source.fingerprint,
     baseHead: gitOutput(['merge-base', baseRef, 'HEAD'], cwd),
     baseTip: gitOutput(['rev-parse', `${baseRef}^{commit}`], cwd),
+    ledgerDigest: ledgerDigest(ledger),
     createdAt: new Date().toISOString(),
   };
 }
 
-function validateReceipt(receipt, source, expectedBaseHead, expectedBaseTip) {
+function validateReceipt(
+  receipt,
+  source,
+  expectedBaseHead,
+  expectedBaseTip,
+  expectedLedgerDigest,
+) {
   const errors = [];
   if (receipt === undefined) {
     return ['No review-ready receipt exists for this checkout.'];
@@ -133,6 +168,11 @@ function validateReceipt(receipt, source, expectedBaseHead, expectedBaseTip) {
       'The review-ready receipt targets a different pull-request base tip.',
     );
   }
+  if (receipt.ledgerDigest !== expectedLedgerDigest) {
+    errors.push(
+      'The review-ready receipt targets different local review evidence.',
+    );
+  }
   return errors;
 }
 
@@ -144,11 +184,17 @@ function checkReceipt(cwd = process.cwd()) {
   );
   const expectedBaseHead = gitOutput(['merge-base', baseRef, 'HEAD'], cwd);
   const expectedBaseTip = gitOutput(['rev-parse', `${baseRef}^{commit}`], cwd);
+  const receipt = readReceipt(cwd);
+  const expectedLedgerDigest =
+    receipt === undefined
+      ? undefined
+      : ledgerDigest(agentLedger.execute('status', {}, cwd));
   const errors = validateReceipt(
-    readReceipt(cwd),
+    receipt,
     source,
     expectedBaseHead,
     expectedBaseTip,
+    expectedLedgerDigest,
   );
   if (errors.length > 0) {
     throw new Error(
@@ -406,7 +452,7 @@ function prepare(cwd = process.cwd()) {
 function finalize(options, cwd = process.cwd()) {
   requirePullRequest(options);
   prepare(cwd);
-  run('git', ['push'], { cwd, inherit: true });
+  pushCurrentUpstream(cwd);
   requestCloudReview(options, cwd);
 }
 
@@ -441,9 +487,11 @@ module.exports = {
   closedClassIds,
   createReceipt,
   hasReviewRequest,
+  ledgerDigest,
   parseArguments,
   parsePullRequestRepository,
   parsePushUpdates,
+  parseUpstream,
   prePush,
   receiptPath,
   requiresReceiptForHead,

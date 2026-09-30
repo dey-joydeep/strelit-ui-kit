@@ -1592,6 +1592,14 @@ function validatePullRequestGate(
           unit.carryForward?.toHead === sourceState.head)),
   );
   for (const review of applicableReviewsWithFindings) {
+    if (
+      review.review?.pass === 'finding-closure' &&
+      review.checkpoint.verdict !== 'pass'
+    ) {
+      throw new Error(
+        `${review.id} finding-closure evidence requires a passing verdict.`,
+      );
+    }
     validateClassClosureEvidence(review);
   }
 
@@ -2054,10 +2062,15 @@ function executeUnlocked(
     if (ledger.units.length === 0) {
       throw new Error('Cannot finish an empty ledger.');
     }
+    if (ledger.reviewGate?.risk === 'high') {
+      validatePullRequestGate(ledger, sourceState, {
+        expectedBaseHead: ledger.baseHead,
+        expectedReviewGate: ledger.reviewGate,
+        preflight: true,
+      });
+    }
     const requiredKinds =
-      ledger.reviewGate?.risk === 'high'
-        ? ['review']
-        : ['verification', 'synthesis'];
+      ledger.reviewGate?.risk === 'high' ? [] : ['verification', 'synthesis'];
     for (const requiredKind of requiredKinds) {
       const currentGate = ledger.units.some(
         (unit) =>
