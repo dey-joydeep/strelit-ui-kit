@@ -239,7 +239,7 @@ function main() {
   if (localReviewGate) {
     const ledger = agentLedger.execute('status', {});
     const expectedReviewGate = createPullRequestReviewGate(
-      expectedBaseHead,
+      trustedPolicyHead,
       ledger.reviewGate?.implementer ?? '',
       process.cwd(),
     );

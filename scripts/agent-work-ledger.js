@@ -1633,7 +1633,7 @@ function gitChangedPaths(fromHead, toHead, cwd) {
   }
 }
 
-function canonicalPullRequestBase(cwd) {
+function canonicalPullRequestBoundary(cwd) {
   const candidates = [
     process.env.GITHUB_BASE_SHA,
     process.env.STRELIT_REVIEW_BASE_REF,
@@ -1647,8 +1647,11 @@ function canonicalPullRequestBase(cwd) {
   );
   for (const candidate of candidates) {
     try {
-      gitOutput(['cat-file', '-e', `${candidate}^{commit}`], cwd);
-      return gitOutput(['merge-base', candidate, 'HEAD'], cwd);
+      const targetTip = gitOutput(['rev-parse', `${candidate}^{commit}`], cwd);
+      return {
+        mergeBase: gitOutput(['merge-base', targetTip, 'HEAD'], cwd),
+        targetTip,
+      };
     } catch {
       continue;
     }
@@ -1765,8 +1768,14 @@ function refreshReviewGate(ledger, cwd) {
   if (ledger.reviewGate === undefined || ledger.status === 'complete') {
     return;
   }
+  const boundary = canonicalPullRequestBoundary(cwd);
+  if (boundary.mergeBase !== ledger.baseHead) {
+    throw new Error(
+      `Pull-request merge base changed from ${ledger.baseHead} to ${boundary.mergeBase}; initialize a new PR ledger.`,
+    );
+  }
   ledger.reviewGate = createPullRequestReviewGate(
-    ledger.baseHead,
+    boundary.targetTip,
     ledger.reviewGate.implementer,
     cwd,
   );
@@ -1814,11 +1823,12 @@ function executeUnlocked(
     if (resolvedBaseHead.length === 0) {
       throw new Error(`Cannot determine merge base for ${baseHead}.`);
     }
-    if (mode === 'pr') {
-      const trustedBaseHead = canonicalPullRequestBase(cwd);
-      if (resolvedBaseHead !== trustedBaseHead) {
+    const trustedBoundary =
+      mode === 'pr' ? canonicalPullRequestBoundary(cwd) : undefined;
+    if (trustedBoundary !== undefined) {
+      if (resolvedBaseHead !== trustedBoundary.mergeBase) {
         throw new Error(
-          `Declared PR base resolves to ${resolvedBaseHead}; trusted base is ${trustedBaseHead}.`,
+          `Declared PR base resolves to ${resolvedBaseHead}; trusted base is ${trustedBoundary.mergeBase}.`,
         );
       }
     }
@@ -1833,9 +1843,9 @@ function executeUnlocked(
       units: [],
       updatedAt: now.toISOString(),
     };
-    if (mode === 'pr') {
+    if (trustedBoundary !== undefined) {
       ledger.reviewGate = createPullRequestReviewGate(
-        resolvedBaseHead,
+        trustedBoundary.targetTip,
         requireOption(options, 'implementer'),
         cwd,
       );
@@ -2049,6 +2059,7 @@ function executeUnlocked(
         'Repository source changed; run recover before finishing.',
       );
     }
+    refreshReviewGate(ledger, cwd);
     const incomplete = ledger.units.filter(
       (unit) => !['completed', 'carried-forward'].includes(unit.status),
     );

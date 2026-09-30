@@ -48,16 +48,6 @@ interface ChangeReviewPolicyModule {
     risk: 'low' | 'medium' | 'high';
     verificationProfile: 'governance' | 'product';
   };
-  createPullRequestReviewGate(
-    baseHead: string,
-    implementer: string,
-    cwd: string,
-  ): {
-    risk: 'low' | 'medium' | 'high';
-    verificationProfile: 'governance' | 'product';
-    requiredPaths: string[];
-    reviewFocus: Array<{ path: string; classes: string[] }>;
-  };
   reviewFocusForBase(
     baseHead: string,
     cwd?: string,
@@ -72,6 +62,22 @@ interface ChangeReviewPolicyModule {
   ): string[];
 }
 
+interface AgentWorkLedgerModule {
+  execute(
+    command: string,
+    options: Record<string, string>,
+    cwd: string,
+    now?: Date,
+  ): {
+    reviewGate?: {
+      risk: 'low' | 'medium' | 'high';
+      verificationProfile: 'governance' | 'product';
+      requiredPaths: string[];
+      reviewFocus: Array<{ path: string; classes: string[] }>;
+    };
+  };
+}
+
 const require = createRequire(import.meta.url);
 const MarkdownIt = require('markdown-it') as new (options?: {
   html?: boolean;
@@ -83,6 +89,8 @@ const changeDiscipline =
   require('../../scripts/verify-pr.js') as ChangeDisciplineModule;
 const changeReviewPolicy =
   require('../../scripts/change-review-policy.js') as ChangeReviewPolicyModule;
+const agentWorkLedger =
+  require('../../scripts/agent-work-ledger.js') as AgentWorkLedgerModule;
 
 interface PullRequestFile {
   readonly changes: number;
@@ -2832,6 +2840,7 @@ describe('risk-based PR verification', () => {
       });
       mkdirSync(join(repository, '.github'), { recursive: true });
       mkdirSync(join(repository, 'src'), { recursive: true });
+      writeFileSync(join(repository, '.gitignore'), '.tmp/\n');
       writeFileSync(
         join(repository, '.github', 'change-risk.json'),
         JSON.stringify({
@@ -2881,13 +2890,24 @@ describe('risk-based PR verification', () => {
       }).trim();
       execFileSync('git', ['checkout', 'feature'], { cwd: repository });
 
-      expect(
-        changeReviewPolicy.createPullRequestReviewGate(
-          targetTip,
-          'implementer',
-          repository,
-        ),
-      ).toMatchObject({
+      const featureHead = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      const ledger = agentWorkLedger.execute(
+        'init',
+        {
+          base: targetTip,
+          head: featureHead,
+          implementer: 'implementer',
+          mode: 'pr',
+          root: '.tmp/agent-work',
+          task: 'target-tip-policy',
+        },
+        repository,
+      );
+
+      expect(ledger.reviewGate).toMatchObject({
         risk: 'high',
         verificationProfile: 'product',
         requiredPaths: ['src/critical.ts'],
@@ -2898,6 +2918,53 @@ describe('risk-based PR verification', () => {
           },
         ],
       });
+
+      execFileSync('git', ['checkout', 'main'], { cwd: repository });
+      const refreshedPolicy = JSON.parse(
+        readFileSync(join(repository, '.github', 'change-risk.json'), 'utf8'),
+      ) as { reviewFocus: Array<{ classes: string[] }> };
+      refreshedPolicy.reviewFocus[0].classes.push('target-tip recovery');
+      writeFileSync(
+        join(repository, '.github', 'change-risk.json'),
+        JSON.stringify(refreshedPolicy),
+      );
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Advance target focus.'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['checkout', 'feature'], { cwd: repository });
+      const recoveredLedger = agentWorkLedger.execute(
+        'recover',
+        { root: '.tmp/agent-work' },
+        repository,
+      );
+      expect(recoveredLedger.reviewGate?.reviewFocus).toEqual([
+        {
+          path: 'src/critical.ts',
+          findingCount: 3,
+          classes: ['target-tip hardening', 'target-tip recovery'],
+        },
+      ]);
+
+      const verification = spawnSync(
+        process.execPath,
+        [resolve('scripts/verify-pr.js'), '--review-ready'],
+        {
+          cwd: repository,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            STRELIT_REVIEW_BASE_REF: 'main',
+          },
+        },
+      );
+      expect(verification.status).toBe(1);
+      expect(verification.stderr).toContain(
+        'The definitive PR review ledger is not complete.',
+      );
+      expect(verification.stderr).not.toContain(
+        'Persisted PR review scope does not match',
+      );
     } finally {
       rmSync(repository, { force: true, recursive: true });
     }
