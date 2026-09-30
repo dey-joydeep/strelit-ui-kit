@@ -95,6 +95,7 @@ Closed Medium findings: **Pending**
 Accepted Medium findings: **Pending**
 Deferred Medium findings: **Pending**
 Medium acceptance evidence: Pending
+Medium deferral rationale: Pending
 Review artifact: Pending
 Finding dispositions: Pending
 Residual risks: Pending
@@ -118,6 +119,9 @@ durable evidence here.
 If Accepted Medium findings is nonzero, link an existing comment on this PR
 authored by the PR author. That comment must state `Accepted Medium findings: N`
 and `Rationale: ...` with the same accepted count.
+If Deferred Medium findings is nonzero, provide one concrete
+`Medium deferral rationale:` line that names every deferred finding ID and
+explains why each fix is postponed. Placeholder text is rejected.
 
 Finding dispositions must use exactly one line with semicolon-separated records:
 `Finding dispositions: <Severity> <unique-ID> => <Status>: <evidence>`.
@@ -136,6 +140,7 @@ Open Medium findings: 0
 Closed Medium findings: 0
 Accepted Medium findings: 0
 Deferred Medium findings: 0
+Medium deferral rationale: Not applicable
 Finding dispositions: No findings
 
 Findings example:

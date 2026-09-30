@@ -195,9 +195,13 @@ function main() {
     ? resolveBaseRef(process.env.STRELIT_REVIEW_BASE_REF)
     : resolveBaseRef(options.base);
   const { expectedBaseHead, changedFiles } = verificationBoundary(baseRef);
+  const trustedPolicyHead = runGit(
+    ['rev-parse', `${baseRef}^{commit}`],
+    false,
+  ).stdout.trim();
   const trustedClassification = classifyTrustedChange(
     changedFiles,
-    expectedBaseHead,
+    trustedPolicyHead,
     process.cwd(),
   );
   const forcedRisk = process.env.GITHUB_FORCE_RISK;

@@ -52,6 +52,7 @@ interface ReviewHandoffModule {
     },
     head: string,
   ): string[];
+  currentUpstream(cwd?: string): { remote: string; branch: string };
   hasReviewRequest(marker: string, comments: Array<{ body?: string }>): boolean;
   ledgerDigest(ledger: Record<string, unknown>): string;
   parsePushUpdates(input: string): Array<{
@@ -64,7 +65,6 @@ interface ReviewHandoffModule {
     command: string;
     options: Record<string, string | boolean>;
   };
-  parseUpstream(upstream: string): { remote: string; branch: string };
   receiptPath(cwd?: string): string;
   prePush(input: string, cwd?: string): void;
   reviewRequestMarker(
@@ -374,15 +374,21 @@ describe('review handoff', () => {
     ]);
   });
 
-  it('parses an upstream independently of the local branch name', () => {
-    expect(
-      handoff.parseUpstream('origin/codex/review-governance-right-sizing'),
-    ).toEqual({
-      remote: 'origin',
-      branch: 'codex/review-governance-right-sizing',
+  it('resolves a configured upstream without splitting the remote name', () => {
+    const cwd = temporaryDirectory();
+    initializeReviewRepository(cwd);
+    git(cwd, 'checkout', '-b', 'feature');
+    git(cwd, 'config', 'branch.feature.remote', 'team/origin');
+    git(cwd, 'config', 'branch.feature.merge', 'refs/heads/review/feature');
+
+    expect(handoff.currentUpstream(cwd)).toEqual({
+      remote: 'team/origin',
+      branch: 'review/feature',
     });
-    expect(() => handoff.parseUpstream('origin')).toThrow(
-      'Unexpected upstream branch',
+
+    git(cwd, 'config', 'branch.feature.merge', 'refs/tags/v1');
+    expect(() => handoff.currentUpstream(cwd)).toThrow(
+      'Unexpected upstream configuration',
     );
   });
 

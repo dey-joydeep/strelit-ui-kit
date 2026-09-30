@@ -51,23 +51,35 @@ function gitOutput(args, cwd = process.cwd()) {
   return run('git', args, { cwd });
 }
 
-function parseUpstream(upstream) {
-  const separator = upstream.indexOf('/');
-  if (separator <= 0 || separator === upstream.length - 1) {
-    throw new Error(`Unexpected upstream branch: ${upstream}`);
+function currentUpstream(cwd = process.cwd()) {
+  const localBranch = gitOutput(
+    ['symbolic-ref', '--quiet', '--short', 'HEAD'],
+    cwd,
+  );
+  const remote = gitOutput(
+    ['config', '--get', `branch.${localBranch}.remote`],
+    cwd,
+  );
+  const mergeRef = gitOutput(
+    ['config', '--get', `branch.${localBranch}.merge`],
+    cwd,
+  );
+  const branchPrefix = 'refs/heads/';
+  if (
+    remote.length === 0 ||
+    !mergeRef.startsWith(branchPrefix) ||
+    mergeRef.length === branchPrefix.length
+  ) {
+    throw new Error(`Unexpected upstream configuration for ${localBranch}.`);
   }
   return {
-    remote: upstream.slice(0, separator),
-    branch: upstream.slice(separator + 1),
+    remote,
+    branch: mergeRef.slice(branchPrefix.length),
   };
 }
 
 function pushCurrentUpstream(cwd = process.cwd()) {
-  const upstream = gitOutput(
-    ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'],
-    cwd,
-  );
-  const { remote, branch } = parseUpstream(upstream);
+  const { remote, branch } = currentUpstream(cwd);
   run('git', ['push', remote, `HEAD:refs/heads/${branch}`], {
     cwd,
     inherit: true,
@@ -210,8 +222,16 @@ function requiresReceiptForHead(head, cwd = process.cwd()) {
     cwd,
   );
   const mergeBase = gitOutput(['merge-base', baseRef, head], cwd);
+  const trustedPolicyHead = gitOutput(
+    ['rev-parse', `${baseRef}^{commit}`],
+    cwd,
+  );
   const paths = reviewPolicy.collectCommittedChangedFiles(mergeBase, head, cwd);
-  const risk = reviewPolicy.classifyTrustedChange(paths, mergeBase, cwd).risk;
+  const risk = reviewPolicy.classifyTrustedChange(
+    paths,
+    trustedPolicyHead,
+    cwd,
+  ).risk;
   return changeDiscipline.requiresLocalReviewGate(risk, {});
 }
 
@@ -486,12 +506,12 @@ if (require.main === module) {
 module.exports = {
   closedClassIds,
   createReceipt,
+  currentUpstream,
   hasReviewRequest,
   ledgerDigest,
   parseArguments,
   parsePullRequestRepository,
   parsePushUpdates,
-  parseUpstream,
   prePush,
   receiptPath,
   requiresReceiptForHead,

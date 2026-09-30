@@ -205,7 +205,7 @@ function validateFindingDispositionEvidence(
         `Finding disposition ${match[2]} uses invalid ${match[3]} status for ${severity} severity.`,
       );
     }
-    parsedRecords.push({ disposition, severity });
+    parsedRecords.push({ disposition, identifier, severity });
   }
   if (invalidRecord) {
     errors.push(
@@ -295,6 +295,32 @@ function validateFindingDispositionEvidence(
     errors.push(
       'Medium finding dispositions must reconcile with their open, closed, accepted, and deferred totals.',
     );
+  }
+
+  const deferredMediumRecords = mediumRecords.filter(
+    (record) => record.disposition === 'deferred',
+  );
+  if (requireStatusReconciliation && deferredMediumRecords.length > 0) {
+    const rationaleValues = reviewFieldValues(
+      review,
+      'Medium deferral rationale',
+    );
+    const rationale = rationaleValues[0]?.trim() ?? '';
+    const rationaleIsConcrete =
+      rationaleValues.length === 1 &&
+      rationale.length >= 20 &&
+      !/^(?:pending|none|not applicable|n\/?a|tbd|todo)\b/i.test(rationale);
+    const rationaleIdentifiers = new Set(
+      rationale.toLowerCase().match(/[a-z0-9][a-z0-9._/#-]*/g) ?? [],
+    );
+    const coversEveryDeferredFinding = deferredMediumRecords.every((record) =>
+      rationaleIdentifiers.has(record.identifier),
+    );
+    if (!rationaleIsConcrete || !coversEveryDeferredFinding) {
+      errors.push(
+        'Deferred Medium findings require one concrete Medium deferral rationale that names every deferred finding ID.',
+      );
+    }
   }
 
   return errors;
@@ -585,7 +611,9 @@ function domainsForPath(fileName) {
     /(?:^|\/)(?:(?:README|CHANGELOG|CONTRIBUTING|COMMUNITY|SECURITY|SUPPORT|VERSIONING|LICENSE|LICENSING|NOTICE|AUTHORS)(?:\.[^/]*)?|AGENTS\.md|[^/]+\.(?:md|mdx|txt|adoc|rst))$/i.test(
       normalized,
     );
-  const sourceDocumentation = /^src\/.*\.md$/i.test(normalized);
+  const sourceDocumentation = /^src\/.*\.(?:md|mdx|txt|adoc|rst)$/i.test(
+    normalized,
+  );
   const governancePolicy =
     /(?:^|\/)AGENTS\.md$/.test(normalized) ||
     normalized.startsWith('docs/contributing/') ||
@@ -635,6 +663,7 @@ function createPullRequestReviewGate(baseHead, implementer, cwd) {
   if (mergeBase.length === 0) {
     throw new Error(`Cannot determine merge base for ${baseHead}.`);
   }
+  const trustedPolicyHead = gitText(['rev-parse', `${baseHead}^{commit}`], cwd);
   const requiredPaths = collectChangedFiles(mergeBase, cwd);
   const requiredCoverage = requiredPaths.map((path) => domainsForPath(path));
   const applicableDomains = [...new Set(requiredCoverage.flat())].sort(
@@ -643,10 +672,10 @@ function createPullRequestReviewGate(baseHead, implementer, cwd) {
   const nonGeneratedLines = collectNonGeneratedLines(mergeBase, cwd);
   const trustedClassification = classifyTrustedChange(
     requiredPaths,
-    mergeBase,
+    trustedPolicyHead,
     cwd,
   );
-  const trustedReviewFocus = reviewFocusForBase(mergeBase, cwd);
+  const trustedReviewFocus = reviewFocusForBase(trustedPolicyHead, cwd);
   return {
     mode: 'pull-request',
     implementer,
