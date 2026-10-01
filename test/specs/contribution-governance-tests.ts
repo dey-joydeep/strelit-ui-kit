@@ -28,14 +28,54 @@ interface ChangeDisciplineModule {
     risk: 'low' | 'medium' | 'high',
     environment?: Record<string, string | undefined>,
   ): boolean;
-  verificationScriptsForRisk(risk: 'low' | 'medium' | 'high'): string[];
+  verificationBoundary(
+    baseRef: string,
+    cwd?: string,
+  ): { expectedBaseHead: string; changedFiles: string[] };
+  verificationProfileForFiles(fileNames: string[]): 'governance' | 'product';
+  verificationScriptsForRisk(
+    risk: 'low' | 'medium' | 'high',
+    verificationProfile?: 'governance' | 'product',
+  ): string[];
 }
 
 interface ChangeReviewPolicyModule {
+  classifyTrustedChange(
+    fileNames: string[],
+    baseHead: string,
+    cwd?: string,
+  ): {
+    risk: 'low' | 'medium' | 'high';
+    verificationProfile: 'governance' | 'product';
+  };
+  reviewFocusForBase(
+    baseHead: string,
+    cwd?: string,
+  ): Array<{
+    pattern: string;
+    findingCount: number;
+    classes: string[];
+  }>;
   validateFindingDispositionEvidence(
     review: string,
     requireStatusReconciliation?: boolean,
   ): string[];
+}
+
+interface AgentWorkLedgerModule {
+  execute(
+    command: string,
+    options: Record<string, string>,
+    cwd: string,
+    now?: Date,
+  ): {
+    reviewGate?: {
+      risk: 'low' | 'medium' | 'high';
+      verificationProfile: 'governance' | 'product';
+      requiredPaths: string[];
+      reviewFocus: Array<{ path: string; classes: string[] }>;
+    };
+  };
 }
 
 const require = createRequire(import.meta.url);
@@ -49,6 +89,8 @@ const changeDiscipline =
   require('../../scripts/verify-pr.js') as ChangeDisciplineModule;
 const changeReviewPolicy =
   require('../../scripts/change-review-policy.js') as ChangeReviewPolicyModule;
+const agentWorkLedger =
+  require('../../scripts/agent-work-ledger.js') as AgentWorkLedgerModule;
 
 interface PullRequestFile {
   readonly changes: number;
@@ -104,6 +146,7 @@ function createPullRequestBody(
     'Open Medium findings: 0',
     'Closed Medium findings: 0',
     'Accepted Medium findings: 0',
+    'Deferred Medium findings: 0',
     'Medium acceptance evidence: Not applicable',
   ].filter((defaultLine) => {
     const label = defaultLine.slice(0, defaultLine.indexOf(':') + 1);
@@ -128,7 +171,9 @@ function createPullRequestBody(
     '## Test Exception',
     'Regression tests were added for executable behavior.',
     '## Review-Finding Expansion',
-    evidence,
+    'This is not a review-finding fix; no confirmed defect classes apply.',
+    '## Defect Class Closures',
+    'No confirmed defect classes.',
     '## Out of Scope',
     evidence,
     '## Scope Justification',
@@ -313,6 +358,7 @@ function createLargeHighRiskBody(manifest: string, reports: string): string {
     'Open Medium findings: 0',
     'Closed Medium findings: 0',
     'Accepted Medium findings: 0',
+    'Deferred Medium findings: 0',
     'Review artifact: Synthesis review',
     'Finding dispositions: No findings',
     'Residual risks: No known residual risks',
@@ -414,6 +460,7 @@ describe('contribution governance workflow', () => {
       '## Test Evidence',
       '## Test Exception',
       '## Review-Finding Expansion',
+      '## Defect Class Closures',
       '## Out of Scope',
       '## Scope Justification',
       '## Independent Quality Review',
@@ -470,6 +517,10 @@ describe('contribution governance workflow', () => {
     expect(template).toContain('Review pass: **Pending**');
     expect(template).toContain('Rubric result: **Pending**');
     expect(template).toContain('Open Critical/High findings: **Pending**');
+    expect(template).toContain(
+      'No Critical or High finding and no open Medium finding remains',
+    );
+    expect(template).not.toContain('no unaccepted Medium finding remains');
     expect(agents).toContain('A same-context role change does not qualify');
     expect(agents).toMatch(/leave the\s+high-risk change incomplete/);
     expect(skill).toContain('Independent Quality Review');
@@ -477,7 +528,7 @@ describe('contribution governance workflow', () => {
     expect(rubric).toContain('## Hard Gates');
     expect(rubric).toContain('## Measuring Quality Over Time');
     expect(rubric).toContain('score below 2');
-    expect(rubric).toContain('fresh discovery pass');
+    expect(rubric).toMatch(/fresh whole-PR\s+discovery pass/);
   });
 
   it('keeps documented finding-disposition examples valid in both validators', async () => {
@@ -591,20 +642,21 @@ describe('contribution governance workflow', () => {
     expect(componentBindingSkill).not.toContain("container.on('destroy'");
   });
 
-  it('documents definitive PR verification after ledger synthesis', () => {
+  it('documents definitive PR verification after the final fresh review', () => {
     const verificationGuide = readFileSync(
       resolve('docs/contributing/verification-pipeline.md'),
       'utf8',
     );
-    const synthesis = verificationGuide.indexOf(
-      'obtain an unused independent synthesis',
+    const finalReview = verificationGuide.indexOf(
+      'Obtain one independent fresh whole-PR review',
     );
     const definitiveVerification = verificationGuide.indexOf(
       'Finish the ledger and run `npm run verify:pr`',
     );
 
-    expect(synthesis).toBeGreaterThan(-1);
-    expect(definitiveVerification).toBeGreaterThan(synthesis);
+    expect(finalReview).toBeGreaterThan(-1);
+    expect(definitiveVerification).toBeGreaterThan(finalReview);
+    expect(verificationGuide).not.toContain('unused independent synthesis');
   });
 
   it('binds compatibility decisions to an explicit product-evolution phase', () => {
@@ -799,6 +851,56 @@ describe('contribution governance workflow', () => {
       .replace('__WHAT_CHANGED__', why);
     expect(await runPullRequestMetadataPolicy(outOfOrder, files)).toContain(
       'PR body sections are out of order at: ## Why',
+    );
+  });
+
+  it('requires reconciled defect-class closure records for review fixes', async () => {
+    const review = [
+      'Review mode: **Self-review**',
+      'Reviewer: Implementer Agent',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric: `docs/contributing/ai-change-quality-rubric.md`',
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 0; High 0; Medium 0; Low 0',
+      'Open Critical/High findings: **0**',
+      'Review artifact: Local review record',
+      'Finding dispositions: No findings recorded',
+      'Residual risks: No known residual risks',
+    ].join('\n');
+    const files = [{ filename: 'README.md', changes: 10 }];
+    const reviewFix = createPullRequestBody('Low', review).replace(
+      'This is not a review-finding fix; no confirmed defect classes apply.',
+      'Confirmed review findings were expanded across sibling cases.',
+    );
+
+    expect(await runPullRequestMetadataPolicy(reviewFix, files)).toContain(
+      'Confirmed review findings require structured defect-class closure records.',
+    );
+
+    const contradictory = reviewFix.replace(
+      'Confirmed review findings were expanded across sibling cases.',
+      'Confirmed review findings were fixed, but no confirmed defect classes apply.',
+    );
+    expect(await runPullRequestMetadataPolicy(contradictory, files)).toContain(
+      'Confirmed review findings require structured defect-class closure records.',
+    );
+
+    const mismatched = reviewFix.replace(
+      'No confirmed defect classes.',
+      'Class: rollback | Name: rollback failures | Query: rg rollback src | Hits: 2 | Dispositioned: 1 | Summary: one hit fixed',
+    );
+    expect(await runPullRequestMetadataPolicy(mismatched, files)).toContain(
+      'Defect-class closure rollback must disposition every search hit.',
+    );
+
+    const reconciled = mismatched.replace(
+      'Dispositioned: 1',
+      'Dispositioned: 2',
+    );
+    expect(await runPullRequestMetadataPolicy(reconciled, files)).not.toEqual(
+      expect.arrayContaining([expect.stringContaining('defect-class closure')]),
     );
   });
 
@@ -1528,7 +1630,7 @@ describe('contribution governance workflow', () => {
     );
   });
 
-  it('classifies src documentation with exactly tooling and test/documentation domains', async () => {
+  it('classifies src documentation as low-risk prose', async () => {
     const review = [
       'Review mode: **Independent**',
       'Reviewer: @reviewer-user',
@@ -1573,11 +1675,46 @@ describe('contribution governance workflow', () => {
       reviews,
     );
 
-    expect(rejected).toContain(
-      'Coverage manifest path src/TOOLCHAIN.md must declare exactly these domains: Tooling, CI, and verification; Tests and documentation',
-    );
+    expect(changeDiscipline.classifyFileRisk('src/TOOLCHAIN.md')).toBe('low');
+    expect(rejected).toEqual([]);
     expect(accepted).toEqual([]);
   });
+
+  it.each(['mdx', 'txt', 'adoc', 'rst'])(
+    'treats src documentation with the .%s extension as non-executable prose',
+    async (extension) => {
+      const fileName = `src/guide.${extension}`;
+      const review = [
+        'Review mode: **Self-review**',
+        'Reviewer: Implementer',
+        'Reviewed boundary: working tree documentation diff',
+        'Rubric result: **Pass**',
+        'Dimensions below 2: **0**',
+        'Verdict: **Pass**',
+        'Findings: Critical 0; High 0; Medium 0; Low 0',
+        'Open Critical/High findings: 0',
+        'Review artifact: Documentation review',
+        'Finding dispositions: No findings',
+        'Residual risks: No executable behavior changed',
+      ].join('\n');
+      const body = createPullRequestBody('Low', review).replace(
+        'Regression tests were added for executable behavior.',
+        'Tests were added for this documentation-only change.',
+      );
+      const failures = await runPullRequestMetadataPolicy(body, [
+        { filename: fileName, changes: 5 },
+      ]);
+
+      expect(changeDiscipline.classifyFileRisk(fileName)).toBe('low');
+      expect(changeDiscipline.domainsForPath(fileName)).toEqual([
+        'Tests and documentation',
+        'Tooling, CI, and verification',
+      ]);
+      expect(failures).not.toContain(
+        'Executable behavior changed without tests. Provide a substantive Test Exception.',
+      );
+    },
+  );
 
   it('rejects unresolved Medium findings for high-risk work', async () => {
     const review = [
@@ -1594,18 +1731,132 @@ describe('contribution governance workflow', () => {
       'Open Medium findings: 1',
       'Closed Medium findings: 0',
       'Accepted Medium findings: 0',
+      'Deferred Medium findings: 0',
       'Review artifact: Whole PR review',
       'Finding dispositions: One Medium remains open',
       'Residual risks: Open Medium finding',
     ].join('\n');
 
-    const failures = await runPullRequestMetadataPolicy(
-      createPullRequestBody('High', review),
-      [{ filename: 'src/ts/layout-manager.ts', changes: 12 }],
-    );
+    const body = createPullRequestBody('High', review)
+      .replace(
+        'Regression tests were added for executable behavior.',
+        'The governance policy harness executes this workflow contract.',
+      )
+      .replace(
+        /## Review Coverage Manifest[\s\S]*?## Domain Discovery Reports/,
+        '## Review Coverage Manifest\n\nPath: .github/workflows/contribution-governance.yml | Contract: PR metadata validation | Domains: Tooling, CI, and verification | Assignments: Tooling, CI, and verification => @reviewer-user | Adjacent: local policy validator | Tests: governance policy suite\n\n## Domain Discovery Reports',
+      );
+    const failures = await runPullRequestMetadataPolicy(body, [
+      {
+        filename: '.github/workflows/contribution-governance.yml',
+        changes: 12,
+      },
+    ]);
 
     expect(failures).toContain(
       'High-risk changes cannot have open Medium findings.',
+    );
+  });
+
+  it('accepts traceable deferred Medium findings for high-risk work', async () => {
+    const review = [
+      'Review mode: **Independent**',
+      'Reviewer: @reviewer-user',
+      'Review scope: **Whole PR**',
+      'Review pass: **Fresh discovery**',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 0; High 0; Medium 1; Low 0',
+      'Open Critical/High findings: 0',
+      'Closed Critical/High findings: 0',
+      'Open Medium findings: 0',
+      'Closed Medium findings: 0',
+      'Accepted Medium findings: 0',
+      'Deferred Medium findings: 1',
+      'Medium deferral rationale: M-1 is postponed until issue #123 resolves the upstream dependency.',
+      'Review artifact: Whole PR review',
+      'Finding dispositions: Medium M-1 => Deferred: #123',
+      'Residual risks: Follow-up tracked in #123',
+    ].join('\n');
+
+    const body = createPullRequestBody('High', review)
+      .replace(
+        'Regression tests were added for executable behavior.',
+        'The governance policy harness executes this workflow contract.',
+      )
+      .replace(
+        /## Review Coverage Manifest[\s\S]*?## Domain Discovery Reports/,
+        '## Review Coverage Manifest\n\nPath: .github/workflows/contribution-governance.yml | Contract: PR metadata validation | Domains: Tooling, CI, and verification | Assignments: Tooling, CI, and verification => @reviewer-user | Adjacent: local policy validator | Tests: governance policy suite\n\n## Domain Discovery Reports',
+      );
+    const failures = await runPullRequestMetadataPolicy(
+      body,
+      [
+        {
+          filename: '.github/workflows/contribution-governance.yml',
+          changes: 12,
+        },
+      ],
+      [
+        {
+          commit_id: pullRequestHead,
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+      ],
+    );
+
+    expect(failures).toEqual([]);
+  });
+
+  it('rejects deferred Medium findings without a concrete per-finding rationale', async () => {
+    const review = [
+      'Review mode: **Independent**',
+      'Reviewer: @reviewer-user',
+      'Review scope: **Whole PR**',
+      'Review pass: **Fresh discovery**',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 0; High 0; Medium 1; Low 0',
+      'Open Critical/High findings: 0',
+      'Closed Critical/High findings: 0',
+      'Open Medium findings: 0',
+      'Closed Medium findings: 0',
+      'Accepted Medium findings: 0',
+      'Deferred Medium findings: 1',
+      'Medium deferral rationale: M-10 is postponed until issue #123 resolves the upstream dependency.',
+      'Review artifact: Whole PR review',
+      'Finding dispositions: Medium M-1 => Deferred: #123',
+      'Residual risks: Follow-up tracked in #123',
+    ].join('\n');
+
+    const failures = await runPullRequestMetadataPolicy(
+      createPullRequestBody('High', review),
+      [
+        {
+          filename: '.github/workflows/contribution-governance.yml',
+          changes: 12,
+        },
+      ],
+      [
+        {
+          commit_id: pullRequestHead,
+          state: 'APPROVED',
+          user: { login: 'reviewer-user' },
+        },
+      ],
+    );
+
+    expect(failures).toContain(
+      'Deferred Medium findings require one concrete Medium deferral rationale that names every deferred finding ID.',
+    );
+    expect(
+      changeReviewPolicy.validateFindingDispositionEvidence(review),
+    ).toContain(
+      'Deferred Medium findings require one concrete Medium deferral rationale that names every deferred finding ID.',
     );
   });
 
@@ -1625,6 +1876,7 @@ describe('contribution governance workflow', () => {
       'Open Medium findings: 0',
       'Closed Medium findings: 0',
       'Accepted Medium findings: 0',
+      'Deferred Medium findings: 0',
       'Review artifact: Whole PR review',
       'Finding dispositions: No findings',
       'Residual risks: No known residual risks',
@@ -1663,6 +1915,7 @@ describe('contribution governance workflow', () => {
       'Open Medium findings: 0',
       'Closed Medium findings: 0',
       'Accepted Medium findings: 1',
+      'Deferred Medium findings: 0',
       'Medium acceptance evidence: https://github.test/comment/1',
       'Review artifact: [whole-PR review](https://github.test/review/1)',
       'Finding dispositions: Critical C-1 => Closed: README.md, package.json, Makefile, Dockerfile; High H-1 => Closed: AGENTS.md:10; Medium M-1 => Accepted: [acceptance comment](https://github.test/comment/1); Low L-1 => Deferred: #123',
@@ -1767,6 +2020,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Review artifact: Complete scoped review',
         `Finding dispositions: Low L-1 => Deferred: ${evidence}`,
         'Residual risks: Deferred finding remains tracked',
@@ -1802,6 +2056,7 @@ describe('contribution governance workflow', () => {
       'Open Medium findings: 0',
       'Closed Medium findings: 2',
       'Accepted Medium findings: 0',
+      'Deferred Medium findings: 0',
       'Review artifact: Whole PR review',
       'Finding dispositions: Critical C-1 => Closed: https://github.test/review/C-1; High H-1 => Closed: test/specs/layout-lifecycle-tests.ts; Medium M-1 => Closed: test/specs/contribution-governance-tests.ts; Medium M-2 => Closed: test/specs/contribution-governance-tests.ts; Low L-1 => Deferred: #123',
       'Residual risks: Deferred Low hardening remains tracked',
@@ -1908,10 +2163,10 @@ describe('contribution governance workflow', () => {
     [
       'Medium',
       { filename: 'test/specs/layout-lifecycle-tests.ts', changes: 12 },
-      'Findings: Critical 0; High 0; Medium 1; Low 0',
-      'Finding dispositions: Medium M-1 => Closed: test/specs/contribution-governance-tests.ts',
-      'Finding dispositions: Medium M-1 => Deferred: #123',
-      'Finding disposition M-1 uses invalid Deferred status for Medium severity.',
+      'Findings: Critical 1; High 0; Medium 0; Low 0',
+      'Finding dispositions: Critical C-1 => Closed: test/specs/contribution-governance-tests.ts',
+      'Finding dispositions: Critical C-1 => Deferred: #123',
+      'Finding disposition C-1 uses invalid Deferred status for Critical severity.',
     ],
     [
       'Low',
@@ -1984,6 +2239,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Finding dispositions: No findings',
       ].join('\n'),
       'Finding dispositions may state "No findings" only when all reported finding totals are zero.',
@@ -1997,6 +2253,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Finding dispositions: Critical C-1 => Closed: test/specs/contribution-governance-tests.ts',
       ].join('\n'),
       'Finding disposition records must reconcile with reported finding totals by severity.',
@@ -2010,6 +2267,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Finding dispositions: Critical REVIEW-1 => Closed: test/specs/contribution-governance-tests.ts; High review-1 => Closed: test/specs/contribution-governance-tests.ts',
       ].join('\n'),
       'Finding disposition ID must be unique: review-1.',
@@ -2024,6 +2282,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Finding dispositions: Critical C-1 => Closed: test/specs/contribution-governance-tests.ts',
       ].join('\n'),
       'Critical and High finding dispositions must reconcile with their open and closed totals.',
@@ -2037,9 +2296,10 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 1',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Finding dispositions: Medium M-1 => Accepted: https://github.test/comment/1',
       ].join('\n'),
-      'Medium finding dispositions must reconcile with their open, closed, and accepted totals.',
+      'Medium finding dispositions must reconcile with their open, closed, accepted, and deferred totals.',
     ],
     [
       'arbitrary completion prose without an evidence locator',
@@ -2050,6 +2310,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Finding dispositions: Low L-1 => Deferred: done',
       ].join('\n'),
       'Finding disposition L-1 evidence must contain only comma-separated repository paths, URLs, issues, commits, or artifacts.',
@@ -2064,6 +2325,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Finding dispositions: No findings',
       ].join('\n'),
       'A quality review must provide exactly one Findings line.',
@@ -2078,6 +2340,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Finding dispositions: No findings',
       ].join('\n'),
       'Critical and High finding dispositions must reconcile with their open and closed totals.',
@@ -2091,6 +2354,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Finding dispositions: Critical C-1 => Closed: pending #123',
       ].join('\n'),
       'Finding disposition C-1 evidence must contain only comma-separated repository paths, URLs, issues, commits, or artifacts.',
@@ -2104,6 +2368,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 1',
+        'Deferred Medium findings: 0',
         'Finding dispositions: Medium M-1 => Accepted: TODO https://github.test/issues/1',
       ].join('\n'),
       'Finding disposition M-1 evidence must contain only comma-separated repository paths, URLs, issues, commits, or artifacts.',
@@ -2147,6 +2412,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 0',
+        'Deferred Medium findings: 0',
         'Review artifact: Whole PR review',
         'Finding dispositions: Recorded findings closed or open as counted',
         'Residual risks: No known residual risks',
@@ -2202,6 +2468,7 @@ describe('contribution governance workflow', () => {
         'Open Medium findings: 0',
         'Closed Medium findings: 0',
         'Accepted Medium findings: 1',
+        'Deferred Medium findings: 0',
         'Medium acceptance evidence: https://github.test/comment/1',
         'Review artifact: Whole PR review',
         'Finding dispositions: Medium M-1 => Accepted: https://github.test/comment/1',
@@ -2406,6 +2673,9 @@ describe('risk-based PR verification', () => {
     ['src/ts/layout-manager.ts', 'high'],
     ['scripts/migrate-golden-layout-to-strelit.js', 'high'],
     ['scripts/AGENTS.md', 'high'],
+    ['src/AGENTS.md', 'high'],
+    ['src/guides/AGENTS.md', 'high'],
+    ['src/guides/README.md', 'low'],
     ['AGENTS.md', 'high'],
     ['.github/pull_request_template.md', 'high'],
     ['.github/change-risk.json', 'high'],
@@ -2413,6 +2683,7 @@ describe('risk-based PR verification', () => {
     ['docs/contributing/workflow.md', 'high'],
     ['docs/architecture/product-evolution-policy.md', 'high'],
     ['docs/architecture/compatibility-audit-maintenance.md', 'high'],
+    ['test/specs/agent-work-ledger-tests.ts', 'high'],
     ['.github/workflows/CI.yml', 'high'],
     ['.github/CODEOWNERS', 'high'],
     ['.npmignore', 'high'],
@@ -2453,6 +2724,445 @@ describe('risk-based PR verification', () => {
       'apitest:build',
       'apitest:smoke',
     ]);
+    expect(
+      changeDiscipline.verificationScriptsForRisk('high', 'governance'),
+    ).toEqual(['verify:agent-ledger', 'verify:governance']);
+  });
+
+  it('uses focused governance verification only for an explicit pure-governance diff', () => {
+    expect(
+      changeDiscipline.verificationProfileForFiles([
+        '.github/change-risk.json',
+        'docs/contributing/verification-pipeline.md',
+        'scripts/verify-pr.js',
+        'test/specs/contribution-governance-tests.ts',
+      ]),
+    ).toBe('governance');
+    expect(
+      changeDiscipline.verificationProfileForFiles([
+        'AGENTS.md',
+        'src/ts/layout-manager.ts',
+      ]),
+    ).toBe('product');
+    expect(
+      changeDiscipline.verificationProfileForFiles(['unknown-file.xyz']),
+    ).toBe('product');
+    expect(changeDiscipline.verificationProfileForFiles([])).toBe('product');
+    expect(
+      changeDiscipline.classifyChangeRisk([
+        'test/specs/agent-work-ledger-tests.ts',
+      ]),
+    ).toBe('high');
+  });
+
+  it('uses the trusted base policy when the candidate broadens its governance profile', () => {
+    const repository = mkdtempSync(join(tmpdir(), 'strelit-trusted-risk-'));
+    try {
+      execFileSync('git', ['init'], { cwd: repository });
+      execFileSync('git', ['config', 'user.email', 'fixture@example.com'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['config', 'user.name', 'Fixture'], {
+        cwd: repository,
+      });
+      mkdirSync(join(repository, '.github'), { recursive: true });
+      mkdirSync(join(repository, 'src', 'ts'), { recursive: true });
+      writeFileSync(
+        join(repository, '.github', 'change-risk.json'),
+        readFileSync(resolve('.github/change-risk.json'), 'utf8'),
+      );
+      writeFileSync(
+        join(repository, 'src', 'ts', 'layout-manager.ts'),
+        'base\n',
+      );
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Base policy.'], {
+        cwd: repository,
+      });
+      const base = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+
+      writeFileSync(
+        join(repository, '.github', 'change-risk.json'),
+        JSON.stringify({
+          high: [],
+          medium: [],
+          low: ['.*'],
+          verificationProfiles: { governance: ['.*'] },
+          reviewFocus: [],
+        }),
+      );
+      writeFileSync(
+        join(repository, 'src', 'ts', 'layout-manager.ts'),
+        'candidate\n',
+      );
+
+      expect(
+        changeReviewPolicy.classifyTrustedChange(
+          ['.github/change-risk.json', 'src/ts/layout-manager.ts'],
+          base,
+          repository,
+        ),
+      ).toEqual({ risk: 'high', verificationProfile: 'product' });
+
+      const malformedPolicy = JSON.parse(
+        readFileSync(resolve('.github/change-risk.json'), 'utf8'),
+      ) as Record<string, unknown>;
+      delete malformedPolicy.high;
+      writeFileSync(
+        join(repository, '.github', 'change-risk.json'),
+        JSON.stringify(malformedPolicy),
+      );
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Malformed base policy.'], {
+        cwd: repository,
+      });
+      const malformedBase = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      expect(
+        changeReviewPolicy.classifyTrustedChange(
+          ['AGENTS.md'],
+          malformedBase,
+          repository,
+        ),
+      ).toEqual({ risk: 'high', verificationProfile: 'product' });
+    } finally {
+      rmSync(repository, { force: true, recursive: true });
+    }
+  });
+
+  it('keeps review-focus declarations from the trusted base policy', () => {
+    const repository = mkdtempSync(join(tmpdir(), 'strelit-trusted-focus-'));
+    try {
+      execFileSync('git', ['init'], { cwd: repository });
+      execFileSync('git', ['config', 'user.email', 'fixture@example.com'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['config', 'user.name', 'Fixture'], {
+        cwd: repository,
+      });
+      mkdirSync(join(repository, '.github'), { recursive: true });
+      writeFileSync(
+        join(repository, '.github', 'change-risk.json'),
+        readFileSync(resolve('.github/change-risk.json'), 'utf8'),
+      );
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Base focus policy.'], {
+        cwd: repository,
+      });
+      const base = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+
+      const candidatePolicy = JSON.parse(
+        readFileSync(resolve('.github/change-risk.json'), 'utf8'),
+      ) as { reviewFocus: unknown[] };
+      candidatePolicy.reviewFocus = [];
+      writeFileSync(
+        join(repository, '.github', 'change-risk.json'),
+        JSON.stringify(candidatePolicy),
+      );
+
+      expect(changeReviewPolicy.reviewFocusForBase(base, repository)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            pattern: '^src/ts/layout-manager\\.ts$',
+            classes: ['partial-failure rollback', 'popout ownership'],
+          }),
+        ]),
+      );
+    } finally {
+      rmSync(repository, { force: true, recursive: true });
+    }
+  });
+
+  it('uses target-tip policy while collecting candidate paths from the merge base', () => {
+    const repository = mkdtempSync(join(tmpdir(), 'strelit-target-policy-'));
+    try {
+      execFileSync('git', ['init'], { cwd: repository });
+      execFileSync('git', ['config', 'user.email', 'fixture@example.com'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['config', 'user.name', 'Fixture'], {
+        cwd: repository,
+      });
+      mkdirSync(join(repository, '.github'), { recursive: true });
+      mkdirSync(join(repository, 'src'), { recursive: true });
+      writeFileSync(join(repository, '.gitignore'), '.tmp/\n');
+      writeFileSync(
+        join(repository, '.github', 'change-risk.json'),
+        JSON.stringify({
+          high: [],
+          medium: [],
+          low: ['.*'],
+          verificationProfiles: { governance: [] },
+          reviewFocus: [],
+        }),
+      );
+      writeFileSync(join(repository, 'src', 'critical.ts'), 'base\n');
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Base policy.'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['branch', '-M', 'main'], { cwd: repository });
+      execFileSync('git', ['checkout', '-b', 'feature'], { cwd: repository });
+      writeFileSync(join(repository, 'src', 'critical.ts'), 'candidate\n');
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Candidate change.'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['checkout', 'main'], { cwd: repository });
+      writeFileSync(
+        join(repository, '.github', 'change-risk.json'),
+        JSON.stringify({
+          high: ['^src/'],
+          medium: [],
+          low: [],
+          verificationProfiles: { governance: [] },
+          reviewFocus: [
+            {
+              pattern: '^src/critical\\.ts$',
+              findingCount: 3,
+              classes: ['target-tip hardening'],
+            },
+          ],
+        }),
+      );
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Tighten target policy.'], {
+        cwd: repository,
+      });
+      const targetTip = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      execFileSync('git', ['checkout', 'feature'], { cwd: repository });
+
+      const featureHead = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      const ledger = agentWorkLedger.execute(
+        'init',
+        {
+          base: targetTip,
+          head: featureHead,
+          implementer: 'implementer',
+          mode: 'pr',
+          root: '.tmp/agent-work',
+          task: 'target-tip-policy',
+        },
+        repository,
+      );
+
+      expect(ledger.reviewGate).toMatchObject({
+        risk: 'high',
+        verificationProfile: 'product',
+        requiredPaths: ['src/critical.ts'],
+        reviewFocus: [
+          {
+            path: 'src/critical.ts',
+            classes: ['target-tip hardening'],
+          },
+        ],
+      });
+
+      execFileSync('git', ['checkout', 'main'], { cwd: repository });
+      const refreshedPolicy = JSON.parse(
+        readFileSync(join(repository, '.github', 'change-risk.json'), 'utf8'),
+      ) as { reviewFocus: Array<{ classes: string[] }> };
+      refreshedPolicy.reviewFocus[0].classes.push('target-tip recovery');
+      writeFileSync(
+        join(repository, '.github', 'change-risk.json'),
+        JSON.stringify(refreshedPolicy),
+      );
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Advance target focus.'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['checkout', 'feature'], { cwd: repository });
+      const recoveredLedger = agentWorkLedger.execute(
+        'recover',
+        { root: '.tmp/agent-work' },
+        repository,
+      );
+      expect(recoveredLedger.reviewGate?.reviewFocus).toEqual([
+        {
+          path: 'src/critical.ts',
+          findingCount: 3,
+          classes: ['target-tip hardening', 'target-tip recovery'],
+        },
+      ]);
+
+      const verification = spawnSync(
+        process.execPath,
+        [resolve('scripts/verify-pr.js'), '--review-ready'],
+        {
+          cwd: repository,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            STRELIT_REVIEW_BASE_REF: 'main',
+          },
+        },
+      );
+      expect(verification.status).toBe(1);
+      expect(verification.stderr).toContain(
+        'The definitive PR review ledger is not complete.',
+      );
+      expect(verification.stderr).not.toContain(
+        'Persisted PR review scope does not match',
+      );
+    } finally {
+      rmSync(repository, { force: true, recursive: true });
+    }
+  });
+
+  it('refreshes target-tip policy during finish without prior recovery', () => {
+    const repository = mkdtempSync(join(tmpdir(), 'strelit-finish-policy-'));
+    try {
+      execFileSync('git', ['init'], { cwd: repository });
+      execFileSync('git', ['config', 'user.email', 'fixture@example.com'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['config', 'user.name', 'Fixture'], {
+        cwd: repository,
+      });
+      mkdirSync(join(repository, '.github'), { recursive: true });
+      mkdirSync(join(repository, 'src'), { recursive: true });
+      writeFileSync(join(repository, '.gitignore'), '.tmp/\n');
+      writeFileSync(
+        join(repository, '.github', 'change-risk.json'),
+        JSON.stringify({
+          high: [],
+          medium: [],
+          low: ['.*'],
+          verificationProfiles: { governance: [] },
+          reviewFocus: [],
+        }),
+      );
+      writeFileSync(join(repository, 'src', 'critical.ts'), 'base\n');
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Base policy.'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['branch', '-M', 'main'], { cwd: repository });
+      const base = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      execFileSync('git', ['checkout', '-b', 'feature'], { cwd: repository });
+      writeFileSync(join(repository, 'src', 'critical.ts'), 'candidate\n');
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Candidate change.'], {
+        cwd: repository,
+      });
+      const featureHead = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+
+      let ledger = agentWorkLedger.execute(
+        'init',
+        {
+          base,
+          head: featureHead,
+          implementer: 'implementer',
+          mode: 'pr',
+          root: '.tmp/agent-work',
+          task: 'finish-target-policy',
+        },
+        repository,
+      );
+      expect(ledger.reviewGate?.risk).toBe('low');
+
+      for (const kind of ['verification', 'synthesis']) {
+        agentWorkLedger.execute(
+          'add',
+          {
+            contracts: `${kind} evidence`,
+            kind,
+            paths: 'src/critical.ts',
+            root: '.tmp/agent-work',
+            unit: kind,
+          },
+          repository,
+        );
+        agentWorkLedger.execute(
+          'start',
+          {
+            owner: 'fixture',
+            root: '.tmp/agent-work',
+            unit: kind,
+          },
+          repository,
+        );
+        const fixtureLedger = JSON.parse(
+          readFileSync(
+            join(repository, '.tmp', 'agent-work', 'active.json'),
+            'utf8',
+          ),
+        ) as {
+          currentFingerprint: string;
+        };
+        const reportPath = join(repository, '.tmp', `${kind}-report.json`);
+        writeFileSync(
+          reportPath,
+          JSON.stringify({
+            lastVerifiedHead: featureHead,
+            sourceFingerprint: fixtureLedger.currentFingerprint,
+            inspectedPaths: ['src/critical.ts'],
+            remainingPaths: [],
+            commands: [],
+            findingSummary: `${kind} evidence passed.`,
+            findings: [],
+            uninspected: [],
+          }),
+        );
+        agentWorkLedger.execute(
+          'complete',
+          {
+            owner: 'fixture',
+            report: reportPath,
+            root: '.tmp/agent-work',
+            unit: kind,
+          },
+          repository,
+        );
+      }
+
+      execFileSync('git', ['checkout', 'main'], { cwd: repository });
+      writeFileSync(
+        join(repository, '.github', 'change-risk.json'),
+        JSON.stringify({
+          high: ['^src/'],
+          medium: [],
+          low: [],
+          verificationProfiles: { governance: [] },
+          reviewFocus: [],
+        }),
+      );
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Require high-risk review.'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['checkout', 'feature'], { cwd: repository });
+
+      expect(() =>
+        agentWorkLedger.execute(
+          'finish',
+          { root: '.tmp/agent-work' },
+          repository,
+        ),
+      ).toThrow('exact-source whole-PR fresh-discovery attempt');
+    } finally {
+      rmSync(repository, { force: true, recursive: true });
+    }
   });
 
   it('requires the definitive ledger gate only for local high-risk work', () => {
@@ -2757,6 +3467,61 @@ describe('risk-based PR verification', () => {
       expect(changeDiscipline.collectChangedFiles(base, repository)).toEqual(
         expect.arrayContaining(['src/critical.ts', 'docs/critical.ts']),
       );
+    } finally {
+      rmSync(repository, { force: true, recursive: true });
+    }
+  });
+
+  it('collects verification paths from the merge base when the target advances', () => {
+    const repository = mkdtempSync(join(tmpdir(), 'strelit-merge-base-risk-'));
+    try {
+      execFileSync('git', ['init'], { cwd: repository });
+      execFileSync('git', ['config', 'user.email', 'tests@example.invalid'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['config', 'user.name', 'Strelit Tests'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['config', 'core.autocrlf', 'false'], {
+        cwd: repository,
+      });
+      writeFileSync(join(repository, 'README.md'), 'base\n');
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Create base.'], {
+        cwd: repository,
+      });
+      const mergeBase = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      execFileSync('git', ['checkout', '-b', 'feature'], { cwd: repository });
+      writeFileSync(join(repository, 'AGENTS.md'), 'feature policy\n');
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Change feature policy.'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['checkout', '-'], { cwd: repository });
+      mkdirSync(join(repository, 'src'));
+      writeFileSync(
+        join(repository, 'src', 'upstream.ts'),
+        'upstream change\n',
+      );
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Advance target.'], {
+        cwd: repository,
+      });
+      const targetTip = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      execFileSync('git', ['checkout', 'feature'], { cwd: repository });
+
+      expect(
+        changeDiscipline.verificationBoundary(targetTip, repository),
+      ).toEqual({
+        expectedBaseHead: mergeBase,
+        changedFiles: ['AGENTS.md'],
+      });
     } finally {
       rmSync(repository, { force: true, recursive: true });
     }

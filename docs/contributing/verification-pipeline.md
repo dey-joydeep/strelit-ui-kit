@@ -26,6 +26,14 @@ policy under `.github/` is High. Pull-request metadata reads the policy from the
 trusted base commit; when a PR introduces the policy and no base copy exists,
 the complete PR is treated as High rather than trusting PR-controlled rules.
 
+Risk controls review strength; the verification profile controls test scope.
+A diff made entirely of explicitly listed review-governance paths uses
+`npm run verify:governance`, which runs test typechecking, governance/ledger/
+handoff tests, lint, documentation checks, and formatting. Mixed, unknown,
+runtime, build, dependency, packaging, and general CI diffs fail closed to the
+product profile and its ordered pipeline. Governance changes remain High risk
+and require independent review under either profile.
+
 Vitest bounds file-worker concurrency in `vitest.config.ts` because each jsdom worker has a substantial memory footprint. The default test timeout also accommodates migration tests that launch real Node and TypeScript processes; compile fixtures have a larger explicit bound. Raise either limit only with evidence from both constrained CI and representative developer machines.
 
 ## Browser Smoke
@@ -34,8 +42,9 @@ Vitest bounds file-worker concurrency in `vitest.config.ts` because each jsdom w
 
 The browser smoke is separate from `verify:ordered` because an external browser
 executable is not a package dependency. `npm run verify:pr` includes it for
-high-risk changes after the ordered pipeline and API demo build. CI, release,
-and migration environments must install a supported browser.
+high-risk product-profile changes after the ordered pipeline and API demo
+build. CI, release, and migration environments must install a supported
+browser.
 
 ## Frozen Candidate Review Gate
 
@@ -44,32 +53,19 @@ a high-risk pull request, use this final sequence:
 
 1. Complete implementation, focused checks, self-review, and finding closure.
 2. Commit the candidate so the final review targets an immutable full SHA.
-3. Complete the path-and-domain coverage manifest required by `AGENTS.md`.
-4. For a large high-risk pull request, complete independent domain discovery
-   across at least two unused reviewer contexts.
-5. Validate and disposition every finding, fixing confirmed defects and
-   rerunning affected checks. A Medium-risk acceptance must link to an existing
-   current-PR comment from the PR author that records the accepted count and
-   rationale.
-6. If the head changed, freeze the new SHA and repeat coverage and domain
-   discovery for every invalidated path-domain assignment.
-7. Run the ordered pipeline, API demo build, and API browser smoke against the
-   exact SHA, then record the completed verification unit in the ledger.
-8. For a large high-risk pull request, obtain an unused independent synthesis
-   review over the whole PR and exact frozen SHA. For other high-risk pull
-   requests, obtain the normal independent fresh whole-PR review.
-9. Finish the ledger and run `npm run verify:pr`. This definitive command reruns
-   required verification and rejects incomplete coverage, verification, or
-   synthesis evidence.
-10. Obtain approval on that same SHA from the synthesis reviewer for a large
-    high-risk pull request or from the declared fresh-discovery reviewer
-    otherwise.
+3. Obtain one independent fresh whole-PR review. It must inspect every changed
+   path, affected callers, declared focus classes, tests, and omissions.
+4. Record each confirmed defect class with its sibling-search query, hit count,
+   dispositioned count, and summary. Close every hit.
+5. Finish the ledger and run `npm run verify:pr`. It validates review structure
+   before running the generated governance or product profile once.
+6. Obtain approval on the same SHA from the declared reviewer when repository
+   rules require it.
 
-Any new commit invalidates synthesis and approval. New external findings reopen
-the gate until validated and dispositioned. Once the unchanged SHA has complete
-coverage, passing verification, an applicable final-review `Pass`, and approval,
-do not repeat whole-PR review without new code or new external evidence. The
-applicable final review is synthesis only for a large high-risk pull request.
+Any new commit invalidates final review and approval. Use focused closure review
+while preparing the next freeze; do not run fresh whole-PR discovery per fix
+commit. Once the unchanged SHA passes review, verification, dispositions, and
+approval, stop.
 
 ## Changing The Runner
 

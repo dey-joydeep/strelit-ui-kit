@@ -58,17 +58,17 @@ or the complete replacement, never a partially written transaction.
 
 ## Work-Unit Design
 
-A unit should cover one behavioral contract or a small, explicit path set and
-normally fit within 10 to 20 minutes. Do not dispatch an opaque instruction such
-as “review the whole PR.” Split it into domain discovery units followed by a
-separate synthesis unit.
+A unit covers one coherent contract or defect class and normally fits within
+10 to 20 minutes. Checkpoints split large work without creating more reviewers.
+Review new modules as units; do not dispatch an agent per method, finding, or
+domain.
 
 Supported unit kinds are:
 
 - `implementation`: an independently recoverable code or documentation change
 - `review`: read-only discovery or finding closure over assigned paths
 - `verification`: commands proving the current tree or head
-- `synthesis`: the final cross-domain judgment and exact-head gate
+- `synthesis`: retained for non-PR workflows that need an aggregate judgment
 
 Before dispatch, record the unit, assigned paths, behavioral contracts,
 dependencies, and commands that must pass. An agent receives the unit ID and
@@ -86,6 +86,9 @@ A checkpoint report is cumulative and contains:
 - `commands`, including command, exit code, and head
 - `findingSummary`, including an explicit statement when no findings exist
 - `findings`, each with severity, disposition, and summary
+- `classClosures`, when findings exist: class, query, hit count, dispositioned
+  count, and summary
+- `inspectedClasses`, including policy focus classes for a final PR review
 - `uninspected`
 
 Completion requires every assigned and adjacent path to be inspected, no
@@ -93,8 +96,10 @@ remaining or uninspected scope, every required command to have a successful
 current-source receipt, no open findings, and a substantive finding summary. A partial checkpoint remains
 `running` or becomes `interrupted`; it cannot satisfy a review gate.
 
-Finishing a ledger requires nonempty work plus completed verification and
-synthesis units for the exact current source fingerprint.
+Finishing a high-risk PR ledger requires nonempty work and one completed
+current-source whole-PR review. The definitive verifier supplies final command
+evidence after structural preflight. Other ledger modes retain verification and
+synthesis units where their workflow requires them.
 
 ## Recovery Procedure
 
@@ -163,8 +168,8 @@ After a head change:
 - Verification and synthesis units become `invalidated`.
 - Any final GitHub approval must target the new exact head.
 
-Carried-forward domain reports are inputs to a new synthesis; they are not
-themselves exact-head whole-PR approval.
+Carried-forward closure reports help prepare the next candidate; they are not
+exact-head whole-PR approval. Run fresh discovery only after the next freeze.
 
 ## Failure-Mode Matrices
 
@@ -196,6 +201,7 @@ npm run agent:ledger -- complete --unit runtime-popouts --report .tmp/runtime-po
 npm run agent:ledger -- interrupt --unit runtime-popouts
 npm run agent:ledger -- recover
 npm run agent:ledger -- enter --intent continue
+npm run agent:ledger -- reset-pr --task PR-1 --base <target-ref> --head <sha> --implementer <identity>
 npm run agent:ledger -- finish
 npm run agent:ledger -- status
 npm run verify:agent-ledger
@@ -207,21 +213,24 @@ For high-risk pull-request work, initialize the definitive gate instead:
 npm run agent:ledger -- init --mode pr --implementer <identity> --task PR-1 --base <ref> --head <sha>
 ```
 
-This mode records the merge-base diff, canonical path-domain coverage,
-non-generated line count, and large-PR classification. Review and synthesis
-units declare `--reviewer`, `--scope`, `--pass`, and semicolon-delimited
-`--domains`. Their checkpoint reports include a `coverage` entry for every
-assigned path with its exact domains, declared contract, inspected adjacent
-paths, and verification commands. `finish` closes structurally complete work;
-the subsequent definitive gate rejects missing or duplicate coverage,
-self-review, non-fresh evidence, incomplete verification, a dirty tree, and
-stale source. After finishing, `npm run verify:review-ready` revalidates the persisted gate.
+This mode records the merge-base diff, affected domains, non-generated line
+count, and history-derived review focus. Review units declare `--reviewer`,
+`--scope`, `--pass`, and `--domains`. The final report covers every changed path
+as one whole-PR unit, lists inspected focus classes, and records structured
+class closure evidence for findings. `finish` closes structural work;
+`verify:review-ready` preflights the ledger, then runs full verification once.
 The normal local `npm run verify:pr` invokes this final gate for high-risk work;
 GitHub Actions instead validates committed PR metadata and approval state.
 Use trusted `GITHUB_BASE_SHA` or configured `STRELIT_REVIEW_BASE_REF` for PRs
 whose target is not the default branch. `verify:review-ready` rejects CLI base
 and classification overrides so a caller cannot narrow or skip the definitive
 scope.
+
+If a merge or rebase moves the PR merge base, use `reset-pr` instead of deleting
+the active ledger. The command archives the previous ledger under
+`.tmp/agent-work/history/` and atomically creates a fresh PR ledger for the
+current head and target policy. Archived closure evidence remains available for
+inspection, while exact-head final review and verification must be rerun.
 
 The local ledger can validate declared context separation and exact review
 boundaries, but editable identity strings are not cryptographic proof of

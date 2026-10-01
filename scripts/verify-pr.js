@@ -2,9 +2,11 @@ const { spawnSync } = require('node:child_process');
 const {
   classifyChangeRisk,
   classifyFileRisk,
+  classifyTrustedChange,
   collectChangedFiles,
   createPullRequestReviewGate,
   domainsForPath,
+  verificationProfileForFiles,
 } = require('./change-review-policy.js');
 const agentLedger = require('./agent-work-ledger.js');
 const { npmCommand } = require('./npm-command.js');
@@ -87,9 +89,12 @@ function resolveBaseRef(explicitBase, cwd = process.cwd()) {
   return baseRef;
 }
 
-function verificationScriptsForRisk(risk) {
+function verificationScriptsForRisk(risk, verificationProfile = 'product') {
   switch (risk) {
     case 'high':
+      if (verificationProfile === 'governance') {
+        return ['verify:agent-ledger', 'verify:governance'];
+      }
       return [
         'verify:agent-ledger',
         'verify:ordered',
@@ -113,8 +118,11 @@ function verificationScriptsForRisk(risk) {
   }
 }
 
-function resolveVerificationRisk(fileNames, forcedRisk) {
-  const computedRisk = classifyChangeRisk(fileNames);
+function resolveVerificationRisk(
+  fileNames,
+  forcedRisk,
+  computedRisk = classifyChangeRisk(fileNames),
+) {
   if (forcedRisk === undefined || forcedRisk.length === 0) {
     return computedRisk;
   }
@@ -186,10 +194,24 @@ function main() {
   const baseRef = options.reviewReady
     ? resolveBaseRef(process.env.STRELIT_REVIEW_BASE_REF)
     : resolveBaseRef(options.base);
-  const changedFiles = collectChangedFiles(baseRef);
+  const { expectedBaseHead, changedFiles } = verificationBoundary(baseRef);
+  const trustedPolicyHead = runGit(
+    ['rev-parse', `${baseRef}^{commit}`],
+    false,
+  ).stdout.trim();
+  const trustedClassification = classifyTrustedChange(
+    changedFiles,
+    trustedPolicyHead,
+    process.cwd(),
+  );
   const forcedRisk = process.env.GITHUB_FORCE_RISK;
-  const risk = resolveVerificationRisk(changedFiles, forcedRisk);
-  const scripts = verificationScriptsForRisk(risk);
+  const risk = resolveVerificationRisk(
+    changedFiles,
+    forcedRisk,
+    trustedClassification.risk,
+  );
+  const verificationProfile = trustedClassification.verificationProfile;
+  const scripts = verificationScriptsForRisk(risk, verificationProfile);
   const localReviewGate = options.reviewReady || requiresLocalReviewGate(risk);
 
   process.stdout.write(
@@ -197,6 +219,7 @@ function main() {
       `PR verification base: ${baseRef}`,
       `Changed files: ${changedFiles.length}`,
       `Risk: ${risk}`,
+      `Verification profile: ${verificationProfile}`,
       `Checks: ${scripts.map((script) => `npm run ${script}`).join(', ')}`,
       `Local definitive review gate: ${localReviewGate ? 'required' : 'not required'}`,
       '',
@@ -212,31 +235,50 @@ function main() {
     return;
   }
 
-  for (const script of scripts) {
-    runNpmScript(script);
-  }
+  let gateContext;
   if (localReviewGate) {
-    const expectedBaseHead = runGit(
-      ['merge-base', baseRef, 'HEAD'],
-      false,
-    ).stdout.trim();
     const ledger = agentLedger.execute('status', {});
     const expectedReviewGate = createPullRequestReviewGate(
-      expectedBaseHead,
+      trustedPolicyHead,
       ledger.reviewGate?.implementer ?? '',
       process.cwd(),
     );
+    gateContext = {
+      requireComplete: true,
+      expectedBaseHead,
+      expectedReviewGate,
+    };
     agentLedger.validatePullRequestGate(
       ledger,
       agentLedger.currentSourceState(),
       {
-        requireComplete: true,
-        expectedBaseHead,
-        expectedReviewGate,
-        executedCommands: executedCommandNames(scripts),
+        ...gateContext,
+        preflight: true,
       },
     );
   }
+  for (const script of scripts) {
+    runNpmScript(script);
+  }
+  if (gateContext !== undefined) {
+    agentLedger.validatePullRequestGate(
+      agentLedger.execute('status', {}),
+      agentLedger.currentSourceState(),
+      { ...gateContext, executedCommands: executedCommandNames(scripts) },
+    );
+  }
+}
+
+function verificationBoundary(baseRef, cwd = process.cwd()) {
+  const expectedBaseHead = runGit(
+    ['merge-base', baseRef, 'HEAD'],
+    false,
+    cwd,
+  ).stdout.trim();
+  return {
+    expectedBaseHead,
+    changedFiles: collectChangedFiles(expectedBaseHead, cwd),
+  };
 }
 
 if (require.main === module) {
@@ -258,5 +300,7 @@ module.exports = {
   resolveBaseRef,
   resolveVerificationRisk,
   requiresLocalReviewGate,
+  verificationBoundary,
+  verificationProfileForFiles,
   verificationScriptsForRisk,
 };

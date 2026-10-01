@@ -45,6 +45,17 @@ For review fixes, state the invariant, defect class, equivalent cases searched,
 and regression coverage. Otherwise explain why this is not a review-finding fix.
 -->
 
+## Defect Class Closures
+
+<!--
+For each confirmed class use one line:
+Class: ID | Name: concise class | Query: actual sibling search | Hits: N |
+Dispositioned: N | Summary: fixed, duplicate, false-positive, accepted, or
+deferred outcomes. Every hit must be dispositioned before closure.
+-->
+
+No confirmed defect classes.
+
 ## Out of Scope
 
 <!-- List related behavior intentionally left unchanged and why. -->
@@ -82,7 +93,9 @@ Closed Critical/High findings: **Pending**
 Open Medium findings: **Pending**
 Closed Medium findings: **Pending**
 Accepted Medium findings: **Pending**
+Deferred Medium findings: **Pending**
 Medium acceptance evidence: Pending
+Medium deferral rationale: Pending
 Review artifact: Pending
 Finding dispositions: Pending
 Residual risks: Pending
@@ -106,15 +119,18 @@ durable evidence here.
 If Accepted Medium findings is nonzero, link an existing comment on this PR
 authored by the PR author. That comment must state `Accepted Medium findings: N`
 and `Rationale: ...` with the same accepted count.
+If Deferred Medium findings is nonzero, provide one concrete
+`Medium deferral rationale:` line that names every deferred finding ID and
+explains why each fix is postponed. Placeholder text is rejected.
 
 Finding dispositions must use exactly one line with semicolon-separated records:
 `Finding dispositions: <Severity> <unique-ID> => <Status>: <evidence>`.
 IDs are case-insensitively unique across the review. Critical and High allow
-`Open` or `Closed`; Medium allows `Open`, `Closed`, or `Accepted`; Low allows
+`Open` or `Closed`; Medium allows `Open`, `Closed`, `Accepted`, or `Deferred`; Low allows
 `Open`, `Closed`, or `Deferred`. Evidence is one or more comma-separated
 repository paths (optionally with a line), HTTP(S) URLs, `#123` issue references,
 7-40-character commit SHAs, or `artifact:name` references. The severity counts
-and the open/closed/accepted totals must reconcile with every record.
+and the open/closed/accepted/deferred totals must reconcile with every record.
 
 No-findings example:
 Findings: Critical 0; High 0; Medium 0; Low 0
@@ -123,6 +139,8 @@ Closed Critical/High findings: 0
 Open Medium findings: 0
 Closed Medium findings: 0
 Accepted Medium findings: 0
+Deferred Medium findings: 0
+Medium deferral rationale: Not applicable
 Finding dispositions: No findings
 
 Findings example:
@@ -132,12 +150,17 @@ Closed Critical/High findings: 1
 Open Medium findings: 0
 Closed Medium findings: 1
 Accepted Medium findings: 0
+Deferred Medium findings: 0
 Finding dispositions: High H-1 => Closed: test/specs/contribution-governance-tests.ts; Medium M-1 => Closed: https://github.test/reviews/M-1; Low L-1 => Deferred: artifact:review/L-1
 -->
 
 ## Review Coverage Manifest
 
 <!--
+This section remains temporarily for the existing GitHub metadata workflow.
+Local review no longer uses per-path/domain assignment. Removing the GitHub
+fields requires the separately authorized workflow-enforcement stage.
+
 High-risk PRs require exactly one line per changed path in this format:
 Path: path/from/repository/root | Contract: behavioral contract inspected | Domains: Domain one; Domain two | Assignments: Domain one => @reviewer-one; Domain two => @reviewer-two | Adjacent: inspected call paths | Tests: relevant test evidence
 
@@ -195,6 +218,6 @@ is not a pass.
 - [ ] Every finding was validated and explicitly dispositioned before closure
 - [ ] Large high-risk review used multiple domain reviewers and independent synthesis, or is not applicable
 - [ ] Final verification, applicable final review, and approval target the same frozen SHA
-- [ ] No Critical or High finding and no unaccepted Medium finding remains
+- [ ] No Critical or High finding and no open Medium finding remains
 - [ ] No diagnostics or tests were suppressed to obtain a pass
 - [ ] New public behavior is documented

@@ -47,6 +47,7 @@ const validReviewPasses = new Set(['fresh-discovery', 'finding-closure']);
 const validRecoveryIntents = new Set(['continue', 'status', 'summary']);
 const mutatingCommands = new Set([
   'init',
+  'reset-pr',
   'add',
   'start',
   'checkpoint',
@@ -246,12 +247,40 @@ function readJson(fileName, label) {
   return parsed;
 }
 
+function normalizeLegacyLedger(ledger) {
+  const gate = ledger?.reviewGate;
+  if (
+    ledger?.schemaVersion !== schemaVersion ||
+    gate === undefined ||
+    gate === null ||
+    typeof gate !== 'object' ||
+    Array.isArray(gate) ||
+    (!Object.hasOwn(gate, 'requiredCoverage') &&
+      !Object.hasOwn(gate, 'largeHighRisk'))
+  ) {
+    return ledger;
+  }
+  const {
+    requiredCoverage: _requiredCoverage,
+    largeHighRisk: _largeHighRisk,
+    ...currentGate
+  } = gate;
+  return {
+    ...ledger,
+    reviewGate: {
+      ...currentGate,
+      verificationProfile: 'product',
+      reviewFocus: [],
+    },
+  };
+}
+
 function readLedger(root, cwd) {
   const fileName = ledgerPath(root, cwd);
   if (!existsSync(fileName)) {
     throw new Error(`No active agent ledger at ${fileName}`);
   }
-  const ledger = readJson(fileName, 'ledger');
+  const ledger = normalizeLegacyLedger(readJson(fileName, 'ledger'));
   validateLedger(ledger);
   return { fileName, ledger };
 }
@@ -814,13 +843,17 @@ function writeLedger(fileName, ledger, now = new Date()) {
   const nextLedger = { ...ledger, updatedAt: now.toISOString() };
   validateLedger(nextLedger);
   if (existsSync(fileName)) {
-    const previousLedger = readJson(fileName, 'ledger');
+    const storedLedger = readJson(fileName, 'ledger');
+    const previousLedger = normalizeLegacyLedger(storedLedger);
     validateLedger(previousLedger);
     const semanticCandidate = {
       ...nextLedger,
       updatedAt: previousLedger.updatedAt,
     };
-    if (JSON.stringify(previousLedger) === JSON.stringify(semanticCandidate)) {
+    if (
+      previousLedger === storedLedger &&
+      JSON.stringify(previousLedger) === JSON.stringify(semanticCandidate)
+    ) {
       return previousLedger;
     }
   }
@@ -837,6 +870,30 @@ function writeLedger(fileName, ledger, now = new Date()) {
     throw error;
   }
   return nextLedger;
+}
+
+function archiveLedger(fileName, ledger, cwd, now = new Date()) {
+  const historyDirectory = join(dirname(fileName), 'history');
+  assertNoLinks(realpathSync(cwd), historyDirectory);
+  mkdirSync(historyDirectory, { recursive: true });
+  const identity = createHash('sha256')
+    .update(`${ledger.taskId}\0${ledger.currentHead}\0${ledger.updatedAt}`)
+    .digest('hex')
+    .slice(0, 12);
+  const timestamp = now.toISOString().replaceAll(':', '-');
+  const archive = join(historyDirectory, `${timestamp}-${identity}.json`);
+  const temporary = `${archive}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(temporary, `${JSON.stringify(ledger, null, 2)}\n`, {
+      encoding: 'utf8',
+      flag: 'wx',
+    });
+    renameSync(temporary, archive);
+  } catch (error) {
+    rmSync(temporary, { force: true });
+    throw error;
+  }
+  return archive;
 }
 
 function validateString(value, label, minimum = 1) {
@@ -897,6 +954,8 @@ function validateReport(report, label = 'checkpoint') {
       'coverage',
       'reviewedBase',
       'reviewedHead',
+      'classClosures',
+      'inspectedClasses',
     ]),
     label,
   );
@@ -929,6 +988,7 @@ function validateReport(report, label = 'checkpoint') {
     rejectUnknownKeys(
       finding,
       new Set([
+        'classId',
         'severity',
         'status',
         'summary',
@@ -946,6 +1006,9 @@ function validateReport(report, label = 'checkpoint') {
       throw new Error(`${label}.finding has invalid status: ${finding.status}`);
     }
     validateString(finding.summary, `${label}.finding.summary`);
+    if (finding.classId !== undefined) {
+      validateString(finding.classId, `${label}.finding.classId`);
+    }
     if (finding.status === 'accepted') {
       if (finding.severity !== 'medium') {
         throw new Error(
@@ -959,8 +1022,8 @@ function validateReport(report, label = 'checkpoint') {
       );
     }
     if (finding.status === 'deferred') {
-      if (finding.severity !== 'low') {
-        throw new Error(`${label} can defer only Low findings.`);
+      if (!['medium', 'low'].includes(finding.severity)) {
+        throw new Error(`${label} can defer only Medium or Low findings.`);
       }
       validateString(
         finding.deferralRationale,
@@ -969,7 +1032,54 @@ function validateReport(report, label = 'checkpoint') {
       );
     }
   }
+  if (report.classClosures !== undefined) {
+    if (!Array.isArray(report.classClosures)) {
+      throw new Error(`${label}.classClosures must be an array.`);
+    }
+    const ids = new Set();
+    for (const closure of report.classClosures) {
+      rejectUnknownKeys(
+        closure,
+        new Set([
+          'id',
+          'name',
+          'searchQuery',
+          'hitCount',
+          'dispositionedCount',
+          'dispositionSummary',
+        ]),
+        `${label}.classClosure`,
+      );
+      validateString(closure.id, `${label}.classClosure.id`);
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(closure.id)) {
+        throw new Error(
+          `${label}.classClosure.id must be a lowercase hyphenated slug.`,
+        );
+      }
+      validateString(closure.name, `${label}.classClosure.name`);
+      validateString(closure.searchQuery, `${label}.classClosure.searchQuery`);
+      validateString(
+        closure.dispositionSummary,
+        `${label}.classClosure.dispositionSummary`,
+      );
+      if (ids.has(closure.id)) {
+        throw new Error(`${label}.classClosures repeats id: ${closure.id}`);
+      }
+      ids.add(closure.id);
+      if (!Number.isInteger(closure.hitCount) || closure.hitCount < 1) {
+        throw new Error(`${label}.classClosure.hitCount must be positive.`);
+      }
+      if (closure.dispositionedCount !== closure.hitCount) {
+        throw new Error(
+          `${label}.classClosure must disposition every search hit.`,
+        );
+      }
+    }
+  }
   validateStringArray(report.uninspected, `${label}.uninspected`);
+  if (report.inspectedClasses !== undefined) {
+    validateStringArray(report.inspectedClasses, `${label}.inspectedClasses`);
+  }
   if (
     report.verdict !== undefined &&
     !['pass', 'changes-requested', 'blocked'].includes(report.verdict)
@@ -1063,11 +1173,11 @@ function validateReviewGate(reviewGate) {
       'mode',
       'implementer',
       'risk',
+      'verificationProfile',
       'requiredPaths',
-      'requiredCoverage',
       'applicableDomains',
       'nonGeneratedLines',
-      'largeHighRisk',
+      'reviewFocus',
     ]),
     'reviewGate',
   );
@@ -1077,6 +1187,11 @@ function validateReviewGate(reviewGate) {
   validateString(reviewGate.implementer, 'reviewGate.implementer');
   if (!['low', 'medium', 'high'].includes(reviewGate.risk)) {
     throw new Error(`Invalid reviewGate risk: ${reviewGate.risk}`);
+  }
+  if (!['governance', 'product'].includes(reviewGate.verificationProfile)) {
+    throw new Error(
+      `Invalid reviewGate verificationProfile: ${reviewGate.verificationProfile}`,
+    );
   }
   validateStringArray(reviewGate.requiredPaths, 'reviewGate.requiredPaths', {
     paths: true,
@@ -1093,34 +1208,23 @@ function validateReviewGate(reviewGate) {
       'reviewGate.nonGeneratedLines must be a nonnegative integer.',
     );
   }
-  if (typeof reviewGate.largeHighRisk !== 'boolean') {
-    throw new Error('reviewGate.largeHighRisk must be boolean.');
+  if (!Array.isArray(reviewGate.reviewFocus)) {
+    throw new Error('reviewGate.reviewFocus must be an array.');
   }
-  if (!Array.isArray(reviewGate.requiredCoverage)) {
-    throw new Error('reviewGate.requiredCoverage must be an array.');
-  }
-  const coveredPaths = new Set();
-  for (const entry of reviewGate.requiredCoverage) {
-    rejectUnknownKeys(entry, new Set(['path', 'domains']), 'coverage entry');
-    const path = normalizePath(entry.path);
-    if (coveredPaths.has(path)) {
-      throw new Error(`reviewGate repeats coverage path: ${path}`);
-    }
-    coveredPaths.add(path);
-    validateStringArray(entry.domains, `${path}.domains`, { minimum: 1 });
-    for (const domain of entry.domains) {
-      if (!canonicalDomains.includes(domain)) {
-        throw new Error(`reviewGate contains an invalid domain: ${domain}`);
-      }
-    }
-  }
-  if (
-    coveredPaths.size !== reviewGate.requiredPaths.length ||
-    reviewGate.requiredPaths.some((path) => !coveredPaths.has(path))
-  ) {
-    throw new Error(
-      'reviewGate coverage paths must match requiredPaths exactly.',
+  for (const focus of reviewGate.reviewFocus) {
+    rejectUnknownKeys(
+      focus,
+      new Set(['path', 'findingCount', 'classes']),
+      'review focus',
     );
+    normalizePath(focus.path);
+    if (!reviewGate.requiredPaths.includes(focus.path)) {
+      throw new Error(`Review focus path is unchanged: ${focus.path}`);
+    }
+    if (!Number.isInteger(focus.findingCount) || focus.findingCount < 1) {
+      throw new Error('Review focus findingCount must be positive.');
+    }
+    validateStringArray(focus.classes, `${focus.path}.classes`, { minimum: 1 });
   }
 }
 
@@ -1409,72 +1513,23 @@ function sameStringSet(left, right) {
   );
 }
 
-function requiredCoveragePairs(reviewGate) {
-  return new Set(
-    reviewGate.requiredCoverage.flatMap((entry) =>
-      entry.domains.map((domain) => `${entry.path}\0${domain}`),
-    ),
-  );
-}
-
-function unitCoveragePairs(unit, reviewGate) {
-  const requiredByPath = new Map(
-    reviewGate.requiredCoverage.map((entry) => [
-      entry.path,
-      new Set(entry.domains),
-    ]),
-  );
-  if (!Array.isArray(unit.checkpoint.coverage)) {
-    throw new Error(`${unit.id} lacks per-path review evidence.`);
+function validateClassClosureEvidence(unit) {
+  const findings = unit.checkpoint.findings;
+  if (findings.length === 0) {
+    return;
   }
-  const evidencePaths = unit.checkpoint.coverage.map((entry) => entry.path);
-  if (!sameStringSet(evidencePaths, unit.assignedPaths)) {
+  const closures = unit.checkpoint.classClosures;
+  if (!Array.isArray(closures) || closures.length === 0) {
     throw new Error(
-      `${unit.id} per-path evidence must exactly match assigned paths.`,
+      `${unit.id} findings require defect-class closure evidence.`,
     );
   }
-  const pairs = new Set();
-  for (const evidence of unit.checkpoint.coverage) {
-    const path = evidence.path;
-    const requiredDomains = requiredByPath.get(path);
-    if (requiredDomains === undefined) {
-      throw new Error(`${unit.id} assigns unchanged path: ${path}`);
-    }
-    const applicable = unit.review.domains.filter((domain) =>
-      requiredDomains.has(domain),
-    );
-    if (applicable.length === 0) {
-      throw new Error(`${unit.id} assigns no applicable domain for ${path}.`);
-    }
-    if (!sameStringSet(evidence.domains, applicable)) {
-      throw new Error(`${unit.id} domain evidence is incorrect for ${path}.`);
-    }
-    if (!unit.contracts.includes(evidence.contract)) {
-      throw new Error(
-        `${unit.id} contract evidence is undeclared for ${path}.`,
-      );
-    }
-    if (
-      evidence.adjacentPaths.some(
-        (adjacent) =>
-          !unit.adjacentPaths.includes(adjacent) ||
-          !unit.checkpoint.inspectedPaths.includes(adjacent),
-      )
-    ) {
-      throw new Error(
-        `${unit.id} adjacent evidence is uninspected for ${path}.`,
-      );
-    }
-    if (
-      evidence.tests.some((command) => !unit.requiredCommands.includes(command))
-    ) {
-      throw new Error(`${unit.id} test evidence is undeclared for ${path}.`);
-    }
-    for (const domain of evidence.domains) {
-      pairs.add(`${path}\0${domain}`);
+  const closureIds = new Set(closures.map((closure) => closure.id));
+  for (const finding of findings) {
+    if (!closureIds.has(finding.classId)) {
+      throw new Error(`${unit.id} finding lacks a matching defect class.`);
     }
   }
-  return pairs;
 }
 
 function validatePullRequestGate(
@@ -1485,6 +1540,7 @@ function validatePullRequestGate(
     expectedBaseHead,
     expectedReviewGate,
     executedCommands = [],
+    preflight = false,
   } = {},
 ) {
   const gate = ledger.reviewGate;
@@ -1527,172 +1583,103 @@ function validatePullRequestGate(
     unit.status === 'completed' &&
     unit.head === sourceState.head &&
     unit.sourceFingerprint === sourceState.fingerprint;
-  const eligibleReview = (unit) =>
-    currentCompleted(unit) ||
-    (unit.status === 'carried-forward' &&
-      unit.carryForward?.toHead === sourceState.head);
-  const reviewUnits = ledger.units.filter(
-    (unit) => unit.kind === 'review' && eligibleReview(unit),
-  );
-  const validDiscovery = reviewUnits.filter(
+  const discoveryAttempts = ledger.units.filter(
     (unit) =>
-      unit.review?.pass === 'fresh-discovery' &&
-      unit.checkpoint?.verdict === 'pass',
-  );
-  if (validDiscovery.length === 0) {
-    throw new Error(
-      'High-risk PR is missing completed fresh-discovery review coverage.',
-    );
-  }
-  for (const unit of validDiscovery) {
-    if (unit.review.reviewer.toLowerCase() === implementer) {
-      throw new Error(
-        `${unit.id} reviewer must be independent from implementer ${gate.implementer}.`,
-      );
-    }
-    if (unit.adjacentPaths.length === 0) {
-      throw new Error(`${unit.id} requires adjacent-path evidence.`);
-    }
-    if (unit.requiredCommands.length === 0) {
-      throw new Error(
-        `${unit.id} requires test or inspection command evidence.`,
-      );
-    }
-    const attestedHead =
-      unit.status === 'carried-forward' ? unit.head : sourceState.head;
-    if (
-      unit.checkpoint.reviewedBase !== ledger.baseHead ||
-      unit.checkpoint.reviewedHead !== attestedHead
-    ) {
-      throw new Error(
-        `${unit.id} does not attest the exact base/head boundary.`,
-      );
-    }
-    const invalidDomains = unit.review.domains.filter(
-      (domain) => !gate.applicableDomains.includes(domain),
-    );
-    if (invalidDomains.length > 0) {
-      throw new Error(
-        `${unit.id} declares inapplicable domains: ${invalidDomains.join(', ')}`,
-      );
-    }
-  }
-
-  const requiredPairs = requiredCoveragePairs(gate);
-  const coveredPairs = new Set();
-  const reviewers = new Set();
-  for (const unit of validDiscovery) {
-    if (gate.largeHighRisk && unit.review.scope !== 'domain') {
-      throw new Error(`${unit.id} must be a domain discovery review.`);
-    }
-    if (!gate.largeHighRisk && unit.review.scope !== 'whole-pr') {
-      throw new Error(`${unit.id} must review the whole PR.`);
-    }
-    reviewers.add(unit.review.reviewer.toLowerCase());
-    for (const pair of unitCoveragePairs(unit, gate)) {
-      if (coveredPairs.has(pair)) {
-        throw new Error(`Review coverage is assigned more than once: ${pair}`);
-      }
-      coveredPairs.add(pair);
-    }
-  }
-  const missingPairs = [...requiredPairs].filter(
-    (pair) => !coveredPairs.has(pair),
-  );
-  const extraPairs = [...coveredPairs].filter(
-    (pair) => !requiredPairs.has(pair),
-  );
-  if (missingPairs.length > 0 || extraPairs.length > 0) {
-    throw new Error(
-      `High-risk PR review coverage does not exactly match the base diff; missing ${missingPairs.length}, extra ${extraPairs.length}.`,
-    );
-  }
-  if (gate.largeHighRisk && reviewers.size < 2) {
-    throw new Error(
-      'Large high-risk PR review requires at least two independent domain reviewers.',
-    );
-  }
-
-  const requiredVerification = [
-    'npm run verify:ordered',
-    'npm run apitest:build',
-    'npm run apitest:smoke',
-  ];
-  if (
-    !requiredVerification.every((command) => executedCommands.includes(command))
-  ) {
-    throw new Error(
-      'High-risk PR requires gate-executed ordered, API build, and API smoke verification.',
-    );
-  }
-  const verification = ledger.units.find(
-    (unit) =>
-      unit.kind === 'verification' &&
+      unit.kind === 'review' &&
       currentCompleted(unit) &&
-      requiredVerification.every((command) =>
-        unit.requiredCommands.includes(command),
-      ),
-  );
-  if (verification === undefined) {
-    throw new Error(
-      'High-risk PR synthesis requires an exact-source verification unit.',
-    );
-  }
-
-  const synthesisUnits = ledger.units.filter(
-    (unit) => unit.kind === 'synthesis' && currentCompleted(unit),
-  );
-  const synthesis = synthesisUnits.find(
-    (unit) =>
       unit.review?.scope === 'whole-pr' &&
-      unit.review.pass === 'fresh-discovery' &&
-      unit.checkpoint?.verdict === 'pass' &&
-      sameStringSet(unit.assignedPaths, gate.requiredPaths) &&
-      sameStringSet(unit.review.domains, gate.applicableDomains),
+      unit.review?.pass === 'fresh-discovery',
   );
-  if (synthesis === undefined) {
+  if (discoveryAttempts.length !== 1) {
     throw new Error(
-      'High-risk PR requires a passing exact-source whole-PR fresh-discovery synthesis.',
+      `High-risk PR requires exactly one exact-source whole-PR fresh-discovery attempt; found ${discoveryAttempts.length}.`,
+    );
+  }
+  const [finalReview] = discoveryAttempts;
+  if (
+    finalReview.checkpoint?.verdict !== 'pass' ||
+    !sameStringSet(finalReview.assignedPaths, gate.requiredPaths) ||
+    !sameStringSet(finalReview.review.domains, gate.applicableDomains)
+  ) {
+    throw new Error(
+      `${finalReview.id} is not a passing exact-scope whole-PR review.`,
+    );
+  }
+  if (finalReview.review.reviewer.toLowerCase() === implementer) {
+    throw new Error(
+      `${finalReview.id} reviewer must be independent from implementer ${gate.implementer}.`,
+    );
+  }
+  if (finalReview.adjacentPaths.length === 0) {
+    throw new Error(`${finalReview.id} requires adjacent-path evidence.`);
+  }
+  if (finalReview.requiredCommands.length === 0) {
+    throw new Error(
+      `${finalReview.id} requires focused test or inspection evidence.`,
     );
   }
   if (
-    synthesis.adjacentPaths.length === 0 ||
-    synthesis.requiredCommands.length === 0
+    finalReview.checkpoint.reviewedBase !== ledger.baseHead ||
+    finalReview.checkpoint.reviewedHead !== sourceState.head
   ) {
     throw new Error(
-      'Whole-PR synthesis requires adjacent-path and inspection evidence.',
+      `${finalReview.id} does not attest the exact base/head boundary.`,
     );
   }
-  if (
-    synthesis.checkpoint.reviewedBase !== ledger.baseHead ||
-    synthesis.checkpoint.reviewedHead !== sourceState.head
-  ) {
-    throw new Error(
-      'Whole-PR synthesis does not attest the exact base/head boundary.',
-    );
-  }
-  const synthesisReviewer = synthesis.review.reviewer.toLowerCase();
-  if (synthesisReviewer === implementer) {
-    throw new Error(
-      `Synthesis reviewer must be independent from implementer ${gate.implementer}.`,
-    );
-  }
-  if (gate.largeHighRisk && reviewers.has(synthesisReviewer)) {
-    throw new Error(
-      'Large high-risk PR synthesis must use an unused independent reviewer.',
-    );
-  }
-  const requiredDependencies = [
-    ...validDiscovery.map((unit) => unit.id),
-    verification.id,
+  const requiredClasses = [
+    ...new Set(gate.reviewFocus.flatMap((focus) => focus.classes)),
   ];
   if (
-    requiredDependencies.some(
-      (dependency) => !synthesis.dependencies.includes(dependency),
+    !Array.isArray(finalReview.checkpoint.inspectedClasses) ||
+    requiredClasses.some(
+      (className) =>
+        !finalReview.checkpoint.inspectedClasses.includes(className),
     )
   ) {
     throw new Error(
-      'Whole-PR synthesis must depend on every discovery review and verification unit.',
+      `${finalReview.id} did not inspect every declared focus class.`,
+    );
+  }
+  const applicableReviewsWithFindings = ledger.units.filter(
+    (unit) =>
+      unit.kind === 'review' &&
+      (unit.checkpoint?.findings?.length ?? 0) > 0 &&
+      (currentCompleted(unit) ||
+        (unit.status === 'carried-forward' &&
+          unit.carryForward?.toHead === sourceState.head)),
+  );
+  for (const review of applicableReviewsWithFindings) {
+    if (review.id === finalReview.id) {
+      validateClassClosureEvidence(review);
+      continue;
+    }
+    if (review.review?.pass !== 'finding-closure') {
+      throw new Error(
+        `${review.id} findings require a declared finding-closure review pass.`,
+      );
+    }
+    if (review.checkpoint.verdict !== 'pass') {
+      throw new Error(
+        `${review.id} finding-closure evidence requires a passing verdict.`,
+      );
+    }
+    validateClassClosureEvidence(review);
+  }
+
+  const requiredVerification =
+    gate.verificationProfile === 'governance'
+      ? ['npm run verify:governance']
+      : [
+          'npm run verify:ordered',
+          'npm run apitest:build',
+          'npm run apitest:smoke',
+        ];
+  if (
+    !preflight &&
+    !requiredVerification.every((command) => executedCommands.includes(command))
+  ) {
+    throw new Error(
+      `High-risk PR requires gate-executed ${gate.verificationProfile} verification.`,
     );
   }
   return ledger;
@@ -1709,7 +1696,7 @@ function gitChangedPaths(fromHead, toHead, cwd) {
   }
 }
 
-function canonicalPullRequestBase(cwd) {
+function canonicalPullRequestBoundary(cwd) {
   const candidates = [
     process.env.GITHUB_BASE_SHA,
     process.env.STRELIT_REVIEW_BASE_REF,
@@ -1723,8 +1710,11 @@ function canonicalPullRequestBase(cwd) {
   );
   for (const candidate of candidates) {
     try {
-      gitOutput(['cat-file', '-e', `${candidate}^{commit}`], cwd);
-      return gitOutput(['merge-base', candidate, 'HEAD'], cwd);
+      const targetTip = gitOutput(['rev-parse', `${candidate}^{commit}`], cwd);
+      return {
+        mergeBase: gitOutput(['merge-base', targetTip, 'HEAD'], cwd),
+        targetTip,
+      };
     } catch {
       continue;
     }
@@ -1841,11 +1831,75 @@ function refreshReviewGate(ledger, cwd) {
   if (ledger.reviewGate === undefined || ledger.status === 'complete') {
     return;
   }
+  const boundary = canonicalPullRequestBoundary(cwd);
+  if (boundary.mergeBase !== ledger.baseHead) {
+    throw new Error(
+      `Pull-request merge base changed from ${ledger.baseHead} to ${boundary.mergeBase}; run agent:ledger reset-pr with the current target, head, task, and implementer.`,
+    );
+  }
   ledger.reviewGate = createPullRequestReviewGate(
-    ledger.baseHead,
+    boundary.targetTip,
     ledger.reviewGate.implementer,
     cwd,
   );
+}
+
+function createLedger(options, cwd, now) {
+  const sourceState = currentSourceState(cwd);
+  const requestedHead = requireOption(options, 'head');
+  if (requestedHead !== sourceState.head) {
+    throw new Error(
+      `Declared head ${requestedHead} does not match repository HEAD ${sourceState.head}.`,
+    );
+  }
+  const baseHead = requireOption(options, 'base');
+  try {
+    gitOutput(['cat-file', '-e', `${baseHead}^{commit}`], cwd);
+  } catch {
+    throw new Error(
+      `Base head is not available in the repository: ${baseHead}`,
+    );
+  }
+  const mode = options.mode;
+  if (mode !== undefined && mode !== 'pr') {
+    throw new Error(`Unsupported ledger mode: ${mode}`);
+  }
+  const resolvedBaseHead =
+    mode === 'pr'
+      ? gitOutput(['merge-base', baseHead, sourceState.head], cwd)
+      : baseHead;
+  if (resolvedBaseHead.length === 0) {
+    throw new Error(`Cannot determine merge base for ${baseHead}.`);
+  }
+  const trustedBoundary =
+    mode === 'pr' ? canonicalPullRequestBoundary(cwd) : undefined;
+  if (
+    trustedBoundary !== undefined &&
+    resolvedBaseHead !== trustedBoundary.mergeBase
+  ) {
+    throw new Error(
+      `Declared PR base resolves to ${resolvedBaseHead}; trusted base is ${trustedBoundary.mergeBase}.`,
+    );
+  }
+  const ledger = {
+    schemaVersion,
+    taskId: requireOption(options, 'task'),
+    baseHead: resolvedBaseHead,
+    currentHead: sourceState.head,
+    currentFingerprint: sourceState.fingerprint,
+    workingPaths: sourceState.workingPaths,
+    status: 'active',
+    units: [],
+    updatedAt: now.toISOString(),
+  };
+  if (trustedBoundary !== undefined) {
+    ledger.reviewGate = createPullRequestReviewGate(
+      trustedBoundary.targetTip,
+      requireOption(options, 'implementer'),
+      cwd,
+    );
+  }
+  return ledger;
 }
 
 function executeUnlocked(
@@ -1855,68 +1909,32 @@ function executeUnlocked(
   now = new Date(),
 ) {
   const root = typeof options.root === 'string' ? options.root : defaultRoot;
-  if (command === 'init') {
+  if (command === 'init' || command === 'reset-pr') {
     const fileName = ledgerPath(root, cwd);
+    let existing;
     if (existsSync(fileName)) {
-      const existing = readJson(fileName, 'ledger');
+      existing = normalizeLegacyLedger(readJson(fileName, 'ledger'));
       validateLedger(existing);
-      if (existing.status !== 'complete') {
+      if (command === 'init' && existing.status !== 'complete') {
         throw new Error(`An unfinished ledger already exists at ${fileName}`);
       }
-    }
-    const sourceState = currentSourceState(cwd);
-    const requestedHead = requireOption(options, 'head');
-    if (requestedHead !== sourceState.head) {
-      throw new Error(
-        `Declared head ${requestedHead} does not match repository HEAD ${sourceState.head}.`,
-      );
-    }
-    const baseHead = requireOption(options, 'base');
-    try {
-      gitOutput(['cat-file', '-e', `${baseHead}^{commit}`], cwd);
-    } catch {
-      throw new Error(
-        `Base head is not available in the repository: ${baseHead}`,
-      );
-    }
-    const mode = options.mode;
-    if (mode !== undefined && mode !== 'pr') {
-      throw new Error(`Unsupported ledger mode: ${mode}`);
-    }
-    const resolvedBaseHead =
-      mode === 'pr'
-        ? gitOutput(['merge-base', baseHead, sourceState.head], cwd)
-        : baseHead;
-    if (resolvedBaseHead.length === 0) {
-      throw new Error(`Cannot determine merge base for ${baseHead}.`);
-    }
-    if (mode === 'pr') {
-      const trustedBaseHead = canonicalPullRequestBase(cwd);
-      if (resolvedBaseHead !== trustedBaseHead) {
-        throw new Error(
-          `Declared PR base resolves to ${resolvedBaseHead}; trusted base is ${trustedBaseHead}.`,
-        );
+      if (command === 'reset-pr') {
+        if (existing.reviewGate?.mode !== 'pull-request') {
+          throw new Error('reset-pr requires an existing pull-request ledger.');
+        }
       }
+    } else if (command === 'reset-pr') {
+      throw new Error(`No active agent ledger at ${fileName}`);
     }
-    const ledger = {
-      schemaVersion,
-      taskId: requireOption(options, 'task'),
-      baseHead: resolvedBaseHead,
-      currentHead: sourceState.head,
-      currentFingerprint: sourceState.fingerprint,
-      workingPaths: sourceState.workingPaths,
-      status: 'active',
-      units: [],
-      updatedAt: now.toISOString(),
-    };
-    if (mode === 'pr') {
-      ledger.reviewGate = createPullRequestReviewGate(
-        resolvedBaseHead,
-        requireOption(options, 'implementer'),
-        cwd,
-      );
+    const nextLedger = createLedger(
+      command === 'reset-pr' ? { ...options, mode: 'pr' } : options,
+      cwd,
+      now,
+    );
+    if (command === 'reset-pr') {
+      archiveLedger(fileName, existing, cwd, now);
     }
-    return writeLedger(fileName, ledger, now);
+    return writeLedger(fileName, nextLedger, now);
   }
 
   const { fileName, ledger } = readLedger(root, cwd);
@@ -2125,6 +2143,7 @@ function executeUnlocked(
         'Repository source changed; run recover before finishing.',
       );
     }
+    refreshReviewGate(ledger, cwd);
     const incomplete = ledger.units.filter(
       (unit) => !['completed', 'carried-forward'].includes(unit.status),
     );
@@ -2138,7 +2157,16 @@ function executeUnlocked(
     if (ledger.units.length === 0) {
       throw new Error('Cannot finish an empty ledger.');
     }
-    for (const requiredKind of ['verification', 'synthesis']) {
+    if (ledger.reviewGate?.risk === 'high') {
+      validatePullRequestGate(ledger, sourceState, {
+        expectedBaseHead: ledger.baseHead,
+        expectedReviewGate: ledger.reviewGate,
+        preflight: true,
+      });
+    }
+    const requiredKinds =
+      ledger.reviewGate?.risk === 'high' ? [] : ['verification', 'synthesis'];
+    for (const requiredKind of requiredKinds) {
       const currentGate = ledger.units.some(
         (unit) =>
           unit.kind === requiredKind &&
@@ -2151,20 +2179,6 @@ function executeUnlocked(
           `Cannot finish without completed current-source ${requiredKind} evidence.`,
         );
       }
-    }
-    const hasCarriedForwardReview = ledger.units.some(
-      (unit) => unit.status === 'carried-forward',
-    );
-    const hasCurrentSynthesis = ledger.units.some(
-      (unit) =>
-        unit.kind === 'synthesis' &&
-        unit.status === 'completed' &&
-        unit.head === ledger.currentHead,
-    );
-    if (hasCarriedForwardReview && !hasCurrentSynthesis) {
-      throw new Error(
-        'Cannot finish with carried-forward review evidence; complete current-head synthesis first.',
-      );
     }
     ledger.status = 'complete';
   } else {

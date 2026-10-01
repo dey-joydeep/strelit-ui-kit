@@ -1,5 +1,5 @@
 const { spawnSync } = require('node:child_process');
-const { randomUUID } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
 const {
   mkdirSync,
   readFileSync,
@@ -13,7 +13,11 @@ const reviewPolicy = require('./change-review-policy.js');
 const changeDiscipline = require('./verify-pr.js');
 const { npmCommand } = require('./npm-command.js');
 
-const receiptVersion = 2;
+const receiptVersion = 3;
+
+function ledgerDigest(ledger) {
+  return createHash('sha256').update(JSON.stringify(ledger)).digest('hex');
+}
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -45,6 +49,41 @@ function runNpmScript(script, args = [], cwd = process.cwd()) {
 
 function gitOutput(args, cwd = process.cwd()) {
   return run('git', args, { cwd });
+}
+
+function currentUpstream(cwd = process.cwd()) {
+  const localBranch = gitOutput(
+    ['symbolic-ref', '--quiet', '--short', 'HEAD'],
+    cwd,
+  );
+  const remote = gitOutput(
+    ['config', '--get', `branch.${localBranch}.remote`],
+    cwd,
+  );
+  const mergeRef = gitOutput(
+    ['config', '--get', `branch.${localBranch}.merge`],
+    cwd,
+  );
+  const branchPrefix = 'refs/heads/';
+  if (
+    remote.length === 0 ||
+    !mergeRef.startsWith(branchPrefix) ||
+    mergeRef.length === branchPrefix.length
+  ) {
+    throw new Error(`Unexpected upstream configuration for ${localBranch}.`);
+  }
+  return {
+    remote,
+    branch: mergeRef.slice(branchPrefix.length),
+  };
+}
+
+function pushCurrentUpstream(cwd = process.cwd()) {
+  const { remote, branch } = currentUpstream(cwd);
+  run('git', ['push', remote, `HEAD:refs/heads/${branch}`], {
+    cwd,
+    inherit: true,
+  });
 }
 
 function receiptPath(cwd = process.cwd()) {
@@ -93,6 +132,7 @@ function assertCleanCommittedHead(cwd = process.cwd()) {
 
 function createReceipt(cwd = process.cwd()) {
   const source = assertCleanCommittedHead(cwd);
+  const ledger = agentLedger.execute('status', {}, cwd);
   const baseRef = changeDiscipline.resolveBaseRef(
     process.env.STRELIT_REVIEW_BASE_REF,
     cwd,
@@ -103,11 +143,18 @@ function createReceipt(cwd = process.cwd()) {
     fingerprint: source.fingerprint,
     baseHead: gitOutput(['merge-base', baseRef, 'HEAD'], cwd),
     baseTip: gitOutput(['rev-parse', `${baseRef}^{commit}`], cwd),
+    ledgerDigest: ledgerDigest(ledger),
     createdAt: new Date().toISOString(),
   };
 }
 
-function validateReceipt(receipt, source, expectedBaseHead, expectedBaseTip) {
+function validateReceipt(
+  receipt,
+  source,
+  expectedBaseHead,
+  expectedBaseTip,
+  expectedLedgerDigest,
+) {
   const errors = [];
   if (receipt === undefined) {
     return ['No review-ready receipt exists for this checkout.'];
@@ -133,6 +180,11 @@ function validateReceipt(receipt, source, expectedBaseHead, expectedBaseTip) {
       'The review-ready receipt targets a different pull-request base tip.',
     );
   }
+  if (receipt.ledgerDigest !== expectedLedgerDigest) {
+    errors.push(
+      'The review-ready receipt targets different local review evidence.',
+    );
+  }
   return errors;
 }
 
@@ -144,11 +196,17 @@ function checkReceipt(cwd = process.cwd()) {
   );
   const expectedBaseHead = gitOutput(['merge-base', baseRef, 'HEAD'], cwd);
   const expectedBaseTip = gitOutput(['rev-parse', `${baseRef}^{commit}`], cwd);
+  const receipt = readReceipt(cwd);
+  const expectedLedgerDigest =
+    receipt === undefined
+      ? undefined
+      : ledgerDigest(agentLedger.execute('status', {}, cwd));
   const errors = validateReceipt(
-    readReceipt(cwd),
+    receipt,
     source,
     expectedBaseHead,
     expectedBaseTip,
+    expectedLedgerDigest,
   );
   if (errors.length > 0) {
     throw new Error(
@@ -163,8 +221,17 @@ function requiresReceiptForHead(head, cwd = process.cwd()) {
     process.env.STRELIT_REVIEW_BASE_REF,
     cwd,
   );
-  const paths = reviewPolicy.collectCommittedChangedFiles(baseRef, head, cwd);
-  const risk = changeDiscipline.resolveVerificationRisk(paths);
+  const mergeBase = gitOutput(['merge-base', baseRef, head], cwd);
+  const trustedPolicyHead = gitOutput(
+    ['rev-parse', `${baseRef}^{commit}`],
+    cwd,
+  );
+  const paths = reviewPolicy.collectCommittedChangedFiles(mergeBase, head, cwd);
+  const risk = reviewPolicy.classifyTrustedChange(
+    paths,
+    trustedPolicyHead,
+    cwd,
+  ).risk;
   return changeDiscipline.requiresLocalReviewGate(risk, {});
 }
 
@@ -217,8 +284,84 @@ function requirePullRequest(options) {
   return options.pr;
 }
 
-function reviewRequestMarker(pullRequest, head, baseTip) {
-  return `<!-- strelit-codex-review-request pr=${pullRequest} head=${head} base=${baseTip} -->`;
+function closedClassIds(ledger, head) {
+  if (ledger.currentHead !== head) {
+    throw new Error(
+      `Review ledger targets ${ledger.currentHead}, not cloud handoff head ${head}.`,
+    );
+  }
+  if (ledger.reviewGate?.mode !== 'pull-request') {
+    throw new Error('Cloud handoff requires a pull-request review gate.');
+  }
+  const sameStringSet = (left, right) =>
+    left.length === right.length &&
+    left.every((value) => right.includes(value));
+  const reviews = ledger.units.filter(
+    (unit) =>
+      unit.kind === 'review' &&
+      unit.status === 'completed' &&
+      unit.head === head &&
+      unit.sourceFingerprint === ledger.currentFingerprint &&
+      unit.review?.scope === 'whole-pr' &&
+      unit.review.pass === 'fresh-discovery' &&
+      unit.checkpoint?.verdict === 'pass' &&
+      unit.checkpoint.reviewedBase === ledger.baseHead &&
+      unit.checkpoint.reviewedHead === head &&
+      sameStringSet(unit.assignedPaths, ledger.reviewGate.requiredPaths) &&
+      sameStringSet(unit.review.domains, ledger.reviewGate.applicableDomains),
+  );
+  if (reviews.length !== 1) {
+    throw new Error(
+      `Expected one gate-qualified final review for cloud handoff; found ${reviews.length}.`,
+    );
+  }
+  const [review] = reviews;
+  const closureReviews = ledger.units.filter((unit) => {
+    if (
+      unit.kind !== 'review' ||
+      unit.checkpoint?.verdict !== 'pass' ||
+      unit.review?.pass !== 'finding-closure'
+    ) {
+      return false;
+    }
+    if (
+      unit.status === 'completed' &&
+      unit.head === head &&
+      unit.sourceFingerprint === ledger.currentFingerprint
+    ) {
+      return true;
+    }
+    if (
+      unit.status !== 'carried-forward' ||
+      unit.carryForward?.toHead !== head
+    ) {
+      return false;
+    }
+    const coveredPaths = new Set([
+      ...unit.assignedPaths,
+      ...unit.adjacentPaths,
+    ]);
+    return !unit.carryForward.changedPaths.some((path) =>
+      coveredPaths.has(path),
+    );
+  });
+  return [
+    ...new Set(
+      [review, ...closureReviews].flatMap((unit) =>
+        (unit.checkpoint.classClosures ?? []).map(({ id }) => id),
+      ),
+    ),
+  ].sort((left, right) => left.localeCompare(right));
+}
+
+function reviewRequestMarker(pullRequest, head, baseTip, classIds = []) {
+  if (classIds.some((id) => !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(id))) {
+    throw new Error(
+      'Closed defect-class IDs must be lowercase hyphenated slugs.',
+    );
+  }
+  const classes = classIds.length === 0 ? 'none' : classIds.join(',');
+  return `<!-- strelit-codex-review-request pr=${pullRequest} head=${head} base=${baseTip} classes=${classes} -->`;
 }
 
 function parsePullRequestRepository(pullRequestUrl) {
@@ -276,7 +419,16 @@ function requestCloudReview(options, cwd = process.cwd()) {
   if (boundaryErrors.length > 0) {
     throw new Error(boundaryErrors.join('\n'));
   }
-  const marker = reviewRequestMarker(pullRequest, source.head, receipt.baseTip);
+  const classIds = closedClassIds(
+    agentLedger.execute('status', {}, cwd),
+    source.head,
+  );
+  const marker = reviewRequestMarker(
+    pullRequest,
+    source.head,
+    receipt.baseTip,
+    classIds,
+  );
   const { owner, repository } = parsePullRequestRepository(
     remotePullRequest.url,
   );
@@ -301,7 +453,8 @@ function requestCloudReview(options, cwd = process.cwd()) {
     );
     return;
   }
-  const body = `@codex review exact commit ${source.head}\n\n${marker}`;
+  const classSummary = classIds.length === 0 ? 'none' : classIds.join(', ');
+  const body = `@codex review exact commit ${source.head}\n\nClosed defect classes: ${classSummary}\n\n${marker}`;
   run('gh', ['pr', 'comment', pullRequest, '--body', body], {
     cwd,
     inherit: true,
@@ -319,7 +472,7 @@ function prepare(cwd = process.cwd()) {
 function finalize(options, cwd = process.cwd()) {
   requirePullRequest(options);
   prepare(cwd);
-  run('git', ['push'], { cwd, inherit: true });
+  pushCurrentUpstream(cwd);
   requestCloudReview(options, cwd);
 }
 
@@ -351,8 +504,11 @@ if (require.main === module) {
 }
 
 module.exports = {
+  closedClassIds,
   createReceipt,
+  currentUpstream,
   hasReviewRequest,
+  ledgerDigest,
   parseArguments,
   parsePullRequestRepository,
   parsePushUpdates,

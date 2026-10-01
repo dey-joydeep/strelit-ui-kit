@@ -19,7 +19,42 @@ interface SourceState {
 }
 
 interface ReviewHandoffModule {
+  closedClassIds(
+    ledger: {
+      baseHead: string;
+      currentFingerprint: string;
+      currentHead: string;
+      reviewGate?: {
+        mode: string;
+        requiredPaths: string[];
+        applicableDomains: string[];
+      };
+      units: Array<{
+        kind: string;
+        status: string;
+        head: string;
+        sourceFingerprint?: string;
+        assignedPaths?: string[];
+        adjacentPaths?: string[];
+        carryForward?: {
+          fromHead: string;
+          toHead: string;
+          changedPaths: string[];
+        };
+        review?: { scope: string; pass: string; domains?: string[] };
+        checkpoint?: {
+          verdict?: string;
+          reviewedBase?: string;
+          reviewedHead?: string;
+          classClosures?: Array<{ id: string }>;
+        };
+      }>;
+    },
+    head: string,
+  ): string[];
+  currentUpstream(cwd?: string): { remote: string; branch: string };
   hasReviewRequest(marker: string, comments: Array<{ body?: string }>): boolean;
+  ledgerDigest(ledger: Record<string, unknown>): string;
   parsePushUpdates(input: string): Array<{
     localRef: string;
     localSha: string;
@@ -36,12 +71,14 @@ interface ReviewHandoffModule {
     pullRequest: string,
     head: string,
     baseTip: string,
+    classIds?: string[],
   ): string;
   validateReceipt(
     receipt: Record<string, unknown> | undefined,
     source: SourceState,
     expectedBaseHead: string,
     expectedBaseTip: string,
+    expectedLedgerDigest: string,
   ): string[];
   validatePullRequestBoundary(
     pullRequest: string,
@@ -115,8 +152,17 @@ function initializeReviewRepository(cwd: string): string {
   git(cwd, 'init');
   git(cwd, 'config', 'user.email', 'review@example.test');
   git(cwd, 'config', 'user.name', 'Review Test');
+  mkdirSync(join(cwd, '.github'));
+  writeFileSync(
+    join(cwd, '.github/change-risk.json'),
+    `${JSON.stringify({
+      high: ['^scripts/', '^\\.github/'],
+      medium: ['^test/'],
+      low: ['^README\\.md$'],
+    })}\n`,
+  );
   writeFileSync(join(cwd, 'README.md'), 'base\n');
-  git(cwd, 'add', 'README.md');
+  git(cwd, 'add', '.github/change-risk.json', 'README.md');
   git(cwd, 'commit', '-m', 'base');
   git(cwd, 'branch', '-M', 'main');
   const base = git(cwd, 'rev-parse', 'HEAD');
@@ -134,26 +180,35 @@ describe('review handoff', () => {
   it('rejects missing, stale-head, stale-source, and stale-base receipts', () => {
     const source = { head: 'head-a', fingerprint: 'fingerprint-a' };
     expect(
-      handoff.validateReceipt(undefined, source, 'base-a', 'base-tip-a'),
+      handoff.validateReceipt(
+        undefined,
+        source,
+        'base-a',
+        'base-tip-a',
+        'ledger-a',
+      ),
     ).toEqual(['No review-ready receipt exists for this checkout.']);
     expect(
       handoff.validateReceipt(
         {
-          version: 2,
+          version: 3,
           head: 'head-b',
           fingerprint: 'fingerprint-b',
           baseHead: 'base-b',
           baseTip: 'base-tip-b',
+          ledgerDigest: 'ledger-b',
         },
         source,
         'base-a',
         'base-tip-a',
+        'ledger-a',
       ),
     ).toEqual([
       'The review-ready receipt targets a different commit.',
       'The review-ready receipt is stale for the current source state.',
       'The review-ready receipt targets a different pull-request base.',
       'The review-ready receipt targets a different pull-request base tip.',
+      'The review-ready receipt targets different local review evidence.',
     ]);
   });
 
@@ -162,17 +217,46 @@ describe('review handoff', () => {
     expect(
       handoff.validateReceipt(
         {
-          version: 2,
+          version: 3,
           head: source.head,
           fingerprint: source.fingerprint,
           baseHead: 'base-a',
           baseTip: 'base-tip-a',
+          ledgerDigest: 'ledger-a',
         },
         source,
         'base-a',
         'base-tip-a',
+        'ledger-a',
       ),
     ).toEqual([]);
+  });
+
+  it('binds a receipt to the exact reviewed ledger evidence', () => {
+    const reviewed = { status: 'complete', units: [{ id: 'final-review' }] };
+    const replacement = {
+      status: 'complete',
+      units: [{ id: 'replacement-review' }],
+    };
+    const source = { head: 'head-a', fingerprint: 'fingerprint-a' };
+    expect(
+      handoff.validateReceipt(
+        {
+          version: 3,
+          head: source.head,
+          fingerprint: source.fingerprint,
+          baseHead: 'base-a',
+          baseTip: 'base-tip-a',
+          ledgerDigest: handoff.ledgerDigest(reviewed),
+        },
+        source,
+        'base-a',
+        'base-tip-a',
+        handoff.ledgerDigest(replacement),
+      ),
+    ).toEqual([
+      'The review-ready receipt targets different local review evidence.',
+    ]);
   });
 
   it('rejects a cloud request when the PR head or base differs', () => {
@@ -217,6 +301,27 @@ describe('review handoff', () => {
         }
       },
     );
+  });
+
+  it('uses the trusted base policy when the candidate downgrades its risk', () => {
+    const cwd = temporaryDirectory();
+    const base = initializeReviewRepository(cwd);
+    writeFileSync(
+      join(cwd, '.github/change-risk.json'),
+      `${JSON.stringify({ high: [], medium: [], low: ['.*'] })}\n`,
+    );
+    mkdirSync(join(cwd, 'scripts'));
+    writeFileSync(
+      join(cwd, 'scripts/high-risk.js'),
+      'module.exports = true;\n',
+    );
+    git(cwd, 'add', '.github/change-risk.json', 'scripts/high-risk.js');
+    git(cwd, 'commit', '-m', 'downgrade candidate policy');
+    const head = git(cwd, 'rev-parse', 'HEAD');
+
+    expect(() =>
+      prePushForFixture(`HEAD ${head} refs/heads/topic ${base}\n`, cwd),
+    ).toThrow(/No review-ready receipt exists/u);
   });
 
   it('classifies the committed candidate independently of worktree edits', () => {
@@ -267,6 +372,24 @@ describe('review handoff', () => {
         remoteSha: '000',
       },
     ]);
+  });
+
+  it('resolves a configured upstream without splitting the remote name', () => {
+    const cwd = temporaryDirectory();
+    initializeReviewRepository(cwd);
+    git(cwd, 'checkout', '-b', 'feature');
+    git(cwd, 'config', 'branch.feature.remote', 'team/origin');
+    git(cwd, 'config', 'branch.feature.merge', 'refs/heads/review/feature');
+
+    expect(handoff.currentUpstream(cwd)).toEqual({
+      remote: 'team/origin',
+      branch: 'review/feature',
+    });
+
+    git(cwd, 'config', 'branch.feature.merge', 'refs/tags/v1');
+    expect(() => handoff.currentUpstream(cwd)).toThrow(
+      'Unexpected upstream configuration',
+    );
   });
 
   it('forwards hook input without passing Git hook positional arguments', () => {
@@ -378,6 +501,139 @@ describe('review handoff', () => {
         },
       ]),
     ).toBe(false);
+  });
+
+  it('keys the cloud request by the frozen defect-class set', () => {
+    const ledger = {
+      baseHead: 'base-a',
+      currentHead: 'head-a',
+      currentFingerprint: 'fingerprint-a',
+      reviewGate: {
+        mode: 'pull-request',
+        requiredPaths: ['scripts/review-handoff.js'],
+        applicableDomains: ['Tooling, CI, and verification'],
+      },
+      units: [
+        {
+          kind: 'review',
+          status: 'completed',
+          head: 'head-a',
+          sourceFingerprint: 'fingerprint-a',
+          assignedPaths: ['scripts/review-handoff.js'],
+          adjacentPaths: [],
+          review: {
+            scope: 'domain',
+            pass: 'finding-closure',
+            domains: ['Tooling, CI, and verification'],
+          },
+          checkpoint: {
+            verdict: 'pass',
+            classClosures: [{ id: 'handoff-history' }],
+          },
+        },
+        {
+          kind: 'review',
+          status: 'carried-forward',
+          head: 'head-previous',
+          sourceFingerprint: 'fingerprint-previous',
+          assignedPaths: ['scripts/agent-work-ledger.js'],
+          adjacentPaths: [],
+          carryForward: {
+            fromHead: 'head-previous',
+            toHead: 'head-a',
+            changedPaths: ['scripts/review-handoff.js'],
+          },
+          review: {
+            scope: 'domain',
+            pass: 'finding-closure',
+            domains: ['Tooling, CI, and verification'],
+          },
+          checkpoint: {
+            verdict: 'pass',
+            classClosures: [{ id: 'ledger-history' }],
+          },
+        },
+        {
+          kind: 'review',
+          status: 'carried-forward',
+          head: 'head-previous',
+          sourceFingerprint: 'fingerprint-previous',
+          assignedPaths: ['scripts/review-handoff.js'],
+          adjacentPaths: [],
+          carryForward: {
+            fromHead: 'head-previous',
+            toHead: 'head-a',
+            changedPaths: ['scripts/review-handoff.js'],
+          },
+          review: {
+            scope: 'domain',
+            pass: 'finding-closure',
+            domains: ['Tooling, CI, and verification'],
+          },
+          checkpoint: {
+            verdict: 'pass',
+            classClosures: [{ id: 'invalidated-history' }],
+          },
+        },
+        {
+          kind: 'review',
+          status: 'completed',
+          head: 'head-a',
+          sourceFingerprint: 'fingerprint-a',
+          assignedPaths: ['README.md'],
+          review: {
+            scope: 'whole-pr',
+            pass: 'fresh-discovery',
+            domains: ['Tests and documentation'],
+          },
+          checkpoint: {
+            verdict: 'pass',
+            reviewedBase: 'base-a',
+            reviewedHead: 'head-a',
+            classClosures: [{ id: 'stale-set' }],
+          },
+        },
+        {
+          kind: 'review',
+          status: 'completed',
+          head: 'head-a',
+          sourceFingerprint: 'fingerprint-a',
+          assignedPaths: ['scripts/review-handoff.js'],
+          review: {
+            scope: 'whole-pr',
+            pass: 'fresh-discovery',
+            domains: ['Tooling, CI, and verification'],
+          },
+          checkpoint: {
+            verdict: 'pass',
+            reviewedBase: 'base-a',
+            reviewedHead: 'head-a',
+            classClosures: [{ id: 'rollback' }, { id: 'compatibility' }],
+          },
+        },
+      ],
+    };
+    const classIds = handoff.closedClassIds(ledger, 'head-a');
+    expect(classIds).toEqual([
+      'compatibility',
+      'handoff-history',
+      'ledger-history',
+      'rollback',
+    ]);
+    expect(
+      handoff.reviewRequestMarker('1', 'head-a', 'base-a', classIds),
+    ).toContain(
+      'classes=compatibility,handoff-history,ledger-history,rollback',
+    );
+    expect(() => handoff.closedClassIds(ledger, 'head-b')).toThrow(
+      'not cloud handoff head head-b',
+    );
+    expect(() =>
+      handoff.closedClassIds({ ...ledger, reviewGate: undefined }, 'head-a'),
+    ).toThrow('requires a pull-request review gate');
+    expect(() =>
+      handoff.reviewRequestMarker('1', 'head-a', 'base-a', ['unsafe,class']),
+    ).toThrow('lowercase hyphenated slugs');
   });
 
   it('requires an explicit reopen option for intentional repeat requests', () => {

@@ -33,6 +33,7 @@ interface Checkpoint {
   commands: CommandReceipt[];
   findingSummary: string;
   findings: Array<{
+    classId?: string;
     severity: 'critical' | 'high' | 'medium' | 'low';
     status: 'open' | 'closed' | 'accepted' | 'deferred';
     summary: string;
@@ -41,6 +42,15 @@ interface Checkpoint {
   }>;
   uninspected: string[];
   verdict?: 'pass' | 'changes-requested' | 'blocked';
+  inspectedClasses?: string[];
+  classClosures?: Array<{
+    id: string;
+    name: string;
+    searchQuery: string;
+    hitCount: number;
+    dispositionedCount: number;
+    dispositionSummary: string;
+  }>;
   coverage?: Array<{
     path: string;
     domains: string[];
@@ -89,11 +99,15 @@ interface ReviewGate {
   mode: 'pull-request';
   implementer: string;
   risk: 'low' | 'medium' | 'high';
+  verificationProfile: 'governance' | 'product';
   requiredPaths: string[];
-  requiredCoverage: Array<{ path: string; domains: string[] }>;
   applicableDomains: string[];
   nonGeneratedLines: number;
-  largeHighRisk: boolean;
+  reviewFocus: Array<{
+    path: string;
+    findingCount: number;
+    classes: string[];
+  }>;
 }
 
 interface Ledger {
@@ -222,6 +236,7 @@ interface LedgerModule {
       expectedBaseHead?: string;
       expectedReviewGate?: ReviewGate;
       executedCommands?: string[];
+      preflight?: boolean;
     },
   ): Ledger;
   summarize(ledger: Ledger): {
@@ -255,6 +270,11 @@ function createTemporaryRepository(): string {
   });
   writeFileSync(join(repository, 'README.md'), 'base\n');
   writeFileSync(join(repository, '.gitignore'), '.tmp/\n');
+  mkdirSync(join(repository, '.github'), { recursive: true });
+  writeFileSync(
+    join(repository, '.github', 'change-risk.json'),
+    readFileSync(resolve('.github/change-risk.json'), 'utf8'),
+  );
   mkdirSync(join(repository, 'src', 'ts', 'controls'), { recursive: true });
   writeFileSync(join(repository, 'src', 'ts', 'layout-manager.ts'), 'layout\n');
   writeFileSync(
@@ -433,24 +453,6 @@ function retargetCompletedUnit(
     verdict: 'pass',
   };
   return unit;
-}
-
-function addPathEvidence(
-  unit: WorkUnit,
-  path: string,
-  domains: string[],
-  adjacentPath: string,
-  command: string,
-): void {
-  unit.checkpoint!.coverage = [
-    {
-      path,
-      domains,
-      contract: unit.contracts[0],
-      adjacentPaths: [adjacentPath],
-      tests: [command],
-    },
-  ];
 }
 
 function gateOptions(ledger: Ledger): {
@@ -1323,6 +1325,128 @@ describe('agent work ledger', () => {
     });
   });
 
+  it('atomically resets a PR ledger after the merge base moves', () => {
+    withTemporaryRepository((repository) => {
+      writeFileSync(join(repository, 'README.md'), 'feature\n');
+      execFileSync('git', ['add', 'README.md'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Feature change.'], {
+        cwd: repository,
+      });
+      const originalHead = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      ledgerModule.execute(
+        'init',
+        {
+          task: 'moving-base',
+          base: 'main',
+          head: originalHead,
+          mode: 'pr',
+          implementer: 'codex-main',
+        },
+        repository,
+      );
+
+      execFileSync('git', ['checkout', 'main'], { cwd: repository });
+      writeFileSync(join(repository, 'target.txt'), 'target\n');
+      execFileSync('git', ['add', 'target.txt'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Advance target.'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['checkout', 'feature'], { cwd: repository });
+      execFileSync('git', ['merge', '--no-edit', 'main'], { cwd: repository });
+      const mergedHead = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+
+      expect(() => ledgerModule.execute('recover', {}, repository)).toThrow(
+        'agent:ledger reset-pr',
+      );
+      expect(() =>
+        ledgerModule.execute(
+          'reset-pr',
+          {
+            task: 'invalid-reset',
+            base: 'main',
+            head: originalHead,
+            implementer: 'codex-main',
+          },
+          repository,
+        ),
+      ).toThrow('does not match repository HEAD');
+      expect(
+        existsSync(join(repository, '.tmp', 'agent-work', 'history')),
+      ).toBe(false);
+      const reset = ledgerModule.execute(
+        'reset-pr',
+        {
+          task: 'moving-base-reset',
+          base: 'main',
+          head: mergedHead,
+          implementer: 'codex-main',
+        },
+        repository,
+      );
+
+      expect(reset.baseHead).toBe(
+        execFileSync('git', ['rev-parse', 'main'], {
+          cwd: repository,
+          encoding: 'utf8',
+        }).trim(),
+      );
+      expect(reset.units).toEqual([]);
+      expect(
+        readdirSync(join(repository, '.tmp', 'agent-work', 'history')),
+      ).toHaveLength(1);
+    });
+  });
+
+  it('normalizes legacy schema-v1 review gates during recovery', () => {
+    withTemporaryRepository((repository) => {
+      writeFileSync(join(repository, 'README.md'), 'feature\n');
+      execFileSync('git', ['add', 'README.md'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Feature change.'], {
+        cwd: repository,
+      });
+      const head = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      const initial = ledgerModule.execute(
+        'init',
+        {
+          task: 'legacy-gate',
+          base: 'main',
+          head,
+          mode: 'pr',
+          implementer: 'codex-main',
+        },
+        repository,
+      );
+      const activePath = join(repository, '.tmp', 'agent-work', 'active.json');
+      const legacy = JSON.parse(readFileSync(activePath, 'utf8')) as Ledger & {
+        reviewGate: ReviewGate & {
+          requiredCoverage?: unknown[];
+          largeHighRisk?: boolean;
+        };
+      };
+      delete (legacy.reviewGate as Partial<ReviewGate>).verificationProfile;
+      delete (legacy.reviewGate as Partial<ReviewGate>).reviewFocus;
+      legacy.reviewGate.requiredCoverage = [];
+      legacy.reviewGate.largeHighRisk = false;
+      writeFileSync(activePath, JSON.stringify(legacy));
+
+      const recovered = ledgerModule.execute('recover', {}, repository);
+      expect(recovered.reviewGate).toEqual(initial.reviewGate);
+      expect(recovered.reviewGate).not.toHaveProperty('requiredCoverage');
+      expect(recovered.reviewGate).not.toHaveProperty('largeHighRisk');
+      const persisted = JSON.parse(readFileSync(activePath, 'utf8')) as Ledger;
+      expect(persisted.reviewGate).toEqual(recovered.reviewGate);
+    });
+  });
+
   it('selectively carries forward unchanged review evidence', () => {
     const ledger: Ledger = {
       schemaVersion: 1,
@@ -1651,14 +1775,14 @@ describe('agent work ledger', () => {
     expect(() => ledgerModule.validateLedger(ledger)).not.toThrow();
     unit.checkpoint!.findings = [
       {
-        severity: 'medium',
+        severity: 'high',
         status: 'deferred',
-        summary: 'Material defect cannot be deferred.',
+        summary: 'Blocking defect cannot be deferred.',
         deferralRationale: 'Would block the current outcome.',
       },
     ];
     expect(() => ledgerModule.validateLedger(ledger)).toThrow(
-      'can defer only Low findings',
+      'can defer only Medium or Low findings',
     );
     unit.status = 'pending';
     delete unit.sourceFingerprint;
@@ -1861,22 +1985,20 @@ describe('agent work ledger', () => {
         mode: 'pull-request',
         implementer: 'codex-main',
         risk: 'high',
+        verificationProfile: 'product',
         requiredPaths: ['src/ts/layout-manager.ts'],
         applicableDomains: [
           'Public API, compatibility, and packaging',
           'Runtime behavior, lifecycle, and ownership',
         ],
-        largeHighRisk: false,
+        reviewFocus: [
+          {
+            path: 'src/ts/layout-manager.ts',
+            findingCount: 49,
+            classes: ['partial-failure rollback', 'popout ownership'],
+          },
+        ],
       });
-      expect(ledger.reviewGate?.requiredCoverage).toEqual([
-        {
-          path: 'src/ts/layout-manager.ts',
-          domains: [
-            'Public API, compatibility, and packaging',
-            'Runtime behavior, lifecycle, and ownership',
-          ],
-        },
-      ]);
     });
   });
 
@@ -1917,7 +2039,9 @@ describe('agent work ledger', () => {
           source,
           gateOptions(ledger),
         ),
-      ).toThrow('missing completed fresh-discovery review coverage');
+      ).toThrow(
+        'requires exactly one exact-source whole-PR fresh-discovery attempt',
+      );
 
       const selfReview = completedUnit('whole-pr-review', 'review', [
         'src/ts/layout-manager.ts',
@@ -1987,7 +2111,7 @@ describe('agent work ledger', () => {
     });
   });
 
-  it('accepts exact independent coverage, verification, and synthesis', () => {
+  it('accepts one exact independent review with focus-class evidence', () => {
     withTemporaryRepository((repository) => {
       const base = execFileSync('git', ['rev-parse', 'HEAD'], {
         cwd: repository,
@@ -2031,36 +2155,10 @@ describe('agent work ledger', () => {
         domains,
       };
       retargetCompletedUnit(review, source, [changedPath, adjacentPath]);
-      addPathEvidence(
-        review,
-        changedPath,
-        domains,
-        adjacentPath,
-        'source inspection',
-      );
+      review.checkpoint!.inspectedClasses =
+        ledger.reviewGate!.reviewFocus.flatMap((focus) => focus.classes);
       bindReviewBoundary(review, ledger);
-
-      const verification = completedUnit('verification', 'verification', []);
-      verification.requiredCommands = [
-        'npm run verify:ordered',
-        'npm run apitest:build',
-        'npm run apitest:smoke',
-      ];
-      retargetCompletedUnit(verification, source, []);
-
-      const synthesis = completedUnit('synthesis', 'synthesis', [changedPath]);
-      synthesis.adjacentPaths = [adjacentPath];
-      synthesis.requiredCommands = ['source inspection'];
-      synthesis.dependencies = ['whole-review', 'verification'];
-      synthesis.review = {
-        reviewer: 'reviewer-a',
-        scope: 'whole-pr',
-        pass: 'fresh-discovery',
-        domains,
-      };
-      retargetCompletedUnit(synthesis, source, [changedPath, adjacentPath]);
-      bindReviewBoundary(synthesis, ledger);
-      ledger.units.push(review, verification, synthesis);
+      ledger.units.push(review);
 
       expect(() =>
         ledgerModule.validatePullRequestGate(
@@ -2070,36 +2168,26 @@ describe('agent work ledger', () => {
         ),
       ).not.toThrow();
 
-      synthesis.dependencies = ['whole-review'];
+      const duplicateReview = structuredClone(review);
+      duplicateReview.id = 'duplicate-whole-review';
+      duplicateReview.checkpoint!.verdict = 'changes-requested';
+      ledger.units.push(duplicateReview);
       expect(() =>
         ledgerModule.validatePullRequestGate(
           ledger,
           source,
           gateOptions(ledger),
         ),
-      ).toThrow('verification unit');
-      synthesis.dependencies = ['whole-review', 'verification'];
+      ).toThrow('found 2');
+      ledger.units.pop();
 
-      const completedReview = structuredClone(review);
-      review.status = 'carried-forward';
-      review.head = secondHead;
-      review.sourceFingerprint = 'b'.repeat(64);
-      review.checkpoint!.lastVerifiedHead = secondHead;
-      review.checkpoint!.sourceFingerprint = 'b'.repeat(64);
-      review.checkpoint!.reviewedHead = secondHead;
-      review.carryForward = {
-        fromHead: secondHead,
-        toHead: source.head,
-        changedPaths: ['README.md'],
-      };
       expect(() =>
-        ledgerModule.validatePullRequestGate(
-          ledger,
-          source,
-          gateOptions(ledger),
-        ),
+        ledgerModule.validatePullRequestGate(ledger, source, {
+          ...gateOptions(ledger),
+          executedCommands: [],
+          preflight: true,
+        }),
       ).not.toThrow();
-      Object.assign(review, completedReview);
 
       expect(() =>
         ledgerModule.validatePullRequestGate(
@@ -2131,68 +2219,66 @@ describe('agent work ledger', () => {
         ),
       ).toThrow('exact base/head boundary');
       review.checkpoint!.reviewedBase = ledger.baseHead;
-      synthesis.checkpoint!.reviewedHead = secondHead;
+
+      const inspectedClasses = review.checkpoint!.inspectedClasses;
+      delete review.checkpoint!.inspectedClasses;
       expect(() =>
         ledgerModule.validatePullRequestGate(
           ledger,
           source,
           gateOptions(ledger),
         ),
-      ).toThrow('exact base/head boundary');
-      synthesis.checkpoint!.reviewedHead = ledger.currentHead;
+      ).toThrow('did not inspect every declared focus class');
+      review.checkpoint!.inspectedClasses = inspectedClasses;
 
-      const originalCoverage = ledger.reviewGate!.requiredCoverage;
+      ledger.reviewGate!.verificationProfile = 'governance';
+      expect(() =>
+        ledgerModule.validatePullRequestGate(ledger, source, {
+          ...gateOptions(ledger),
+          executedCommands: ['npm run verify:governance'],
+        }),
+      ).not.toThrow();
+      expect(() =>
+        ledgerModule.validatePullRequestGate(
+          ledger,
+          source,
+          gateOptions(ledger),
+        ),
+      ).toThrow('gate-executed governance verification');
+      ledger.reviewGate!.verificationProfile = 'product';
+
       const canonicalGate = structuredClone(ledger.reviewGate!);
-      ledger.reviewGate!.requiredCoverage = [];
-      expect(() => ledgerModule.validateLedger(ledger)).toThrow(
-        'coverage paths must match requiredPaths exactly',
-      );
+      ledger.reviewGate!.reviewFocus = [];
       expect(() =>
         ledgerModule.validatePullRequestGate(ledger, source, {
           ...gateOptions(ledger),
           expectedReviewGate: canonicalGate,
         }),
       ).toThrow('regenerated canonical gate');
-      ledger.reviewGate!.requiredCoverage = originalCoverage;
-
-      const pathEvidence = review.checkpoint!.coverage;
-      delete review.checkpoint!.coverage;
-      expect(() =>
-        ledgerModule.validatePullRequestGate(
-          ledger,
-          source,
-          gateOptions(ledger),
-        ),
-      ).toThrow('lacks per-path review evidence');
-      review.checkpoint!.coverage = pathEvidence;
+      ledger.reviewGate = canonicalGate;
 
       review.review.domains = [domains[0]];
-      review.checkpoint!.coverage![0].domains = [domains[0]];
       expect(() =>
         ledgerModule.validatePullRequestGate(
           ledger,
           source,
           gateOptions(ledger),
         ),
-      ).toThrow('does not exactly match the base diff');
+      ).toThrow('is not a passing exact-scope whole-PR review');
     });
   });
 
-  it('requires multiple domain reviewers and an unused large-PR synthesis reviewer', () => {
+  it('requires structured closure for every finding class', () => {
     const source = {
       head: firstHead,
       fingerprint: 'a'.repeat(64),
       workingPaths: [],
     };
     const path = 'src/ts/layout-manager.ts';
-    const adjacent = 'src/ts/controls/browser-popout.ts';
-    const domains = [
-      'Public API, compatibility, and packaging',
-      'Runtime behavior, lifecycle, and ownership',
-    ];
+    const domains = ['Runtime behavior, lifecycle, and ownership'];
     const ledger: Ledger = {
       schemaVersion: 1,
-      taskId: 'large-pr',
+      taskId: 'class-closure',
       baseHead: secondHead,
       currentHead: source.head,
       currentFingerprint: source.fingerprint,
@@ -2203,73 +2289,228 @@ describe('agent work ledger', () => {
         mode: 'pull-request',
         implementer: 'codex-main',
         risk: 'high',
+        verificationProfile: 'product',
         requiredPaths: [path],
-        requiredCoverage: [{ path, domains }],
         applicableDomains: domains,
-        nonGeneratedLines: 1001,
-        largeHighRisk: true,
+        nonGeneratedLines: 12,
+        reviewFocus: [{ path, findingCount: 1, classes: ['rollback'] }],
       },
       units: [],
     };
-    const makeDomainReview = (id: string, reviewer: string, domain: string) => {
-      const unit = completedUnit(id, 'review', [path]);
-      unit.adjacentPaths = [adjacent];
-      unit.requiredCommands = ['source inspection'];
-      unit.review = {
-        reviewer,
-        scope: 'domain',
-        pass: 'fresh-discovery',
-        domains: [domain],
-      };
-      return retargetCompletedUnit(unit, source, [path, adjacent]);
-    };
-    const firstReview = makeDomainReview('domain-a', 'reviewer-a', domains[0]);
-    const secondReview = makeDomainReview('domain-b', 'reviewer-b', domains[1]);
-    addPathEvidence(
-      firstReview,
-      path,
-      [domains[0]],
-      adjacent,
-      'source inspection',
-    );
-    bindReviewBoundary(firstReview, ledger);
-    addPathEvidence(
-      secondReview,
-      path,
-      [domains[1]],
-      adjacent,
-      'source inspection',
-    );
-    bindReviewBoundary(secondReview, ledger);
-    const verification = completedUnit('verification', 'verification', []);
-    verification.requiredCommands = [
-      'npm run verify:ordered',
-      'npm run apitest:build',
-      'npm run apitest:smoke',
-    ];
-    retargetCompletedUnit(verification, source, []);
-    const synthesis = completedUnit('synthesis', 'synthesis', [path]);
-    synthesis.adjacentPaths = [adjacent];
-    synthesis.requiredCommands = ['source inspection'];
-    synthesis.dependencies = ['domain-a', 'domain-b', 'verification'];
-    synthesis.review = {
-      reviewer: 'reviewer-c',
+    const review = completedUnit('whole-review', 'review', [path]);
+    review.adjacentPaths = ['src/ts/controls/browser-popout.ts'];
+    review.requiredCommands = ['source inspection'];
+    review.review = {
+      reviewer: 'reviewer-a',
       scope: 'whole-pr',
       pass: 'fresh-discovery',
       domains,
     };
-    retargetCompletedUnit(synthesis, source, [path, adjacent]);
-    bindReviewBoundary(synthesis, ledger);
-    ledger.units.push(firstReview, secondReview, verification, synthesis);
+    retargetCompletedUnit(review, source, [path, ...review.adjacentPaths]);
+    bindReviewBoundary(review, ledger);
+    review.checkpoint!.inspectedClasses = ['rollback'];
+    review.checkpoint!.findings = [
+      {
+        classId: 'rollback',
+        severity: 'medium',
+        status: 'deferred',
+        summary: 'One adjacent rollback case remains.',
+        deferralRationale: 'Owned follow-up outside this change.',
+      },
+    ];
+    ledger.units.push(review);
 
+    expect(() =>
+      ledgerModule.validatePullRequestGate(ledger, source, gateOptions(ledger)),
+    ).toThrow('findings require defect-class closure evidence');
+
+    review.checkpoint!.classClosures = [
+      {
+        id: 'rollback',
+        name: 'rollback failures',
+        searchQuery: 'rg rollback src/ts',
+        hitCount: 2,
+        dispositionedCount: 2,
+        dispositionSummary: 'One fixed and one deferred with ownership.',
+      },
+    ];
+    expect(() => ledgerModule.validateLedger(ledger)).not.toThrow();
     expect(() =>
       ledgerModule.validatePullRequestGate(ledger, source, gateOptions(ledger)),
     ).not.toThrow();
 
-    synthesis.review.reviewer = 'reviewer-a';
+    review.checkpoint!.classClosures[0].id = 'unsafe,class';
+    expect(() => ledgerModule.validateLedger(ledger)).toThrow(
+      'must be a lowercase hyphenated slug',
+    );
+    review.checkpoint!.classClosures[0].id = 'rollback';
+
+    review.checkpoint!.classClosures[0].dispositionedCount = 1;
+    expect(() => ledgerModule.validateLedger(ledger)).toThrow(
+      'must disposition every search hit',
+    );
+  });
+
+  it('requires structured closure on applicable focused review evidence', () => {
+    const source = {
+      head: firstHead,
+      fingerprint: 'a'.repeat(64),
+      workingPaths: [],
+    };
+    const path = 'src/ts/layout-manager.ts';
+    const domains = ['Runtime behavior, lifecycle, and ownership'];
+    const ledger: Ledger = {
+      schemaVersion: 1,
+      taskId: 'focused-class-closure',
+      baseHead: secondHead,
+      currentHead: source.head,
+      currentFingerprint: source.fingerprint,
+      workingPaths: [],
+      status: 'active',
+      updatedAt: '2026-08-13T00:00:00.000Z',
+      reviewGate: {
+        mode: 'pull-request',
+        implementer: 'codex-main',
+        risk: 'high',
+        verificationProfile: 'product',
+        requiredPaths: [path],
+        applicableDomains: domains,
+        nonGeneratedLines: 12,
+        reviewFocus: [],
+      },
+      units: [],
+    };
+    const focused = completedUnit('focused-review', 'review', [path]);
+    focused.review = {
+      reviewer: 'reviewer-a',
+      scope: 'domain',
+      pass: 'finding-closure',
+      domains,
+    };
+    retargetCompletedUnit(focused, source, [path]);
+    focused.checkpoint!.findings = [
+      {
+        classId: 'rollback',
+        severity: 'medium',
+        status: 'closed',
+        summary: 'Rollback ownership was repaired.',
+      },
+    ];
+    const finalReview = completedUnit('whole-review', 'review', [path]);
+    finalReview.adjacentPaths = ['src/ts/controls/browser-popout.ts'];
+    finalReview.requiredCommands = ['source inspection'];
+    finalReview.review = {
+      reviewer: 'reviewer-b',
+      scope: 'whole-pr',
+      pass: 'fresh-discovery',
+      domains,
+    };
+    retargetCompletedUnit(finalReview, source, [
+      path,
+      ...finalReview.adjacentPaths,
+    ]);
+    finalReview.checkpoint!.inspectedClasses = [];
+    bindReviewBoundary(finalReview, ledger);
+    ledger.units.push(focused, finalReview);
+
+    const focusedAssignment = focused.review;
+    delete focused.review;
     expect(() =>
       ledgerModule.validatePullRequestGate(ledger, source, gateOptions(ledger)),
-    ).toThrow('unused independent reviewer');
+    ).toThrow('findings require a declared finding-closure review pass');
+    focused.review = focusedAssignment;
+
+    delete focused.checkpoint!.verdict;
+    expect(() =>
+      ledgerModule.validatePullRequestGate(ledger, source, gateOptions(ledger)),
+    ).toThrow('finding-closure evidence requires a passing verdict');
+    focused.checkpoint!.verdict = 'pass';
+
+    expect(() =>
+      ledgerModule.validatePullRequestGate(ledger, source, gateOptions(ledger)),
+    ).toThrow('focused-review findings require defect-class closure evidence');
+
+    focused.checkpoint!.classClosures = [
+      {
+        id: 'rollback',
+        name: 'rollback failures',
+        searchQuery: 'rg rollback src/ts',
+        hitCount: 1,
+        dispositionedCount: 1,
+        dispositionSummary: 'The matching defect was fixed.',
+      },
+    ];
+    expect(() =>
+      ledgerModule.validatePullRequestGate(ledger, source, gateOptions(ledger)),
+    ).not.toThrow();
+  });
+
+  it('cannot finish high-risk PR work after only a focused review', () => {
+    withTemporaryRepository((repository) => {
+      const base = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      writeFileSync(
+        join(repository, 'src', 'ts', 'layout-manager.ts'),
+        'layout changed\n',
+      );
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Change layout.'], {
+        cwd: repository,
+      });
+      const head = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      ledgerModule.execute(
+        'init',
+        {
+          task: 'focused-only',
+          base,
+          head,
+          mode: 'pr',
+          implementer: 'codex-main',
+        },
+        repository,
+      );
+      ledgerModule.execute(
+        'add',
+        {
+          unit: 'focused-review',
+          kind: 'review',
+          paths: 'src/ts/layout-manager.ts',
+          adjacent: 'src/ts/controls/browser-popout.ts',
+          contracts: 'Close a known finding.',
+          commands: 'npm test',
+          reviewer: 'reviewer-a',
+          scope: 'domain',
+          pass: 'finding-closure',
+          domains: 'Runtime behavior, lifecycle, and ownership',
+        },
+        repository,
+      );
+      ledgerModule.execute(
+        'start',
+        { unit: 'focused-review', owner: 'reviewer-a' },
+        repository,
+      );
+      ledgerModule.execute(
+        'complete',
+        {
+          unit: 'focused-review',
+          report: writeReport(repository, { verdict: 'pass' }),
+        },
+        repository,
+      );
+
+      expect(() => ledgerModule.execute('finish', {}, repository)).toThrow(
+        'requires exactly one exact-source whole-PR fresh-discovery attempt',
+      );
+      expect(ledgerModule.execute('status', {}, repository).status).toBe(
+        'active',
+      );
+    });
   });
 
   it('rejects paths outside the repository and malformed dependencies', () => {

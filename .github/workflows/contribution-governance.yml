@@ -290,7 +290,7 @@ jobs:
                 const allowedDispositions = {
                   Critical: ['open', 'closed'],
                   High: ['open', 'closed'],
-                  Medium: ['open', 'closed', 'accepted'],
+                  Medium: ['open', 'closed', 'accepted', 'deferred'],
                   Low: ['open', 'closed', 'deferred']
                 };
                 if (!allowedDispositions[severity].includes(disposition)) {
@@ -298,7 +298,7 @@ jobs:
                     `Finding disposition ${match[2]} uses invalid ${match[3]} status for ${severity} severity.`
                   );
                 }
-                parsedRecords.push({ disposition, severity });
+                parsedRecords.push({ disposition, identifier, severity });
               }
               if (invalidRecord) {
                 validationErrors.push(
@@ -360,24 +360,59 @@ jobs:
                 review,
                 'Accepted Medium findings'
               );
+              const deferredMedium = canonicalReviewCount(
+                review,
+                'Deferred Medium findings'
+              );
               if (
                 requireStatusReconciliation &&
                 (openMedium === undefined ||
                   closedMedium === undefined ||
                   acceptedMedium === undefined ||
+                  deferredMedium === undefined ||
                   mediumRecords.filter((record) => record.disposition === 'open').length !==
                     openMedium ||
                   mediumRecords.filter((record) => record.disposition === 'closed').length !==
                     closedMedium ||
                   mediumRecords.filter((record) => record.disposition === 'accepted')
                     .length !== acceptedMedium ||
+                  mediumRecords.filter((record) => record.disposition === 'deferred')
+                    .length !== deferredMedium ||
                   mediumRecords.some(
-                    (record) => !['open', 'closed', 'accepted'].includes(record.disposition)
+                    (record) => !['open', 'closed', 'accepted', 'deferred'].includes(record.disposition)
                   ))
               ) {
                 validationErrors.push(
-                  'Medium finding dispositions must reconcile with their open, closed, and accepted totals.'
+                  'Medium finding dispositions must reconcile with their open, closed, accepted, and deferred totals.'
                 );
+              }
+
+              const deferredMediumRecords = mediumRecords.filter(
+                (record) => record.disposition === 'deferred'
+              );
+              if (
+                requireStatusReconciliation &&
+                deferredMediumRecords.length > 0
+              ) {
+                const rationaleValues = reviewFieldValues(
+                  review,
+                  'Medium deferral rationale'
+                );
+                const rationale = rationaleValues[0]?.trim() ?? '';
+                const rationaleIsConcrete =
+                  rationaleValues.length === 1 &&
+                  rationale.length >= 20 &&
+                  !/^(?:pending|none|not applicable|n\/?a|tbd|todo)\b/i.test(rationale);
+                const rationaleIdentifiers = new Set(
+                  rationale.toLowerCase().match(/[a-z0-9][a-z0-9._/#-]*/g) ?? []
+                );
+                const coversEveryDeferredFinding = deferredMediumRecords.every(
+                  (record) =>
+                    rationaleIdentifiers.has(record.identifier)
+                );
+                if (!rationaleIsConcrete || !coversEveryDeferredFinding) {
+                  validationErrors.push('Deferred Medium findings require one concrete Medium deferral rationale that names every deferred finding ID.');
+                }
               }
 
               return validationErrors;
@@ -425,6 +460,7 @@ jobs:
               '## Test Evidence',
               '## Test Exception',
               '## Review-Finding Expansion',
+              '## Defect Class Closures',
               '## Out of Scope',
               '## Scope Justification',
               '## Independent Quality Review',
@@ -456,6 +492,56 @@ jobs:
               }
               if (headings.length === 1) {
                 previousSectionIndex = headings[0].index;
+              }
+            }
+
+            const findingExpansion =
+              getSectionBody('## Review-Finding Expansion') ?? '';
+            const classClosureSection =
+              getSectionBody('## Defect Class Closures') ?? '';
+            const noConfirmedClasses =
+              /^No confirmed defect classes\.?$/i.test(classClosureSection);
+            const declaresNoReviewFindings =
+              /^This is not a review-finding fix; no confirmed defect classes apply\.?$/i.test(
+                findingExpansion
+              );
+            const closureLines = classClosureSection
+              .split('\n')
+              .map((line) => line.trim())
+              .filter((line) => line.startsWith('Class: '));
+            if (
+              noConfirmedClasses &&
+              !declaresNoReviewFindings
+            ) {
+              errors.push(
+                'Confirmed review findings require structured defect-class closure records.'
+              );
+            }
+            if (!noConfirmedClasses && closureLines.length === 0) {
+              errors.push(
+                'Defect Class Closures must contain structured Class records or explicitly state that no confirmed classes exist.'
+              );
+            }
+            const closureIds = new Set();
+            for (const line of closureLines) {
+              const match = line.match(
+                /^Class: ([a-z0-9]+(?:-[a-z0-9]+)*) \| Name: (.{4,}) \| Query: (.{4,}) \| Hits: (0|[1-9]\d*) \| Dispositioned: (0|[1-9]\d*) \| Summary: (.{4,})$/
+              );
+              if (match === null) {
+                errors.push(
+                  'Each defect-class closure must use the canonical Class, Name, Query, Hits, Dispositioned, and Summary fields.'
+                );
+                continue;
+              }
+              const classId = match[1];
+              if (closureIds.has(classId)) {
+                errors.push(`Defect-class closure ID must be unique: ${classId}.`);
+              }
+              closureIds.add(classId);
+              if (Number(match[4]) !== Number(match[5])) {
+                errors.push(
+                  `Defect-class closure ${classId} must disposition every search hit.`
+                );
               }
             }
 
@@ -546,7 +632,8 @@ jobs:
             const executableBehaviorChanged = fileNames.some(
               (fileName) =>
                 /^scripts\//.test(fileName) ||
-                (/^src\//.test(fileName) && !/^src\/.*\.md$/i.test(fileName))
+                (/^src\//.test(fileName) &&
+                  !/^src\/.*\.(?:md|mdx|txt|adoc|rst)$/i.test(fileName))
             );
             const testsChanged = fileNames.some((fileName) =>
               /^(?:test|apitest)\//.test(fileName)
@@ -640,7 +727,8 @@ jobs:
             ]);
             const domainsForPath = (fileName) => {
               const domains = new Set();
-              const sourceDocumentation = /^src\/.*\.md$/i.test(fileName);
+              const sourceDocumentation =
+                /^src\/.*\.(?:md|mdx|txt|adoc|rst)$/i.test(fileName);
               const repositoryProse = /(?:^|\/)(?:(?:README|CHANGELOG|CONTRIBUTING|COMMUNITY|SECURITY|SUPPORT|VERSIONING|LICENSE|LICENSING|NOTICE|AUTHORS)(?:\.[^/]*)?|AGENTS\.md|[^/]+\.(?:md|mdx|txt|adoc|rst))$/i.test(fileName);
               const governancePolicy =
                 /(?:^|\/)AGENTS\.md$/.test(fileName) ||
@@ -1069,11 +1157,15 @@ jobs:
                 const acceptedMedium = Number(
                   independentReview.match(/^Accepted Medium findings:[ \t]*(\d+)$/im)?.[1]
                 );
+                const deferredMedium = Number(
+                  independentReview.match(/^Deferred Medium findings:[ \t]*(\d+)$/im)?.[1]
+                );
                 if (
                   !Number.isInteger(openMedium) ||
                   !Number.isInteger(closedMedium) ||
                   !Number.isInteger(acceptedMedium) ||
-                  openMedium + closedMedium + acceptedMedium !== totalMedium
+                  !Number.isInteger(deferredMedium) ||
+                  openMedium + closedMedium + acceptedMedium + deferredMedium !== totalMedium
                 ) {
                   errors.push('Medium finding counts must be numeric and reconcile with the total Medium findings.');
                 }

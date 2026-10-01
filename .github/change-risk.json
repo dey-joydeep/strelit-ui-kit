@@ -1,6 +1,6 @@
 {
   "high": [
-    "^src/",
+    "^src/(?!.*\\.(?:md|mdx|txt|adoc|rst)$)",
     "^scripts/",
     "^etc/",
     "^\\.agents/skills/",
@@ -10,11 +10,55 @@
     "^docs/contributing/",
     "^docs/architecture/product-evolution-policy\\.md$",
     "^docs/architecture/compatibility-audit-maintenance\\.md$",
+    "^test/specs/(?:agent-work-ledger-tests|contribution-governance-tests|review-handoff-tests)\\.ts$",
     "^package(?:-lock)?\\.json$",
     "^api-extractor.*\\.json$",
     "^tsconfig.*\\.json$",
     "^(?:vite|vitest|tsup)\\..*config\\.[cm]?[jt]s$"
   ],
   "medium": ["^test/", "^apitest/"],
-  "low": ["^docs/", "^(?:README|CHANGELOG|CONTRIBUTING|LICENSING-PLAN)\\.md$"]
+  "low": [
+    "^docs/",
+    "^src/.*\\.(?:md|mdx|txt|adoc|rst)$",
+    "^(?:README|CHANGELOG|CONTRIBUTING|LICENSING-PLAN)\\.md$"
+  ],
+  "verificationProfiles": {
+    "governance": [
+      "^AGENTS\\.md$",
+      "^\\.agents/skills/strelit-(?:change-discipline|verification-pipeline)/",
+      "^\\.github/change-risk\\.json$",
+      "^\\.github/pull_request_template\\.md$",
+      "^\\.github/workflows/contribution-governance\\.yml$",
+      "^docs/contributing/",
+      "^scripts/(?:agent-work-ledger|change-review-policy|review-handoff|verify-pr)\\.js$",
+      "^test/specs/(?:agent-work-ledger-tests|contribution-governance-tests|review-handoff-tests)\\.ts$"
+    ]
+  },
+  "reviewFocus": [
+    {
+      "pattern": "^scripts/migrate-golden-layout-to-strelit\\.js$",
+      "findingCount": 76,
+      "classes": ["migration preservation", "transactional rollback"]
+    },
+    {
+      "pattern": "^src/ts/layout-manager\\.ts$",
+      "findingCount": 49,
+      "classes": ["partial-failure rollback", "popout ownership"]
+    },
+    {
+      "pattern": "^src/ts/config/config\\.ts$",
+      "findingCount": 35,
+      "classes": ["legacy configuration preservation", "resource limits"]
+    },
+    {
+      "pattern": "^src/ts/controls/browser-popout\\.ts$",
+      "findingCount": 24,
+      "classes": ["partial-failure rollback", "detached cleanup"]
+    },
+    {
+      "pattern": "^src/ts/container/component-container\\.ts$",
+      "findingCount": 16,
+      "classes": ["replacement rollback", "component ownership"]
+    }
+  ]
 }

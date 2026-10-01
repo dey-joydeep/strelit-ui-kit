@@ -145,128 +145,69 @@ The independent reviewer MUST be a human or a separate agent context that did
 not implement the change. The reviewer MUST inspect the complete diff and report
 findings before editing code. A same-context role change does not qualify. Give
 the reviewer the behavioral contract, diff, tests, and repository policy, not
-the implementer's intended conclusion.
-
-For high-risk work, distinguish finding closure from final discovery. A review
-limited to the latest patch or seeded with the known finding list is a
-finding-closure pass and cannot satisfy the final gate. After implementation and
-closure, a fresh independent context MUST review the whole change from merge
-base through the current head, across every changed path. Record `Review scope:
-Whole PR` and `Review pass: Fresh discovery`; any new head invalidates that pass.
-
-Every independent-review finding MUST have an explicit disposition. Critical
-and High findings block completion. After fixes, the implementer MUST rerun the
-affected checks and the reviewer MUST confirm that blocking findings are closed.
-If an independent reviewer is unavailable, report the limitation and leave the
+the implementer's intended conclusion. If none is available, leave the
 high-risk change incomplete.
 
-For a high-risk pull request, the declared reviewer MUST also approve the
-current head commit using a GitHub identity different from the PR author. A new
-head commit invalidates that approval and requires re-review.
+### Review Economics And Final Gate
 
-### Definitive High-Risk Pull Request Gate
+Review domains are lenses, not reviewer assignments: runtime covers behavior,
+ownership, rollback, and cleanup; migration covers conversion, configuration,
+and persistence; public API covers exports, compatibility, and packaging;
+tooling covers build, CI, and verification; tests/docs cover evidence and
+guidance. Use the domains that the actual change affects. Do not dispatch an
+agent per domain or require per-path domain manifests.
 
-A high-risk pull request cannot be declared merge-ready from a dirty working
-tree. The candidate MUST be frozen at a full commit SHA before the final review
-gate. If committing has not been authorized, report that the final gate remains
-pending instead of claiming completion.
+Scale review depth by behavior, file type, changed-line count, call-path reach,
+and recorded finding concentration. File count or domain count alone does not
+increase reviewer count. One independent reviewer normally handles the change.
+Give extra attention to the focus files and defect classes recorded in
+`.github/change-risk.json`; add another specialist only for a concrete skill or
+trust-boundary gap and record why.
 
-Before final review, create a coverage manifest that maps every changed path to
-its behavioral contract, risk domains and reviewer assignment for each domain,
-adjacent call paths, and relevant tests. The applicable risk domains are:
+Close defect classes rather than individual comments. For every confirmed
+class, record its name, the actual sibling-search query, hit count, disposition
+count, and disposition summary. All hits must be fixed, rejected as false or
+duplicate, accepted, or deferred before closure. Review a new class or module
+once as a coherent unit across its entry points, failure paths, cleanup, and
+tests. Existing code is reviewed through the diff and affected callers.
 
-- Runtime behavior, lifecycle, and ownership
-- Migration, configuration, and persistence
-- Public API, compatibility, and packaging
-- Tooling, CI, and verification
-- Tests and documentation
+During implementation, use focused finding-closure reviews of the increment;
+do not restart whole-PR discovery after every fix commit. Freeze the candidate
+only after all known classes close. The definitive gate then requires exactly
+one fresh independent whole-PR review of that SHA. A new commit invalidates the
+final review and approval, but earlier closure evidence may be reused when
+preparing the next frozen candidate.
 
-Initialize high-risk pull-request work with `npm run agent:ledger -- init
---mode pr --implementer <identity> --task <id> --base <ref> --head <sha>`.
-The ledger derives required paths from the Git merge base through the current
-source and derives canonical domains from repository policy. Manually declared
-review scope cannot reduce that generated requirement. Local `npm run
-verify:pr` MUST run `verify:review-ready` for high-risk changes and fail when
-the ledger is absent, incomplete, stale, dirty, self-reviewed, or missing exact
-path-domain coverage. GitHub Actions uses the separately trusted PR-metadata
-gate because `.tmp` ledgers are intentionally not committed.
-For a non-default PR target, trusted automation or repository configuration
-MUST set `STRELIT_REVIEW_BASE_REF`; this target is used by both initialization
-and `verify:review-ready`. The definitive command rejects caller `--base` and
-`--classify-only` overrides.
+Local review must detect Critical/High defects plus the declared focus classes.
+Cloud P1 findings block completion. Cloud P2 findings are triaged against the
+repository severity definitions and may be fixed, marked duplicate/false
+positive, accepted with required evidence, or deferred with a concrete
+rationale; their badge alone does not require an automatic fix. Critical/High
+findings cannot be accepted or deferred. Confirmed behavioral defects need
+regression coverage.
 
-For a pull request, record the manifest in the PR body's `Review Coverage
-Manifest` section using the machine-readable format in the pull request
-template. Every changed path MUST have exactly one entry listing its behavioral
-contract, all applicable domains, one independent reviewer assignment per
-domain, adjacent-call-path evidence, and test evidence. Multiple domains in one
-path entry may be assigned to different reviewers. `Coverage gaps` is the
-numeric count of missing or invalid entries and MUST be zero for `Pass`.
+Initialize high-risk PR work with `npm run agent:ledger -- init --mode pr
+--implementer <identity> --task <id> --base <ref> --head <sha>`. The ledger
+derives the complete changed-path boundary and focus classes from Git and
+trusted policy. `verify:review-ready` rejects a stale, dirty, incomplete, or
+self-reviewed candidate and runs required verification only after structural
+preflight. For a non-default target set `STRELIT_REVIEW_BASE_REF`; callers may
+not narrow the definitive base or classification.
 
-A pull request is a **large high-risk pull request** when it changes more than
-50 paths, exceeds 1,000 non-generated changed lines, or spans three or more of
-the risk domains above. A single general-purpose reviewer cannot satisfy the
-discovery requirement for a large high-risk pull request. Assign every
-applicable domain across at least two unused independent reviewer contexts.
-Each reviewer MUST report the exact base and head SHAs, paths and domains
-inspected, every assigned path-domain pair, adjacent call paths inspected,
-commands run, findings, and anything not inspected, using the machine-readable
-`Domain Discovery Reports` section in the pull request template. Reported path,
-domain, and path-domain pair sets MUST exactly match the reviewer's manifest
-assignments. A reviewer MUST NOT issue `Pass` when a changed path or applicable
-domain is absent from the coverage record.
+For autonomous finalization use `npm run review:finalize -- --pr <number>`.
+It runs the final gate, pushes, and submits one cloud-review request for the
+frozen PR/head/base and closed-class set. Do not post per-finding bot mentions
+or request review for intermediate fix commits. Reopen only after a failed
+request or meaningful new evidence.
 
-Domain discovery reviewers MUST work independently and MUST NOT receive another
-reviewer's findings or intended conclusion. After domain findings are validated
-and closed, an unused independent synthesis reviewer MUST inspect the frozen
-whole PR, coverage manifest, verification evidence, and finding dispositions.
-The synthesis review is `Review scope: Whole PR` and `Review pass: Fresh
-discovery`; it cannot be replaced by aggregating the domain verdicts.
-
-Validate every new finding before editing. Record a reproduction or concrete
-source-to-failure path, the violated invariant, the broader defect class, and a
-disposition of confirmed, false positive, duplicate, or accepted risk.
-Confirmed behavioral defects require regression coverage. Medium findings MUST
-be fixed or explicitly accepted by the user with rationale. For a pull request,
-accepted Medium findings require a linked, existing comment on that PR from the
-PR author stating the accepted count and rationale; body text alone is not
-acceptance evidence. Critical and High findings cannot be accepted for
-completion.
-
-The final gate passes only when the frozen SHA passes required verification,
-every path and domain has recorded coverage, every finding has a disposition,
-no Critical or High finding remains, no unaccepted Medium finding remains, the
-required fresh whole-PR reviewer returns `Pass`, and the required independent
-GitHub approval targets the same SHA. For a large high-risk pull request, the
-unused synthesis reviewer is that final reviewer and MUST provide the GitHub
-approval. For other high-risk pull requests, the declared fresh-discovery
-reviewer provides the approval. New commits invalidate final review and
-approval. New external findings against the frozen SHA reopen the gate until
-validated and dispositioned.
-
-Once a frozen SHA satisfies this gate, do not request repeated whole-PR reviews
-without a new commit or new external evidence. This is the stopping rule for
-the review cycle.
-
-`verify:review-ready` is the machine-checkable local stopping gate. It requires
-verification commands executed by that same gate process, completed
-fresh-discovery coverage, and
-a passing whole-PR synthesis. Large high-risk changes require at least two
-independent domain reviewers plus an unused independent synthesis reviewer.
-Passing this local gate does not substitute for the required GitHub approval.
-Local reviewer/context identifiers are workflow attestations, not a security
-boundary: orchestrator task records and the different-identity GitHub approval
-are the authoritative proof of independence.
-
-Autonomous high-risk pull-request work MUST use `npm run review:finalize --
---pr <number>` for the final local-gate, push, and cloud-review handoff. Do not
-invoke `git push` or post `@codex review` as separate finalization steps. The
-handoff records an exact-head receipt only after `verify:review-ready` succeeds;
-the tracked pre-push hook rejects a high-risk current-branch push when that
-receipt is absent or stale. This invocation rule applies regardless of the
-selected implementation model. It does not suppress cloud findings or replace
-the required independent GitHub approval, which the PR owner may override only
-under repository settings outside this local workflow.
+Merge readiness requires a clean frozen SHA, passing gate-executed verification,
+one passing independent fresh whole-PR review, explicit finding and class
+dispositions, no open Critical/High finding, and current-head GitHub approval
+from a different identity when repository rules require it. If committing is
+not authorized, report the final gate as pending. Once these conditions pass,
+stop. Track escaped P1s, repeated classes, review rounds, duplicate commands,
+reviewer dispatches, and available time/token evidence; comment count alone is
+not a quality measure.
 
 For a bug or PR review finding, the implementer MUST:
 
@@ -356,7 +297,10 @@ During iteration, run the narrowest relevant test first. Before handoff:
 
 - Low-risk changes MUST pass documentation lint and formatting checks
 - Medium-risk changes MUST pass typecheck, tests, lint, and formatting
-- High-risk changes MUST pass `npm run verify:ordered` and the API demo build
+- High-risk product, build, packaging, dependency, or mixed changes MUST pass
+  `npm run verify:ordered` and the API demo build
+- Pure review-governance changes MUST pass `npm run verify:governance`; they
+  remain high risk and independently reviewed without running product tests
 
 If the automatic classification is too strict, run the stricter checks. Do not
 downgrade risk merely to avoid verification.
