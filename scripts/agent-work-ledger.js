@@ -47,6 +47,7 @@ const validReviewPasses = new Set(['fresh-discovery', 'finding-closure']);
 const validRecoveryIntents = new Set(['continue', 'status', 'summary']);
 const mutatingCommands = new Set([
   'init',
+  'reset-pr',
   'add',
   'start',
   'checkpoint',
@@ -246,12 +247,40 @@ function readJson(fileName, label) {
   return parsed;
 }
 
+function normalizeLegacyLedger(ledger) {
+  const gate = ledger?.reviewGate;
+  if (
+    ledger?.schemaVersion !== schemaVersion ||
+    gate === undefined ||
+    gate === null ||
+    typeof gate !== 'object' ||
+    Array.isArray(gate) ||
+    (!Object.hasOwn(gate, 'requiredCoverage') &&
+      !Object.hasOwn(gate, 'largeHighRisk'))
+  ) {
+    return ledger;
+  }
+  const {
+    requiredCoverage: _requiredCoverage,
+    largeHighRisk: _largeHighRisk,
+    ...currentGate
+  } = gate;
+  return {
+    ...ledger,
+    reviewGate: {
+      ...currentGate,
+      verificationProfile: 'product',
+      reviewFocus: [],
+    },
+  };
+}
+
 function readLedger(root, cwd) {
   const fileName = ledgerPath(root, cwd);
   if (!existsSync(fileName)) {
     throw new Error(`No active agent ledger at ${fileName}`);
   }
-  const ledger = readJson(fileName, 'ledger');
+  const ledger = normalizeLegacyLedger(readJson(fileName, 'ledger'));
   validateLedger(ledger);
   return { fileName, ledger };
 }
@@ -814,13 +843,17 @@ function writeLedger(fileName, ledger, now = new Date()) {
   const nextLedger = { ...ledger, updatedAt: now.toISOString() };
   validateLedger(nextLedger);
   if (existsSync(fileName)) {
-    const previousLedger = readJson(fileName, 'ledger');
+    const storedLedger = readJson(fileName, 'ledger');
+    const previousLedger = normalizeLegacyLedger(storedLedger);
     validateLedger(previousLedger);
     const semanticCandidate = {
       ...nextLedger,
       updatedAt: previousLedger.updatedAt,
     };
-    if (JSON.stringify(previousLedger) === JSON.stringify(semanticCandidate)) {
+    if (
+      previousLedger === storedLedger &&
+      JSON.stringify(previousLedger) === JSON.stringify(semanticCandidate)
+    ) {
       return previousLedger;
     }
   }
@@ -837,6 +870,30 @@ function writeLedger(fileName, ledger, now = new Date()) {
     throw error;
   }
   return nextLedger;
+}
+
+function archiveLedger(fileName, ledger, cwd, now = new Date()) {
+  const historyDirectory = join(dirname(fileName), 'history');
+  assertNoLinks(realpathSync(cwd), historyDirectory);
+  mkdirSync(historyDirectory, { recursive: true });
+  const identity = createHash('sha256')
+    .update(`${ledger.taskId}\0${ledger.currentHead}\0${ledger.updatedAt}`)
+    .digest('hex')
+    .slice(0, 12);
+  const timestamp = now.toISOString().replaceAll(':', '-');
+  const archive = join(historyDirectory, `${timestamp}-${identity}.json`);
+  const temporary = `${archive}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(temporary, `${JSON.stringify(ledger, null, 2)}\n`, {
+      encoding: 'utf8',
+      flag: 'wx',
+    });
+    renameSync(temporary, archive);
+  } catch (error) {
+    rmSync(temporary, { force: true });
+    throw error;
+  }
+  return archive;
 }
 
 function validateString(value, label, minimum = 1) {
@@ -1592,10 +1649,16 @@ function validatePullRequestGate(
           unit.carryForward?.toHead === sourceState.head)),
   );
   for (const review of applicableReviewsWithFindings) {
-    if (
-      review.review?.pass === 'finding-closure' &&
-      review.checkpoint.verdict !== 'pass'
-    ) {
+    if (review.id === finalReview.id) {
+      validateClassClosureEvidence(review);
+      continue;
+    }
+    if (review.review?.pass !== 'finding-closure') {
+      throw new Error(
+        `${review.id} findings require a declared finding-closure review pass.`,
+      );
+    }
+    if (review.checkpoint.verdict !== 'pass') {
       throw new Error(
         `${review.id} finding-closure evidence requires a passing verdict.`,
       );
@@ -1771,7 +1834,7 @@ function refreshReviewGate(ledger, cwd) {
   const boundary = canonicalPullRequestBoundary(cwd);
   if (boundary.mergeBase !== ledger.baseHead) {
     throw new Error(
-      `Pull-request merge base changed from ${ledger.baseHead} to ${boundary.mergeBase}; initialize a new PR ledger.`,
+      `Pull-request merge base changed from ${ledger.baseHead} to ${boundary.mergeBase}; run agent:ledger reset-pr with the current target, head, task, and implementer.`,
     );
   }
   ledger.reviewGate = createPullRequestReviewGate(
@@ -1781,6 +1844,64 @@ function refreshReviewGate(ledger, cwd) {
   );
 }
 
+function createLedger(options, cwd, now) {
+  const sourceState = currentSourceState(cwd);
+  const requestedHead = requireOption(options, 'head');
+  if (requestedHead !== sourceState.head) {
+    throw new Error(
+      `Declared head ${requestedHead} does not match repository HEAD ${sourceState.head}.`,
+    );
+  }
+  const baseHead = requireOption(options, 'base');
+  try {
+    gitOutput(['cat-file', '-e', `${baseHead}^{commit}`], cwd);
+  } catch {
+    throw new Error(
+      `Base head is not available in the repository: ${baseHead}`,
+    );
+  }
+  const mode = options.mode;
+  if (mode !== undefined && mode !== 'pr') {
+    throw new Error(`Unsupported ledger mode: ${mode}`);
+  }
+  const resolvedBaseHead =
+    mode === 'pr'
+      ? gitOutput(['merge-base', baseHead, sourceState.head], cwd)
+      : baseHead;
+  if (resolvedBaseHead.length === 0) {
+    throw new Error(`Cannot determine merge base for ${baseHead}.`);
+  }
+  const trustedBoundary =
+    mode === 'pr' ? canonicalPullRequestBoundary(cwd) : undefined;
+  if (
+    trustedBoundary !== undefined &&
+    resolvedBaseHead !== trustedBoundary.mergeBase
+  ) {
+    throw new Error(
+      `Declared PR base resolves to ${resolvedBaseHead}; trusted base is ${trustedBoundary.mergeBase}.`,
+    );
+  }
+  const ledger = {
+    schemaVersion,
+    taskId: requireOption(options, 'task'),
+    baseHead: resolvedBaseHead,
+    currentHead: sourceState.head,
+    currentFingerprint: sourceState.fingerprint,
+    workingPaths: sourceState.workingPaths,
+    status: 'active',
+    units: [],
+    updatedAt: now.toISOString(),
+  };
+  if (trustedBoundary !== undefined) {
+    ledger.reviewGate = createPullRequestReviewGate(
+      trustedBoundary.targetTip,
+      requireOption(options, 'implementer'),
+      cwd,
+    );
+  }
+  return ledger;
+}
+
 function executeUnlocked(
   command,
   options,
@@ -1788,69 +1909,32 @@ function executeUnlocked(
   now = new Date(),
 ) {
   const root = typeof options.root === 'string' ? options.root : defaultRoot;
-  if (command === 'init') {
+  if (command === 'init' || command === 'reset-pr') {
     const fileName = ledgerPath(root, cwd);
+    let existing;
     if (existsSync(fileName)) {
-      const existing = readJson(fileName, 'ledger');
+      existing = normalizeLegacyLedger(readJson(fileName, 'ledger'));
       validateLedger(existing);
-      if (existing.status !== 'complete') {
+      if (command === 'init' && existing.status !== 'complete') {
         throw new Error(`An unfinished ledger already exists at ${fileName}`);
       }
-    }
-    const sourceState = currentSourceState(cwd);
-    const requestedHead = requireOption(options, 'head');
-    if (requestedHead !== sourceState.head) {
-      throw new Error(
-        `Declared head ${requestedHead} does not match repository HEAD ${sourceState.head}.`,
-      );
-    }
-    const baseHead = requireOption(options, 'base');
-    try {
-      gitOutput(['cat-file', '-e', `${baseHead}^{commit}`], cwd);
-    } catch {
-      throw new Error(
-        `Base head is not available in the repository: ${baseHead}`,
-      );
-    }
-    const mode = options.mode;
-    if (mode !== undefined && mode !== 'pr') {
-      throw new Error(`Unsupported ledger mode: ${mode}`);
-    }
-    const resolvedBaseHead =
-      mode === 'pr'
-        ? gitOutput(['merge-base', baseHead, sourceState.head], cwd)
-        : baseHead;
-    if (resolvedBaseHead.length === 0) {
-      throw new Error(`Cannot determine merge base for ${baseHead}.`);
-    }
-    const trustedBoundary =
-      mode === 'pr' ? canonicalPullRequestBoundary(cwd) : undefined;
-    if (trustedBoundary !== undefined) {
-      if (resolvedBaseHead !== trustedBoundary.mergeBase) {
-        throw new Error(
-          `Declared PR base resolves to ${resolvedBaseHead}; trusted base is ${trustedBoundary.mergeBase}.`,
-        );
+      if (command === 'reset-pr') {
+        if (existing.reviewGate?.mode !== 'pull-request') {
+          throw new Error('reset-pr requires an existing pull-request ledger.');
+        }
       }
+    } else if (command === 'reset-pr') {
+      throw new Error(`No active agent ledger at ${fileName}`);
     }
-    const ledger = {
-      schemaVersion,
-      taskId: requireOption(options, 'task'),
-      baseHead: resolvedBaseHead,
-      currentHead: sourceState.head,
-      currentFingerprint: sourceState.fingerprint,
-      workingPaths: sourceState.workingPaths,
-      status: 'active',
-      units: [],
-      updatedAt: now.toISOString(),
-    };
-    if (trustedBoundary !== undefined) {
-      ledger.reviewGate = createPullRequestReviewGate(
-        trustedBoundary.targetTip,
-        requireOption(options, 'implementer'),
-        cwd,
-      );
+    const nextLedger = createLedger(
+      command === 'reset-pr' ? { ...options, mode: 'pr' } : options,
+      cwd,
+      now,
+    );
+    if (command === 'reset-pr') {
+      archiveLedger(fileName, existing, cwd, now);
     }
-    return writeLedger(fileName, ledger, now);
+    return writeLedger(fileName, nextLedger, now);
   }
 
   const { fileName, ledger } = readLedger(root, cwd);

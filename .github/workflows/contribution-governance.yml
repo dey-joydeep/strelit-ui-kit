@@ -460,6 +460,7 @@ jobs:
               '## Test Evidence',
               '## Test Exception',
               '## Review-Finding Expansion',
+              '## Defect Class Closures',
               '## Out of Scope',
               '## Scope Justification',
               '## Independent Quality Review',
@@ -491,6 +492,54 @@ jobs:
               }
               if (headings.length === 1) {
                 previousSectionIndex = headings[0].index;
+              }
+            }
+
+            const findingExpansion =
+              getSectionBody('## Review-Finding Expansion') ?? '';
+            const classClosureSection =
+              getSectionBody('## Defect Class Closures') ?? '';
+            const noConfirmedClasses =
+              /^No confirmed defect classes\.?$/i.test(classClosureSection);
+            const closureLines = classClosureSection
+              .split('\n')
+              .map((line) => line.trim())
+              .filter((line) => line.startsWith('Class: '));
+            if (
+              noConfirmedClasses &&
+              !/(?:not a review-finding fix|no confirmed defect classes)/i.test(
+                findingExpansion
+              )
+            ) {
+              errors.push(
+                'Confirmed review findings require structured defect-class closure records.'
+              );
+            }
+            if (!noConfirmedClasses && closureLines.length === 0) {
+              errors.push(
+                'Defect Class Closures must contain structured Class records or explicitly state that no confirmed classes exist.'
+              );
+            }
+            const closureIds = new Set();
+            for (const line of closureLines) {
+              const match = line.match(
+                /^Class: ([a-z0-9]+(?:-[a-z0-9]+)*) \| Name: (.{4,}) \| Query: (.{4,}) \| Hits: (0|[1-9]\d*) \| Dispositioned: (0|[1-9]\d*) \| Summary: (.{4,})$/
+              );
+              if (match === null) {
+                errors.push(
+                  'Each defect-class closure must use the canonical Class, Name, Query, Hits, Dispositioned, and Summary fields.'
+                );
+                continue;
+              }
+              const classId = match[1];
+              if (closureIds.has(classId)) {
+                errors.push(`Defect-class closure ID must be unique: ${classId}.`);
+              }
+              closureIds.add(classId);
+              if (Number(match[4]) !== Number(match[5])) {
+                errors.push(
+                  `Defect-class closure ${classId} must disposition every search hit.`
+                );
               }
             }
 

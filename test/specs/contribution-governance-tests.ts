@@ -171,7 +171,9 @@ function createPullRequestBody(
     '## Test Exception',
     'Regression tests were added for executable behavior.',
     '## Review-Finding Expansion',
-    evidence,
+    'This is not a review-finding fix; no confirmed defect classes apply.',
+    '## Defect Class Closures',
+    'No confirmed defect classes.',
     '## Out of Scope',
     evidence,
     '## Scope Justification',
@@ -458,6 +460,7 @@ describe('contribution governance workflow', () => {
       '## Test Evidence',
       '## Test Exception',
       '## Review-Finding Expansion',
+      '## Defect Class Closures',
       '## Out of Scope',
       '## Scope Justification',
       '## Independent Quality Review',
@@ -848,6 +851,48 @@ describe('contribution governance workflow', () => {
       .replace('__WHAT_CHANGED__', why);
     expect(await runPullRequestMetadataPolicy(outOfOrder, files)).toContain(
       'PR body sections are out of order at: ## Why',
+    );
+  });
+
+  it('requires reconciled defect-class closure records for review fixes', async () => {
+    const review = [
+      'Review mode: **Self-review**',
+      'Reviewer: Implementer Agent',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric: `docs/contributing/ai-change-quality-rubric.md`',
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 0; High 0; Medium 0; Low 0',
+      'Open Critical/High findings: **0**',
+      'Review artifact: Local review record',
+      'Finding dispositions: No findings recorded',
+      'Residual risks: No known residual risks',
+    ].join('\n');
+    const files = [{ filename: 'README.md', changes: 10 }];
+    const reviewFix = createPullRequestBody('Low', review).replace(
+      'This is not a review-finding fix; no confirmed defect classes apply.',
+      'Confirmed review findings were expanded across sibling cases.',
+    );
+
+    expect(await runPullRequestMetadataPolicy(reviewFix, files)).toContain(
+      'Confirmed review findings require structured defect-class closure records.',
+    );
+
+    const mismatched = reviewFix.replace(
+      'No confirmed defect classes.',
+      'Class: rollback | Name: rollback failures | Query: rg rollback src | Hits: 2 | Dispositioned: 1 | Summary: one hit fixed',
+    );
+    expect(await runPullRequestMetadataPolicy(mismatched, files)).toContain(
+      'Defect-class closure rollback must disposition every search hit.',
+    );
+
+    const reconciled = mismatched.replace(
+      'Dispositioned: 1',
+      'Dispositioned: 2',
+    );
+    expect(await runPullRequestMetadataPolicy(reconciled, files)).not.toEqual(
+      expect.arrayContaining([expect.stringContaining('defect-class closure')]),
     );
   });
 

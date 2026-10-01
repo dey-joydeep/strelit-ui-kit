@@ -1325,6 +1325,128 @@ describe('agent work ledger', () => {
     });
   });
 
+  it('atomically resets a PR ledger after the merge base moves', () => {
+    withTemporaryRepository((repository) => {
+      writeFileSync(join(repository, 'README.md'), 'feature\n');
+      execFileSync('git', ['add', 'README.md'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Feature change.'], {
+        cwd: repository,
+      });
+      const originalHead = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      ledgerModule.execute(
+        'init',
+        {
+          task: 'moving-base',
+          base: 'main',
+          head: originalHead,
+          mode: 'pr',
+          implementer: 'codex-main',
+        },
+        repository,
+      );
+
+      execFileSync('git', ['checkout', 'main'], { cwd: repository });
+      writeFileSync(join(repository, 'target.txt'), 'target\n');
+      execFileSync('git', ['add', 'target.txt'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Advance target.'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['checkout', 'feature'], { cwd: repository });
+      execFileSync('git', ['merge', '--no-edit', 'main'], { cwd: repository });
+      const mergedHead = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+
+      expect(() => ledgerModule.execute('recover', {}, repository)).toThrow(
+        'agent:ledger reset-pr',
+      );
+      expect(() =>
+        ledgerModule.execute(
+          'reset-pr',
+          {
+            task: 'invalid-reset',
+            base: 'main',
+            head: originalHead,
+            implementer: 'codex-main',
+          },
+          repository,
+        ),
+      ).toThrow('does not match repository HEAD');
+      expect(
+        existsSync(join(repository, '.tmp', 'agent-work', 'history')),
+      ).toBe(false);
+      const reset = ledgerModule.execute(
+        'reset-pr',
+        {
+          task: 'moving-base-reset',
+          base: 'main',
+          head: mergedHead,
+          implementer: 'codex-main',
+        },
+        repository,
+      );
+
+      expect(reset.baseHead).toBe(
+        execFileSync('git', ['rev-parse', 'main'], {
+          cwd: repository,
+          encoding: 'utf8',
+        }).trim(),
+      );
+      expect(reset.units).toEqual([]);
+      expect(
+        readdirSync(join(repository, '.tmp', 'agent-work', 'history')),
+      ).toHaveLength(1);
+    });
+  });
+
+  it('normalizes legacy schema-v1 review gates during recovery', () => {
+    withTemporaryRepository((repository) => {
+      writeFileSync(join(repository, 'README.md'), 'feature\n');
+      execFileSync('git', ['add', 'README.md'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Feature change.'], {
+        cwd: repository,
+      });
+      const head = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      const initial = ledgerModule.execute(
+        'init',
+        {
+          task: 'legacy-gate',
+          base: 'main',
+          head,
+          mode: 'pr',
+          implementer: 'codex-main',
+        },
+        repository,
+      );
+      const activePath = join(repository, '.tmp', 'agent-work', 'active.json');
+      const legacy = JSON.parse(readFileSync(activePath, 'utf8')) as Ledger & {
+        reviewGate: ReviewGate & {
+          requiredCoverage?: unknown[];
+          largeHighRisk?: boolean;
+        };
+      };
+      delete (legacy.reviewGate as Partial<ReviewGate>).verificationProfile;
+      delete (legacy.reviewGate as Partial<ReviewGate>).reviewFocus;
+      legacy.reviewGate.requiredCoverage = [];
+      legacy.reviewGate.largeHighRisk = false;
+      writeFileSync(activePath, JSON.stringify(legacy));
+
+      const recovered = ledgerModule.execute('recover', {}, repository);
+      expect(recovered.reviewGate).toEqual(initial.reviewGate);
+      expect(recovered.reviewGate).not.toHaveProperty('requiredCoverage');
+      expect(recovered.reviewGate).not.toHaveProperty('largeHighRisk');
+      const persisted = JSON.parse(readFileSync(activePath, 'utf8')) as Ledger;
+      expect(persisted.reviewGate).toEqual(recovered.reviewGate);
+    });
+  });
+
   it('selectively carries forward unchanged review evidence', () => {
     const ledger: Ledger = {
       schemaVersion: 1,
@@ -2290,6 +2412,13 @@ describe('agent work ledger', () => {
     finalReview.checkpoint!.inspectedClasses = [];
     bindReviewBoundary(finalReview, ledger);
     ledger.units.push(focused, finalReview);
+
+    const focusedAssignment = focused.review;
+    delete focused.review;
+    expect(() =>
+      ledgerModule.validatePullRequestGate(ledger, source, gateOptions(ledger)),
+    ).toThrow('findings require a declared finding-closure review pass');
+    focused.review = focusedAssignment;
 
     delete focused.checkpoint!.verdict;
     expect(() =>

@@ -201,6 +201,7 @@ npm run agent:ledger -- complete --unit runtime-popouts --report .tmp/runtime-po
 npm run agent:ledger -- interrupt --unit runtime-popouts
 npm run agent:ledger -- recover
 npm run agent:ledger -- enter --intent continue
+npm run agent:ledger -- reset-pr --task PR-1 --base <target-ref> --head <sha> --implementer <identity>
 npm run agent:ledger -- finish
 npm run agent:ledger -- status
 npm run verify:agent-ledger
@@ -224,6 +225,12 @@ Use trusted `GITHUB_BASE_SHA` or configured `STRELIT_REVIEW_BASE_REF` for PRs
 whose target is not the default branch. `verify:review-ready` rejects CLI base
 and classification overrides so a caller cannot narrow or skip the definitive
 scope.
+
+If a merge or rebase moves the PR merge base, use `reset-pr` instead of deleting
+the active ledger. The command archives the previous ledger under
+`.tmp/agent-work/history/` and atomically creates a fresh PR ledger for the
+current head and target policy. Archived closure evidence remains available for
+inspection, while exact-head final review and verification must be rerun.
 
 The local ledger can validate declared context separation and exact review
 boundaries, but editable identity strings are not cryptographic proof of
