@@ -879,6 +879,14 @@ describe('contribution governance workflow', () => {
       'Confirmed review findings require structured defect-class closure records.',
     );
 
+    const contradictory = reviewFix.replace(
+      'Confirmed review findings were expanded across sibling cases.',
+      'Confirmed review findings were fixed, but no confirmed defect classes apply.',
+    );
+    expect(await runPullRequestMetadataPolicy(contradictory, files)).toContain(
+      'Confirmed review findings require structured defect-class closure records.',
+    );
+
     const mismatched = reviewFix.replace(
       'No confirmed defect classes.',
       'Class: rollback | Name: rollback failures | Query: rg rollback src | Hits: 2 | Dispositioned: 1 | Summary: one hit fixed',

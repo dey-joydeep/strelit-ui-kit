@@ -501,15 +501,17 @@ jobs:
               getSectionBody('## Defect Class Closures') ?? '';
             const noConfirmedClasses =
               /^No confirmed defect classes\.?$/i.test(classClosureSection);
+            const declaresNoReviewFindings =
+              /^This is not a review-finding fix; no confirmed defect classes apply\.?$/i.test(
+                findingExpansion
+              );
             const closureLines = classClosureSection
               .split('\n')
               .map((line) => line.trim())
               .filter((line) => line.startsWith('Class: '));
             if (
               noConfirmedClasses &&
-              !/(?:not a review-finding fix|no confirmed defect classes)/i.test(
-                findingExpansion
-              )
+              !declaresNoReviewFindings
             ) {
               errors.push(
                 'Confirmed review findings require structured defect-class closure records.'
