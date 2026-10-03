@@ -353,13 +353,21 @@ button {
   background: #dbe6ff;
   box-shadow: inset 0 -3px #4169dc;
 }
-#layoutContainer .lm_content p {
+#layoutContainer .strelit-demo-component p {
   margin: 14px 14px 8px;
   font-size: 12px;
   font-weight: 700;
 }
-#layoutContainer .lm_content input {
-  max-width: calc(100% - 28px);
+#layoutContainer .strelit-demo-color-label {
+  display: inline-block;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #1e293b;
+}
+#layoutContainer .strelit-demo-component input {
+  box-sizing: border-box;
+  width: calc(100% - 28px);
+  max-width: 100%;
   margin: 0 14px;
   padding: 7px 9px;
   border: 1px solid #cbd6e6;

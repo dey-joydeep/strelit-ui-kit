@@ -170,3 +170,53 @@ test('workbench preserves a whole stack through pop-out and pop-in', async ({
   ).toHaveValue('green');
   await expect(page.locator('#layoutSummary')).toContainText('0 pop-outs');
 });
+
+test('root component rejects stack references and virtual inputs stay inside their pane', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.locator('#loadComponentAsRootButton').click();
+  await expect(page.locator('.lm_tab')).toHaveCount(0);
+  await expect(page.locator('#apiTargetSelect')).toHaveValue('0');
+  await page.locator('.api-explorer summary').click();
+  await page.selectOption('#apiMethodSelect', 'focusComponent');
+  await page.locator('#apiArgsEditor').fill('[{"$ref":"stack"}]');
+  await page.locator('#runMethodButton').click();
+  await expect(page.locator('#workbenchStatus')).toHaveClass(/error/);
+  await expect(page.locator('#methodResult')).toContainText(
+    'No stack object is available',
+  );
+
+  const input = page.locator(
+    '#layoutContainer > .strelit-demo-component input',
+  );
+  await expect(input).toBeVisible();
+  const geometry = await input.evaluate((element) => {
+    const inputRect = element.getBoundingClientRect();
+    const paneRect = element.parentElement!.getBoundingClientRect();
+    return {
+      inputRight: inputRect.right,
+      paneRight: paneRect.right,
+      boxSizing: getComputedStyle(element).boxSizing,
+      paddingLeft: getComputedStyle(element).paddingLeft,
+    };
+  });
+  expect(geometry.inputRight).toBeLessThanOrEqual(geometry.paneRight);
+  expect(geometry.boxSizing).toBe('border-box');
+  expect(geometry.paddingLeft).toBe('9px');
+});
+
+test('miniStack keeps white component text legible', async ({ page }) => {
+  await page.goto('/');
+  await page.selectOption('#layoutSelect', 'miniStack');
+  await page.locator('#loadLayoutButton').click();
+  const label = page.locator('.strelit-demo-color-label').first();
+  await expect(label).toBeVisible();
+  const colors = await label.evaluate((element) => ({
+    foreground: getComputedStyle(element).color,
+    background: getComputedStyle(element).backgroundColor,
+  }));
+  expect(colors.foreground).toBe('rgb(255, 255, 255)');
+  expect(colors.background).not.toBe('rgb(255, 255, 255)');
+  expect(colors.background).not.toBe('rgba(0, 0, 0, 0)');
+});
