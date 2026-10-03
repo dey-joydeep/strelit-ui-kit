@@ -21,6 +21,7 @@
       "require": "./dist/cjs/index.js"
     },
     "./dist/css/*": "./dist/css/*",
+    "./dist/iife/*": "./dist/iife/*",
     "./dist/less/*": "./dist/less/*",
     "./dist/scss/*": "./dist/scss/*",
     "./package.json": "./package.json"

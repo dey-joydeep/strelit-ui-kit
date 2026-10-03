@@ -34,6 +34,7 @@ export class ColorComponent extends ComponentBase {
     }
 
     this._paraElement = document.createElement('p');
+    this._paraElement.classList.add('strelit-demo-color-label');
     this._paraElement.style.textAlign = 'left';
     this._paraElement.style.color = color;
     const title = this.container.title;
@@ -101,9 +102,9 @@ export class ColorComponent extends ComponentBase {
   }
 
   private handleShowEvent(): void {
-    this._paraElement.style.backgroundColor = 'purple';
+    this._paraElement.style.textDecoration = 'underline';
     setTimeout(() => {
-      this._paraElement.style.backgroundColor = '';
+      this._paraElement.style.textDecoration = '';
     }, 1000);
   }
 

@@ -1,150 +1,339 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Strelit UI Kit API Test</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Strelit UI · Layout Workbench</title>
   </head>
   <body>
-    <section id="bodySection">
-      <section id="controls">
-        <section id="registerSection">
-          <section id="registerNotVirtualSection">
-            <button id="registerNotVirtualButton" class="control">
-              Register Component Types
+    <div id="bodySection" class="workbench">
+      <header class="topbar">
+        <div class="brandmark" aria-hidden="true">S</div>
+        <div class="brandcopy">
+          <strong>Strelit UI <span>Layout Workbench</span></strong>
+          <small>Interactive API and configuration lab</small>
+        </div>
+        <div class="topbar-right">
+          <span class="environment-pill">LOCAL DEMO</span>
+          <output id="workbenchStatus" class="status-pill">Ready</output>
+        </div>
+      </header>
+
+      <aside id="controls" class="sidebar" aria-label="Layout controls">
+        <div class="sidebar-intro">
+          <p class="eyebrow">01 / EXPLORE</p>
+          <h1>Build and test a layout</h1>
+          <p>
+            Choose a scenario, then use the controls or drag directly in the
+            canvas.
+          </p>
+        </div>
+
+        <section class="control-card" aria-labelledby="scenarioTitle">
+          <div class="section-heading">
+            <h2 id="scenarioTitle">Scenario</h2>
+            <span>LayoutConfig</span>
+          </div>
+          <label for="layoutSelect">Preset layout</label>
+          <div id="predefinedLayoutsSection" class="control-row">
+            <select id="layoutSelect" class="control"></select>
+            <button id="loadLayoutButton" class="control primary" type="button">
+              Load
             </button>
-            <section id="registerNotVirtualRadioSection" class="radioLine">
-              <section class="labelledRadio">
-                <input
-                  id="registerNotVirtualAllRadio"
-                  class="control"
-                  type="radio"
-                  name="registerNotVirtualRadio"
-                />
-                <label for="registerNotVirtualAllRadio">All</label>
-              </section>
-              <section class="labelledRadio">
-                <input
-                  id="registerNotVirtualColorEventRadio"
-                  class="control"
-                  type="radio"
-                  name="registerNotVirtualRadio"
-                  checked
-                />
-                <label for="registerNotVirtualColorEventRadio"
-                  >Color, Event</label
-                >
-              </section>
-            </section>
-          </section>
-          <section id="registerVirtualSection">
-            <button id="registerVirtualButton" class="control">
-              Register Component Types As Virtual
+          </div>
+          <div id="saveAndReloadLayoutSection" class="control-row">
+            <button id="saveLayoutButton" class="control" type="button">
+              Save snapshot
             </button>
-            <section id="registerVirtualRadioSection" class="radioLine">
-              <section class="labelledRadio">
-                <input
-                  id="registerVirtualAllRadio"
-                  type="radio"
-                  name="registerVirtualRadio"
-                />
-                <label for="registerVirtualAllRadio">All</label>
-              </section>
-              <section class="labelledRadio">
-                <input
-                  id="registerVirtualTextBooleanRadio"
-                  type="radio"
-                  name="registerVirtualRadio"
-                  checked
-                />
-                <label for="registerVirtualTextBooleanRadio"
-                  >Text, Boolean</label
-                >
-              </section>
-            </section>
-          </section>
+            <button id="reloadSavedLayoutButton" class="control" type="button">
+              Restore snapshot
+            </button>
+          </div>
+          <button id="clearButton" class="control subtle-button" type="button">
+            Clear canvas
+          </button>
         </section>
-        <section id="eventBindingSection">
-          <span id="eventBindingSpan" title="Layout will be cleared"
-            >Event Binding:</span
+
+        <section class="control-card" aria-labelledby="runtimeTitle">
+          <div class="section-heading">
+            <h2 id="runtimeTitle">Runtime actions</h2>
+            <span>LayoutManager</span>
+          </div>
+          <label for="apiTargetSelect">Target component</label>
+          <select id="apiTargetSelect" class="control"></select>
+          <label for="apiActionSelect">API operation</label>
+          <select id="apiActionSelect" class="control">
+            <option value="focus">focusComponent()</option>
+            <option value="blur">clearComponentFocus()</option>
+            <option value="rename">container.setTitle()</option>
+            <option value="close">component.close()</option>
+            <option value="maximize">stack.toggleMaximise()</option>
+            <option value="popout">stack.popout()</option>
+            <option value="popin">Latest pop-out: popIn()</option>
+          </select>
+          <label for="apiActionValue">Value for rename</label>
+          <input
+            id="apiActionValue"
+            class="control"
+            type="text"
+            value="Renamed panel"
+          />
+          <button
+            id="apiRunButton"
+            class="control primary full-width"
+            type="button"
           >
-          <section id="eventBindingRadios" class="radioLine">
-            <section class="labelledRadio">
-              <input
-                id="eventBindingVirtualRadio"
-                class="control"
-                type="radio"
-                name="eventBindingRadio"
-                title="Layout will be cleared"
-              />
-              <label for="eventBindingVirtualRadio">Virtual</label>
-            </section>
-            <section class="labelledRadio">
-              <input
-                id="eventBindingEmbeddedRadio"
-                class="control"
-                type="radio"
-                name="eventBindingRadio"
-                title="Layout will be cleared"
-              />
-              <label for="eventBindingEmbeddedRadio">Embedded</label>
-            </section>
-          </section>
-        </section>
-        <section id="clearSection">
-          <button id="clearButton" class="control">Clear</button>
-        </section>
-        <section id="predefinedLayoutsSection">
-          <select id="layoutSelect" class="control"></select>
-          <button id="loadLayoutButton" class="control">Load Layout</button>
-        </section>
-        <section id="saveAndReloadLayoutSection">
-          <button id="saveLayoutButton" class="control">Save Layout</button>
-          <button id="reloadSavedLayoutButton" class="control">
-            Reload saved Layout
+            Run operation
           </button>
+          <p class="field-help">
+            The target list follows the live layout. Pop-out may open a new
+            browser window.
+          </p>
         </section>
-        <section id="addComponentSection">
-          <select
-            id="registeredComponentTypesForAddSelect"
-            class="control"
-          ></select>
-          <button id="addComponentByDragButton" class="control">D</button>
-          <button id="addComponentButton" class="control">Add Component</button>
-        </section>
-        <section id="rootComponentSection">
-          <button id="loadComponentAsRootButton" class="control">
-            Load Component as Root
+
+        <section class="control-card" aria-labelledby="componentTitle">
+          <div class="section-heading">
+            <h2 id="componentTitle">Components</h2>
+            <span>Factories</span>
+          </div>
+          <label for="registeredComponentTypesForAddSelect"
+            >Component type</label
+          >
+          <div id="addComponentSection" class="control-row">
+            <select
+              id="registeredComponentTypesForAddSelect"
+              class="control"
+            ></select>
+            <button id="addComponentButton" class="control" type="button">
+              Add
+            </button>
+          </div>
+          <button
+            id="addComponentByDragButton"
+            class="control drag-source full-width"
+            type="button"
+            title="Drag this handle into the layout"
+          >
+            Drag new component into canvas
           </button>
-        </section>
-        <section id="replaceComponentSection">
-          <select
-            id="registeredComponentTypesForReplaceSelect"
-            class="control"
-          ></select>
-          <button id="replaceComponentButton" class="control">
-            Replace Color Component with
-          </button>
-        </section>
-        <section id="lastVirtualRectingCountSection">
-          <span>Last virtual recting count</span>
-          <span id="lastVirtualRectingCountSpan"></span>
-        </section>
-        <section id="clickCount">
-          <span>Click count: Capture: </span>
-          <span id="captureClickCountSpan"></span>
-          <span> Bubble: </span>
-          <span id="bubbleClickCountSpan"></span>
-        </section>
-        <section id="stackHeaderClick">
-          <span>Stack Header: </span>
-          <div id="stackHeaderClickedDiv">
-            <span>Clicked: </span>
-            <span id="stackHeaderClickedItemCountSpan"></span>
+          <div id="replaceComponentSection" class="control-row">
+            <select
+              id="registeredComponentTypesForReplaceSelect"
+              class="control"
+              aria-label="Replacement component type"
+            ></select>
+            <button id="replaceComponentButton" class="control" type="button">
+              Replace color
+            </button>
+          </div>
+          <div id="rootComponentSection">
+            <button
+              id="loadComponentAsRootButton"
+              class="control subtle-button full-width"
+              type="button"
+            >
+              Load single root component
+            </button>
           </div>
         </section>
-      </section>
-      <section id="layoutContainer"></section>
-    </section>
+
+        <details class="control-card advanced-card">
+          <summary>Binding and diagnostics</summary>
+          <p class="field-help">
+            These controls exercise component registration and virtual binding.
+            Changing binding clears the layout.
+          </p>
+          <div id="registerSection">
+            <div id="registerNotVirtualSection" class="advanced-group">
+              <button
+                id="registerNotVirtualButton"
+                class="control"
+                type="button"
+              >
+                Register embedded types
+              </button>
+              <div id="registerNotVirtualRadioSection" class="radioLine">
+                <label
+                  ><input
+                    id="registerNotVirtualAllRadio"
+                    type="radio"
+                    name="registerNotVirtualRadio"
+                  />
+                  All</label
+                >
+                <label
+                  ><input
+                    id="registerNotVirtualColorEventRadio"
+                    type="radio"
+                    name="registerNotVirtualRadio"
+                    checked
+                  />
+                  Color + Event</label
+                >
+              </div>
+            </div>
+            <div id="registerVirtualSection" class="advanced-group">
+              <button id="registerVirtualButton" class="control" type="button">
+                Register virtual types
+              </button>
+              <div id="registerVirtualRadioSection" class="radioLine">
+                <label
+                  ><input
+                    id="registerVirtualAllRadio"
+                    type="radio"
+                    name="registerVirtualRadio"
+                  />
+                  All</label
+                >
+                <label
+                  ><input
+                    id="registerVirtualTextBooleanRadio"
+                    type="radio"
+                    name="registerVirtualRadio"
+                    checked
+                  />
+                  Text + Boolean</label
+                >
+              </div>
+            </div>
+          </div>
+          <div id="eventBindingSection" class="advanced-group">
+            <span id="eventBindingSpan">Event binding</span>
+            <div id="eventBindingRadios" class="radioLine">
+              <label
+                ><input
+                  id="eventBindingVirtualRadio"
+                  type="radio"
+                  name="eventBindingRadio"
+                />
+                Virtual</label
+              >
+              <label
+                ><input
+                  id="eventBindingEmbeddedRadio"
+                  type="radio"
+                  name="eventBindingRadio"
+                />
+                Embedded</label
+              >
+            </div>
+          </div>
+          <div class="diagnostic-lines">
+            <div id="lastVirtualRectingCountSection">
+              Virtual rects: <span id="lastVirtualRectingCountSpan"></span>
+            </div>
+            <div id="clickCount">
+              Clicks: capture <span id="captureClickCountSpan"></span> · bubble
+              <span id="bubbleClickCountSpan"></span>
+            </div>
+            <div id="stackHeaderClick">
+              Stack header
+              <span id="stackHeaderClickedDiv"
+                >(<span id="stackHeaderClickedItemCountSpan"></span>
+                items)</span
+              >
+            </div>
+          </div>
+        </details>
+      </aside>
+
+      <main class="canvas-column">
+        <div class="canvas-heading">
+          <div>
+            <p class="eyebrow">02 / INTERACT</p>
+            <h2>Live canvas</h2>
+          </div>
+          <span id="layoutSummary" class="canvas-summary">Loading…</span>
+        </div>
+        <div class="canvas-frame">
+          <section
+            id="layoutContainer"
+            aria-label="Live Strelit layout"
+          ></section>
+        </div>
+        <p class="canvas-hint">
+          Drag tabs to reorder or split · Use pane header controls to maximize
+          and pop out · Edit component inputs to test state persistence
+        </p>
+      </main>
+
+      <aside class="inspector" aria-label="Configuration and state inspector">
+        <div class="inspector-heading">
+          <p class="eyebrow">03 / INSPECT</p>
+          <h2>Configuration</h2>
+          <p>Edit any LayoutConfig field, then apply it to the canvas.</p>
+        </div>
+        <div class="inspector-actions">
+          <button id="configFromPresetButton" type="button">Preset JSON</button>
+          <button id="configFromLiveButton" type="button">
+            Current layout
+          </button>
+        </div>
+        <label for="configEditor" class="editor-label">LayoutConfig JSON</label>
+        <textarea
+          id="configEditor"
+          spellcheck="false"
+          aria-describedby="configHelp"
+        ></textarea>
+        <p id="configHelp" class="field-help">
+          Current layout converts saved state back to editable LayoutConfig.
+          Errors appear in the status bar and activity log.
+        </p>
+        <button id="applyConfigButton" type="button" class="primary full-width">
+          Apply configuration
+        </button>
+        <div class="inspector-divider"></div>
+        <div class="section-heading">
+          <h2>Live snapshot</h2>
+          <button id="refreshSnapshotButton" type="button">Refresh</button>
+        </div>
+        <pre
+          id="liveSnapshot"
+          class="snapshot"
+          aria-label="Saved layout snapshot"
+        ></pre>
+        <div class="section-heading">
+          <h2>Activity</h2>
+          <button id="clearLogButton" type="button">Clear</button>
+        </div>
+        <ol id="activityLog" class="activity-log" aria-live="polite"></ol>
+        <details class="api-explorer">
+          <summary>API method explorer</summary>
+          <p class="field-help">
+            Call methods on the live layout, selected item, its container or
+            stack, an open pop-out, or library exports. Arguments are a JSON
+            array. Use <code>{"$ref":"selected"}</code>,
+            <code>{"$ref":"stack"}</code>, <code>{"$ref":"root"}</code>,
+            <code>{"$ref":"saved"}</code>, or <code>{"$ref":"config"}</code> for
+            live objects.
+          </p>
+          <label for="apiObjectSelect" class="editor-label">Object</label>
+          <select id="apiObjectSelect">
+            <option value="layout">StrelitLayout</option>
+            <option value="selected">Selected component</option>
+            <option value="container">Selected container</option>
+            <option value="stack">Selected stack</option>
+            <option value="popout">Latest pop-out</option>
+            <option value="exports">Library exports</option>
+          </select>
+          <label for="apiMethodSelect" class="editor-label">Method</label>
+          <select id="apiMethodSelect"></select>
+          <label for="apiArgsEditor" class="editor-label"
+            >Arguments · JSON array</label
+          >
+          <textarea id="apiArgsEditor" spellcheck="false">[]</textarea>
+          <button id="runMethodButton" type="button" class="primary full-width">
+            Call method
+          </button>
+          <pre
+            id="methodResult"
+            class="snapshot"
+            aria-label="API method result"
+          >
+Choose a method to inspect its result.</pre>
+        </details>
+      </aside>
+    </div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>
