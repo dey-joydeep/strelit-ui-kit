@@ -74,6 +74,8 @@ export class Workbench {
     this.targetSelect.addEventListener('change', () => this.refreshMethods());
     this.layoutSelect.addEventListener('change', () => this.showPresetConfig());
     this.app.layout.on('stateChanged', () => this.scheduleRefresh());
+    this.app.layout.on('windowOpened', () => this.scheduleRefresh());
+    this.app.layout.on('windowClosed', () => this.scheduleRefresh());
     this.app.layout.container.addEventListener('input', () =>
       this.scheduleRefresh(),
     );

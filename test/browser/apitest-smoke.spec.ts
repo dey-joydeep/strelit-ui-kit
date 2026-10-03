@@ -102,23 +102,51 @@ test('workbench edits configuration and runs APIs with visible results', async (
   expect(runtimeErrors).toEqual([]);
 });
 
-test('workbench pop-out keeps the child focused on the layout and returns it', async ({
+test('workbench preserves a whole stack through pop-out and pop-in', async ({
   page,
 }) => {
   await page.goto('/');
   await page.selectOption('#layoutSelect', 'miniStack');
   await page.locator('#loadLayoutButton').click();
+  await page.locator('#layoutContainer input:visible').first().fill('teal');
   await page.selectOption('#apiTargetSelect', '0');
   await page.selectOption('#apiActionSelect', 'popout');
   const [child] = await Promise.all([
     page.waitForEvent('popup'),
     page.locator('#apiRunButton').click(),
   ]);
-  await expect(child.locator('.lm_content').first()).toBeVisible();
+  await expect(child.locator('.lm_tab')).toHaveCount(2);
+  await expect(child.locator('.lm_tab[title="Overview"]')).toBeVisible();
+  await expect(child.locator('.lm_tab[title="Details"]')).toBeVisible();
+  await expect(
+    child.locator('#layoutContainer input:visible').first(),
+  ).toHaveValue('teal');
+  await child.locator('.lm_tab[title="Details"]').click();
+  await expect(
+    child.locator('#layoutContainer input:visible').first(),
+  ).toHaveValue('green');
+  await child.setViewportSize({ width: 480, height: 360 });
+  await expect
+    .poll(
+      async () => (await child.locator('.canvas-frame').boundingBox())?.height,
+    )
+    .toBeLessThanOrEqual(360);
   await expect(child.locator('.topbar')).toBeHidden();
+  await expect(page.locator('.lm_tab')).toHaveCount(0);
+  await expect(page.locator('#layoutSummary')).toContainText('0 components');
   await expect(page.locator('#layoutSummary')).toContainText('1 pop-outs');
   await page.selectOption('#apiActionSelect', 'popin');
   await page.locator('#apiRunButton').click();
   await expect(page.locator('.lm_tab')).toHaveCount(2);
+  await expect(page.locator('.lm_tab[title="Overview"]')).toBeVisible();
+  await expect(page.locator('.lm_tab[title="Details"]')).toBeVisible();
+  await page.locator('.lm_tab[title="Overview"]').click();
+  await expect(
+    page.locator('#layoutContainer input:visible').first(),
+  ).toHaveValue('teal');
+  await page.locator('.lm_tab[title="Details"]').click();
+  await expect(
+    page.locator('#layoutContainer input:visible').first(),
+  ).toHaveValue('green');
   await expect(page.locator('#layoutSummary')).toContainText('0 pop-outs');
 });
