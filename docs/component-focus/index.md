@@ -6,4 +6,4 @@ Only one component in a layout can have focus at any time (or alternatively, no 
 
 Clicking on HTML within a component will not automatically give a Strelit Layout component focus. However this can be achieved by listening to the bubbling `click` and/or `focusin` events and calling `ComponentContainer.focus()` in these events' handlers. The `apitest` demonstrates this technique.
 
-A focused component's tab and header HTML elements will contain the class `lm_focused`. This can be used to highlight the focused tab and or header. The `strelit-light-theme.less` theme used by `apitest` sets the background color of a focused tab to a different color from other tabs. If you do NOT want focused tabs to be highlighted, ensure that the `lm_focused` selector is removed from the relevant CSS, LESS, or SCSS used by your application.
+A focused component's tab and header HTML elements will contain the class `lm_focused`. This can be used to highlight the focused tab and or header. The `apitest` styles add a focused-tab highlight alongside the `strelit-light-theme.less` theme. Applications can style the `lm_focused` selector in their own CSS, LESS, or SCSS to show focus.

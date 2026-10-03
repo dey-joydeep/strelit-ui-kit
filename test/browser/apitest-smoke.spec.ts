@@ -50,6 +50,26 @@ test('workbench edits configuration and runs APIs with visible results', async (
   await expect(page.locator('#layoutSummary')).toContainText('10 components');
   await expect(page.locator('#apiTargetSelect')).toHaveValue('0');
 
+  await page.selectOption('#apiActionSelect', 'blur');
+  await page.locator('#apiRunButton').click();
+  await page.selectOption('#apiActionSelect', 'focus');
+  await page.locator('#apiRunButton').click();
+  const focusedTab = page.locator('.lm_tab.lm_focused');
+  await expect(focusedTab).toHaveCount(1);
+  const focusedTitle = await focusedTab.getAttribute('title');
+  const focusedColor = await focusedTab.evaluate(
+    (element) => getComputedStyle(element).backgroundColor,
+  );
+  await page.selectOption('#apiActionSelect', 'blur');
+  await page.locator('#apiRunButton').click();
+  await expect(page.locator('.lm_tab.lm_focused')).toHaveCount(0);
+  const blurredTab = page.locator('.lm_tab').filter({ hasText: focusedTitle! });
+  expect(
+    await blurredTab.evaluate(
+      (element) => getComputedStyle(element).backgroundColor,
+    ),
+  ).not.toBe(focusedColor);
+
   await page.selectOption('#apiActionSelect', 'rename');
   await page.locator('#apiActionValue').fill('Monitor');
   await page.locator('#apiRunButton').click();

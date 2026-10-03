@@ -349,6 +349,10 @@ button {
   background: #fff;
   border-color: #d2dce9;
 }
+#layoutContainer .lm_tab.lm_focused {
+  background: #dbe6ff;
+  box-shadow: inset 0 -3px #4169dc;
+}
 #layoutContainer .lm_content p {
   margin: 14px 14px 8px;
   font-size: 12px;
