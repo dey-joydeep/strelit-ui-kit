@@ -206,6 +206,44 @@ test('root component rejects stack references and virtual inputs stay inside the
   expect(geometry.paddingLeft).toBe('9px');
 });
 
+test('workbench keeps the selected component after an earlier tab closes', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.locator('#apiTargetSelect option').first()).toContainText(
+    'Fnts 100',
+  );
+  await page.selectOption('#apiTargetSelect', '1');
+  const selectedLabel = await page
+    .locator('#apiTargetSelect option:checked')
+    .textContent();
+  const selectedTitle = selectedLabel!.replace(/^\d+\. /u, '');
+  await page.locator('.lm_tab[title="Fnts 100"] .lm_close_tab').click();
+  await expect(page.locator('#layoutSummary')).toContainText('9 components');
+  await expect(page.locator('#apiTargetSelect option:checked')).toContainText(
+    selectedTitle,
+  );
+  await expect(page.locator('#apiTargetSelect')).toHaveValue('0');
+
+  await page.selectOption('#apiActionSelect', 'rename');
+  await page.locator('#apiActionValue').fill('Selected stays selected');
+  await page.locator('#apiRunButton').click();
+  await expect(
+    page.locator('.lm_tab[title="Selected stays selected"]'),
+  ).toBeVisible();
+  await expect(page.locator('#apiTargetSelect option:checked')).toContainText(
+    'Selected stays selected',
+  );
+
+  await page.selectOption('#apiActionSelect', 'close');
+  await page.locator('#apiRunButton').click();
+  await expect(page.locator('#apiTargetSelect')).toHaveValue('');
+  await page.locator('#apiRunButton').click();
+  await expect(page.locator('#workbenchStatus')).toContainText(
+    'Select a component first',
+  );
+});
+
 test('miniStack keeps white component text legible', async ({ page }) => {
   await page.goto('/');
   await page.selectOption('#layoutSelect', 'miniStack');

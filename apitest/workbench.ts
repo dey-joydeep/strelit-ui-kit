@@ -39,6 +39,8 @@ export class Workbench {
     element<HTMLTextAreaElement>('#apiArgsEditor');
   private readonly methodResult = element<HTMLElement>('#methodResult');
   private refreshScheduled = false;
+  private selectedTarget: ComponentItem | undefined;
+  private targetSelectionInitialized = false;
 
   constructor(private readonly app: App) {
     element<HTMLButtonElement>('#configFromPresetButton').addEventListener(
@@ -71,7 +73,14 @@ export class Workbench {
     this.apiObjectSelect.addEventListener('change', () =>
       this.refreshMethods(),
     );
-    this.targetSelect.addEventListener('change', () => this.refreshMethods());
+    this.targetSelect.addEventListener('change', () => {
+      const index = Number(this.targetSelect.value);
+      this.selectedTarget =
+        this.targetSelect.value !== '' && Number.isInteger(index)
+          ? this.components[index]
+          : undefined;
+      this.refreshMethods();
+    });
     this.layoutSelect.addEventListener('change', () => this.showPresetConfig());
     this.app.layout.on('stateChanged', () => this.scheduleRefresh());
     this.app.layout.on('windowOpened', () => this.scheduleRefresh());
@@ -93,9 +102,16 @@ export class Workbench {
       'replaceComponentButton',
       'reloadSavedLayoutButton',
     ]) {
-      element<HTMLButtonElement>(`#${id}`).addEventListener('click', () =>
-        this.scheduleRefresh(),
-      );
+      element<HTMLButtonElement>(`#${id}`).addEventListener('click', () => {
+        if (
+          id === 'loadLayoutButton' ||
+          id === 'loadComponentAsRootButton' ||
+          id === 'reloadSavedLayoutButton'
+        ) {
+          this.targetSelectionInitialized = false;
+        }
+        this.scheduleRefresh();
+      });
     }
     this.showPresetConfig();
     this.refresh();
@@ -112,8 +128,10 @@ export class Workbench {
   }
 
   private get target(): ComponentItem | undefined {
-    const index = Number(this.targetSelect.value);
-    return Number.isInteger(index) ? this.components[index] : undefined;
+    return this.selectedTarget !== undefined &&
+      this.components.includes(this.selectedTarget)
+      ? this.selectedTarget
+      : undefined;
   }
 
   private showPresetConfig(): void {
@@ -151,6 +169,7 @@ export class Workbench {
       ) {
         throw new Error('LayoutConfig must be a JSON object');
       }
+      this.targetSelectionInitialized = false;
       this.app.layout.loadLayout(parsed as LayoutConfig);
       this.setStatus('Configuration applied', false);
       this.log('loadLayout() applied the edited JSON.');
@@ -362,7 +381,10 @@ export class Workbench {
   private refresh(): void {
     try {
       const components = this.components;
-      const previous = this.targetSelect.value;
+      const selectedIndex =
+        this.selectedTarget === undefined
+          ? -1
+          : components.indexOf(this.selectedTarget);
       this.targetSelect.replaceChildren(
         ...components.map(
           (item, index) =>
@@ -371,14 +393,18 @@ export class Workbench {
       );
       if (components.length === 0) {
         this.targetSelect.add(new Option('No components', ''));
-      } else if (
-        previous !== '' &&
-        components[Number(previous)] !== undefined
-      ) {
-        this.targetSelect.value = previous;
-      } else {
+        this.selectedTarget = undefined;
+      } else if (selectedIndex >= 0) {
+        this.targetSelect.selectedIndex = selectedIndex;
+      } else if (!this.targetSelectionInitialized) {
         this.targetSelect.selectedIndex = 0;
+        this.selectedTarget = components[0];
+      } else {
+        this.targetSelect.prepend(new Option('Select a component', ''));
+        this.targetSelect.value = '';
+        this.selectedTarget = undefined;
       }
+      this.targetSelectionInitialized = true;
       const stacks = this.app.layout.getItemsByType(ItemType.stack).length;
       const popouts = this.app.layout.openPopouts.length;
       this.summary.textContent = `${components.length} components · ${stacks} stacks · ${popouts} pop-outs`;
