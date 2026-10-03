@@ -106,8 +106,9 @@ async function verifyBrowserBundle(packageRoot) {
       () => typeof window.strelitUIKit?.StrelitLayout === 'function',
     );
     if (!hasGlobal || pageErrors.length > 0) {
+      const detail = pageErrors.length > 0 ? `: ${pageErrors.join('; ')}` : '';
       throw new Error(
-        `Packed browser bundle does not expose strelitUIKit.StrelitLayout${pageErrors.length > 0 ? `: ${pageErrors.join('; ')}` : ''}`,
+        `Packed browser bundle does not expose strelitUIKit.StrelitLayout${detail}`,
       );
     }
   } finally {
