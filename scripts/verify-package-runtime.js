@@ -115,7 +115,7 @@ async function verifyBrowserBundle(packageRoot) {
   }
 }
 
-async function main() {
+async function main(options = {}) {
   const packageJson = JSON.parse(
     fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'),
   );
@@ -155,7 +155,9 @@ async function main() {
       path.join(extractedRoot, 'package'),
       path.join(modulesRoot, packageJson.name),
     );
-    await verifyBrowserBundle(path.join(modulesRoot, packageJson.name));
+    if (options.verifyBrowser) {
+      await verifyBrowserBundle(path.join(modulesRoot, packageJson.name));
+    }
     fs.cpSync(
       path.join(repoRoot, 'node_modules', 'tslib'),
       path.join(modulesRoot, 'tslib'),
@@ -165,7 +167,7 @@ async function main() {
     verifyConsumer(consumerRoot, 'require');
     verifyConsumer(consumerRoot, 'import');
     process.stdout.write(
-      'Packed package runtime imports and browser global passed.\n',
+      `Packed package runtime imports${options.verifyBrowser ? ' and browser global' : ''} passed.\n`,
     );
   } finally {
     fs.rmSync(temporaryRoot, { recursive: true, force: true });

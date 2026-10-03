@@ -100,6 +100,7 @@ function verificationScriptsForRisk(risk, verificationProfile = 'product') {
         'verify:ordered',
         'apitest:build',
         'apitest:smoke',
+        'verify:browser-bundle',
       ];
     case 'medium':
       return [
