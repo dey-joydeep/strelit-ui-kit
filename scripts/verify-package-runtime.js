@@ -4,7 +4,6 @@ const os = require('node:os');
 const path = require('node:path');
 const { chromium } = require('playwright');
 const { npmCommand } = require('./npm-command.js');
-const { findBrowser } = require('./smoke-apitest.js');
 
 const repoRoot = path.resolve(__dirname, '..');
 
@@ -88,7 +87,6 @@ async function verifyBrowserBundle(packageRoot) {
   }
 
   const browser = await chromium.launch({
-    executablePath: findBrowser(),
     headless: true,
     chromiumSandbox: true,
     args: ['--disable-background-networking'],
