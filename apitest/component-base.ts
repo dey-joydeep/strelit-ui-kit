@@ -21,5 +21,6 @@ export abstract class ComponentBase implements StrelitLayoutVirtualComponent {
     } else {
       this._rootElement = this._container.element;
     }
+    this._rootElement.classList.add('strelit-demo-component');
   }
 }

@@ -279,7 +279,10 @@ export class Workbench {
             referenced = this.target;
             break;
           case 'stack':
-            referenced = this.target?.parentItem;
+            referenced =
+              this.target?.parentItem instanceof Stack
+                ? this.target.parentItem
+                : undefined;
             break;
           case 'root':
             referenced = this.app.layout.rootItem;
