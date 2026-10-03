@@ -192,38 +192,43 @@ export class Workbench {
         popout.popIn();
       } else {
         if (target === undefined) throw new Error('Select a component first');
-        switch (action) {
-          case 'focus':
-            layout.focusComponent(target);
-            break;
-          case 'rename':
-            if (this.actionValue.value.trim() === '') {
-              throw new Error('Enter a title before renaming');
-            }
-            target.container.setTitle(this.actionValue.value.trim());
-            break;
-          case 'close':
-            target.close();
-            break;
-          case 'maximize':
-          case 'popout': {
-            const stack = target.parentItem;
-            if (!(stack instanceof Stack)) {
-              throw new Error('Selected component is not inside a stack');
-            }
-            if (action === 'maximize') stack.toggleMaximise();
-            else stack.popout();
-            break;
-          }
-          default:
-            throw new Error(`Unknown API action: ${action}`);
-        }
+        this.runTargetAction(action, target);
       }
       this.setStatus(`${action} completed`, false);
-      this.log(`API action: ${action}${target ? ` · ${target.title}` : ''}`);
+      const targetLabel = target === undefined ? '' : ` · ${target.title}`;
+      this.log(`API action: ${action}${targetLabel}`);
       this.scheduleRefresh();
     } catch (error) {
       this.reportError(error);
+    }
+  }
+
+  private runTargetAction(action: string, target: ComponentItem): void {
+    switch (action) {
+      case 'focus':
+        this.app.layout.focusComponent(target);
+        break;
+      case 'rename': {
+        const title = this.actionValue.value.trim();
+        if (title === '') throw new Error('Enter a title before renaming');
+        target.container.setTitle(title);
+        break;
+      }
+      case 'close':
+        target.close();
+        break;
+      case 'maximize':
+      case 'popout': {
+        const stack = target.parentItem;
+        if (!(stack instanceof Stack)) {
+          throw new TypeError('Selected component is not inside a stack');
+        }
+        if (action === 'maximize') stack.toggleMaximise();
+        else stack.popout();
+        break;
+      }
+      default:
+        throw new Error(`Unknown API action: ${action}`);
     }
   }
 
@@ -237,9 +242,7 @@ export class Workbench {
       case 'container':
         return target?.container;
       case 'stack':
-        return target?.parentItem instanceof Stack
-          ? target.parentItem
-          : undefined;
+        return this.methodObjectForStack();
       case 'popout':
         return this.app.layout.openPopouts[
           this.app.layout.openPopouts.length - 1
@@ -273,7 +276,7 @@ export class Workbench {
       }
       current = Object.getPrototypeOf(current) as object | null;
     }
-    const names = [...methods].sort();
+    const names = [...methods].sort((left, right) => left.localeCompare(right));
     this.apiMethodSelect.replaceChildren(
       ...names.map((name) => new Option(`${name}()`, name)),
     );
@@ -292,31 +295,7 @@ export class Workbench {
     if (value !== null && typeof value === 'object') {
       const record = value as Record<string, unknown>;
       if (Object.keys(record).length === 1 && typeof record.$ref === 'string') {
-        let referenced: unknown;
-        switch (record.$ref) {
-          case 'selected':
-            referenced = this.target;
-            break;
-          case 'stack':
-            referenced =
-              this.target?.parentItem instanceof Stack
-                ? this.target.parentItem
-                : undefined;
-            break;
-          case 'root':
-            referenced = this.app.layout.rootItem;
-            break;
-          case 'saved':
-            return this.app.layout.saveLayout();
-          case 'config':
-            return JSON.parse(this.configEditor.value) as unknown;
-          default:
-            throw new Error(`Unknown reference: ${record.$ref}`);
-        }
-        if (referenced === undefined) {
-          throw new Error(`No ${record.$ref} object is available`);
-        }
-        return referenced;
+        return this.resolveReference(record.$ref);
       }
       return Object.fromEntries(
         Object.entries(record).map(([key, item]) => [
@@ -326,6 +305,36 @@ export class Workbench {
       );
     }
     return value;
+  }
+
+  private resolveReference(reference: string): unknown {
+    let referenced: unknown;
+    switch (reference) {
+      case 'selected':
+        referenced = this.target;
+        break;
+      case 'stack':
+        referenced = this.methodObjectForStack();
+        break;
+      case 'root':
+        referenced = this.app.layout.rootItem;
+        break;
+      case 'saved':
+        return this.app.layout.saveLayout();
+      case 'config':
+        return JSON.parse(this.configEditor.value) as unknown;
+      default:
+        throw new Error(`Unknown reference: ${reference}`);
+    }
+    if (referenced === undefined) {
+      throw new Error(`No ${reference} object is available`);
+    }
+    return referenced;
+  }
+
+  private methodObjectForStack(): Stack | undefined {
+    const parent = this.target?.parentItem;
+    return parent instanceof Stack ? parent : undefined;
   }
 
   private async runMethod(): Promise<void> {
@@ -342,31 +351,33 @@ export class Workbench {
         throw new Error('Arguments must be a JSON array');
       const args = parsed.map((value) => this.resolveArgument(value));
       const result: unknown = await Reflect.apply(method, object, args);
-      if (result === undefined) {
-        this.methodResult.textContent = 'undefined';
-      } else {
-        try {
-          this.methodResult.textContent =
-            JSON.stringify(result, null, 2) ??
-            Object.prototype.toString.call(result);
-        } catch {
-          this.methodResult.textContent =
-            Object.prototype.toString.call(result);
-        }
-      }
+      this.methodResult.textContent = this.formatMethodResult(result);
       this.setStatus(`${name}() completed`, false);
       this.log(`Called ${this.apiObjectSelect.value}.${name}()`);
       this.refresh();
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
-      this.methodResult.textContent = stack
-        ? stack.includes(message)
-          ? stack
-          : `${message}\n${stack}`
-        : message;
+      this.methodResult.textContent = this.formatMethodError(error);
       this.reportError(error);
     }
+  }
+
+  private formatMethodResult(result: unknown): string {
+    if (result === undefined) return 'undefined';
+    try {
+      return (
+        JSON.stringify(result, null, 2) ??
+        Object.prototype.toString.call(result)
+      );
+    } catch {
+      return Object.prototype.toString.call(result);
+    }
+  }
+
+  private formatMethodError(error: unknown): string {
+    const message = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : undefined;
+    if (!stack) return message;
+    return stack.includes(message) ? stack : `${message}\n${stack}`;
   }
 
   private scheduleRefresh(): void {
