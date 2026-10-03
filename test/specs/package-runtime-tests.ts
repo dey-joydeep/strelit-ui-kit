@@ -1,6 +1,12 @@
 // @vitest-environment node
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, resolve, win32 } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -21,6 +27,7 @@ interface PackageRuntimeModule {
     env?: NodeJS.ProcessEnv,
   ): string;
   parsePackOutput(output: string): Array<{ filename: string }>;
+  verifyBrowserBundle(packageRoot: string): void;
 }
 
 interface VerifyOrderedModule {
@@ -49,6 +56,34 @@ const verifyOrdered =
   require('../../scripts/verify-ordered.js') as VerifyOrderedModule;
 
 describe('package runtime verification', () => {
+  it('requires a packed browser bundle with the Strelit global', () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), 'strelit-browser-bundle-'));
+    const bundleDirectory = join(packageRoot, 'dist', 'iife');
+    const bundlePath = join(bundleDirectory, 'index.global.js');
+
+    try {
+      expect(() => packageRuntime.verifyBrowserBundle(packageRoot)).toThrow(
+        'Packed browser bundle is missing',
+      );
+
+      mkdirSync(bundleDirectory, { recursive: true });
+      writeFileSync(bundlePath, 'var strelitUIKit = {};');
+      expect(() => packageRuntime.verifyBrowserBundle(packageRoot)).toThrow(
+        'does not expose strelitUIKit.StrelitLayout',
+      );
+
+      writeFileSync(
+        bundlePath,
+        'var strelitUIKit = { StrelitLayout: function StrelitLayout() {} };',
+      );
+      expect(() =>
+        packageRuntime.verifyBrowserBundle(packageRoot),
+      ).not.toThrow();
+    } finally {
+      rmSync(packageRoot, { recursive: true, force: true });
+    }
+  });
+
   it('keeps repository npm launchers independent of executable-selecting environment variables', () => {
     for (const script of [
       'scripts/review-handoff.js',

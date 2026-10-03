@@ -73,6 +73,7 @@ both config-oriented and JSDOM-backed layout benchmarks.
 
 - CommonJS output in `dist/cjs`
 - ESM output in `dist/esm`
+- Browser IIFE output in `dist/iife/index.global.js` as `window.strelitUIKit`
 - rolled-up declarations in `dist/types`
 - CSS/LESS/SCSS assets in `dist`
 
