@@ -339,9 +339,13 @@ export class Workbench {
       this.log(`Called ${this.apiObjectSelect.value}.${name}()`);
       this.refresh();
     } catch (error) {
-      const message =
-        error instanceof Error ? (error.stack ?? error.message) : String(error);
-      this.methodResult.textContent = message;
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      this.methodResult.textContent = stack
+        ? stack.includes(message)
+          ? stack
+          : `${message}\n${stack}`
+        : message;
       this.reportError(error);
     }
   }
