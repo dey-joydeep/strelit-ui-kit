@@ -2,6 +2,7 @@ const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const vm = require('node:vm');
 const { npmCommand } = require('./npm-command.js');
 
 const repoRoot = path.resolve(__dirname, '..');
@@ -75,6 +76,24 @@ function verifyConsumer(consumerRoot, moduleKind) {
   run(process.execPath, [consumerPath], consumerRoot);
 }
 
+function verifyBrowserBundle(packageRoot) {
+  const bundlePath = path.join(packageRoot, 'dist', 'iife', 'index.global.js');
+  if (!fs.existsSync(bundlePath)) {
+    throw new Error(`Packed browser bundle is missing: ${bundlePath}`);
+  }
+
+  const context = {};
+  vm.runInNewContext(fs.readFileSync(bundlePath, 'utf8'), context, {
+    filename: bundlePath,
+    timeout: 5000,
+  });
+  if (typeof context.strelitUIKit?.StrelitLayout !== 'function') {
+    throw new Error(
+      'Packed browser bundle does not expose strelitUIKit.StrelitLayout',
+    );
+  }
+}
+
 function main() {
   const packageJson = JSON.parse(
     fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'),
@@ -115,6 +134,7 @@ function main() {
       path.join(extractedRoot, 'package'),
       path.join(modulesRoot, packageJson.name),
     );
+    verifyBrowserBundle(path.join(modulesRoot, packageJson.name));
     fs.cpSync(
       path.join(repoRoot, 'node_modules', 'tslib'),
       path.join(modulesRoot, 'tslib'),
@@ -124,7 +144,7 @@ function main() {
     verifyConsumer(consumerRoot, 'require');
     verifyConsumer(consumerRoot, 'import');
     process.stdout.write(
-      'Packed package runtime imports passed for CommonJS and ES modules.\n',
+      'Packed package runtime imports and browser global passed.\n',
     );
   } finally {
     fs.rmSync(temporaryRoot, { recursive: true, force: true });
@@ -140,4 +160,11 @@ if (require.main === module) {
   }
 }
 
-module.exports = { main, npmCommand, parsePackOutput, run, verifyConsumer };
+module.exports = {
+  main,
+  npmCommand,
+  parsePackOutput,
+  run,
+  verifyBrowserBundle,
+  verifyConsumer,
+};
