@@ -87,6 +87,7 @@ async function verifyBrowserBundle(packageRoot) {
   }
 
   const browser = await chromium.launch({
+    channel: 'chrome',
     headless: true,
     chromiumSandbox: true,
     args: ['--disable-background-networking'],
