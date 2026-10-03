@@ -101,9 +101,9 @@ export class ColorComponent extends ComponentBase {
   }
 
   private handleShowEvent(): void {
-    this._paraElement.style.backgroundColor = 'purple';
+    this._paraElement.style.textDecoration = 'underline';
     setTimeout(() => {
-      this._paraElement.style.backgroundColor = '';
+      this._paraElement.style.textDecoration = '';
     }, 1000);
   }
 

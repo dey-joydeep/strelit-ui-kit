@@ -24,6 +24,14 @@ export class App {
   private readonly _layoutElement: HTMLElement;
   private readonly _controlsElement: HTMLElement;
   private readonly _strelitLayout: StrelitLayout;
+
+  get layout(): StrelitLayout {
+    return this._strelitLayout;
+  }
+
+  get isSubWindow(): boolean {
+    return this._strelitLayout.isSubWindow;
+  }
   private readonly _registerComponentTypesButton;
   private readonly _registerComponentTypesButtonClickListener = () =>
     this.registerComponentTypes();
@@ -408,6 +416,7 @@ export class App {
     this._stackHeaderClickedItemCountSpan = stackHeaderClickedItemCountSpan;
 
     if (this._strelitLayout.isSubWindow) {
+      document.body.classList.add('is-subwindow');
       this._controlsElement.style.display = 'none';
       this._strelitLayout.checkAddDefaultPopinButton();
 
@@ -430,6 +439,10 @@ export class App {
     this.loadComponentTypesForAddSelect();
     this.loadComponentTypesForReplaceSelect();
     this.loadLayoutSelect();
+    if (!this.isSubWindow) {
+      this._layoutSelect.value = 'standard';
+      this.handleLoadLayoutButtonClick();
+    }
   }
 
   private createComponent(

@@ -1,10 +1,13 @@
 import './styles.css';
 import './strelit-layout.less';
+import * as Strelit from '../src';
 import { App } from './app';
+import { Workbench } from './workbench';
 
 declare global {
   interface Window {
     strelitApiTestApp: App;
+    strelitApiTestExports: typeof Strelit;
   }
 }
 
@@ -29,10 +32,15 @@ function run() {
   try {
     const app = new App();
     window.strelitApiTestApp = app;
+    window.strelitApiTestExports = Strelit;
     app.start();
+    if (!app.isSubWindow) {
+      new Workbench(app);
+    }
     if (smokeMode) {
-      document.querySelector<HTMLButtonElement>('#loadLayoutButton')?.click();
-      document.querySelector<HTMLButtonElement>('#saveLayoutButton')?.click();
+      if (!app.isSubWindow) {
+        document.querySelector<HTMLButtonElement>('#saveLayoutButton')?.click();
+      }
       globalThis.setTimeout(() => {
         if (document.documentElement.dataset.strelitSmoke === 'running') {
           document.documentElement.dataset.strelitSmoke = 'passed';

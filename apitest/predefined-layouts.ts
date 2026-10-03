@@ -15,7 +15,7 @@ const miniRowConfig: LayoutConfig = {
     content: [
       {
         type: 'component',
-        title: 'Golden',
+        title: 'Overview',
         header: {
           show: 'top',
         },
@@ -25,7 +25,7 @@ const miniRowConfig: LayoutConfig = {
         componentState: 'gold',
       },
       {
-        title: 'Layout',
+        title: 'Details',
         header: { show: 'top', popout: false },
         type: 'component',
         componentType: ColorComponent.typeName,
@@ -46,7 +46,7 @@ const miniStackConfig: LayoutConfig = {
     content: [
       {
         type: 'component',
-        title: 'Golden',
+        title: 'Overview',
         header: {
           show: 'top',
         },
@@ -55,7 +55,7 @@ const miniStackConfig: LayoutConfig = {
         componentState: 'white',
       },
       {
-        title: 'Layout',
+        title: 'Details',
         header: { show: 'top', popout: false },
         type: 'component',
         componentType: ColorComponent.typeName,
@@ -76,13 +76,13 @@ const rowWithEmptyStackConfig: LayoutConfig = {
     content: [
       {
         type: 'component',
-        title: 'Golden',
+        title: 'Overview',
         componentType: ColorComponent.typeName,
         size: '30%',
         componentState: 'gold',
       },
       {
-        title: 'Layout',
+        title: 'Details',
         header: { show: 'top', popout: false },
         type: 'component',
         componentType: ColorComponent.typeName,
@@ -105,7 +105,7 @@ const rowWithEmptyStackLayout: Layout = {
 const componentConfig: LayoutConfig = {
   root: {
     type: ItemType.component,
-    title: 'Layout',
+    title: 'Details',
     header: { show: 'top', popout: false },
     componentType: ColorComponent.typeName,
     componentState: 'green',
@@ -140,7 +140,7 @@ const standardConfig: LayoutConfig = {
             content: [
               {
                 type: 'component',
-                title: 'Golden',
+                title: 'Overview',
                 header: { show: 'right' },
                 isClosable: false,
                 componentType: ColorComponent.typeName,
@@ -150,7 +150,7 @@ const standardConfig: LayoutConfig = {
                 },
               },
               {
-                title: 'Layout',
+                title: 'Details',
                 header: {
                   show: 'left',
                   popout: false,
@@ -270,7 +270,7 @@ const responsiveConfig: LayoutConfig = {
             content: [
               {
                 type: 'component',
-                title: 'Golden',
+                title: 'Overview',
                 componentType: ColorComponent.typeName,
                 size: '30%',
                 componentState: {
@@ -312,7 +312,7 @@ const responsiveConfig: LayoutConfig = {
       },
       {
         size: '30%',
-        title: 'Layout',
+        title: 'Details',
         type: 'component',
         componentType: ColorComponent.typeName,
         componentState: { bg: 'strelit_layout_text.png' },
@@ -391,7 +391,7 @@ const tabDropdownConfig: LayoutConfig = {
             content: [
               {
                 type: 'component',
-                title: 'Golden',
+                title: 'Overview',
                 componentType: TextComponent.typeName,
                 size: '30%',
                 componentState: {
@@ -487,7 +487,7 @@ const tabDropdownConfig: LayoutConfig = {
       },
       {
         size: '30%',
-        title: 'Layout',
+        title: 'Details',
         type: 'component',
         componentType: BooleanComponent.typeName,
         componentState: true,
@@ -507,7 +507,7 @@ const miniRowConfig_widthHeight: LayoutConfig = {
     content: [
       {
         type: 'component',
-        title: 'Golden',
+        title: 'Overview',
         header: {
           show: 'top',
         },
@@ -517,7 +517,7 @@ const miniRowConfig_widthHeight: LayoutConfig = {
         componentState: 'gold',
       },
       {
-        title: 'Layout',
+        title: 'Details',
         header: { show: 'top', popout: false },
         type: 'component',
         componentType: ColorComponent.typeName,
@@ -538,7 +538,7 @@ const miniStackConfig_widthHeight: LayoutConfig = {
     content: [
       {
         type: 'component',
-        title: 'Golden',
+        title: 'Overview',
         header: {
           show: 'top',
         },
@@ -547,7 +547,7 @@ const miniStackConfig_widthHeight: LayoutConfig = {
         componentState: 'white',
       },
       {
-        title: 'Layout',
+        title: 'Details',
         header: { show: 'top', popout: false },
         type: 'component',
         componentType: ColorComponent.typeName,
@@ -568,13 +568,13 @@ const rowWithEmptyStackConfig_widthHeight: LayoutConfig = {
     content: [
       {
         type: 'component',
-        title: 'Golden',
+        title: 'Overview',
         componentType: ColorComponent.typeName,
         size: '30%',
         componentState: 'gold',
       },
       {
-        title: 'Layout',
+        title: 'Details',
         header: { show: 'top', popout: false },
         type: 'component',
         componentType: ColorComponent.typeName,
@@ -597,7 +597,7 @@ const rowWithEmptyStackLayout_widthHeight: Layout = {
 const componentConfig_widthHeight: LayoutConfig = {
   root: {
     type: ItemType.component,
-    title: 'Layout',
+    title: 'Details',
     header: { show: 'top', popout: false },
     componentType: ColorComponent.typeName,
     componentState: 'green',
@@ -632,7 +632,7 @@ const standardConfig_widthHeight: LayoutConfig = {
             content: [
               {
                 type: 'component',
-                title: 'Golden',
+                title: 'Overview',
                 header: { show: 'right' },
                 isClosable: false,
                 componentType: ColorComponent.typeName,
@@ -642,7 +642,7 @@ const standardConfig_widthHeight: LayoutConfig = {
                 },
               },
               {
-                title: 'Layout',
+                title: 'Details',
                 header: {
                   show: 'left',
                   popout: false,
@@ -762,7 +762,7 @@ const responsiveConfig_widthHeight: LayoutConfig = {
             content: [
               {
                 type: 'component',
-                title: 'Golden',
+                title: 'Overview',
                 componentType: ColorComponent.typeName,
                 size: '30%',
                 componentState: {
@@ -804,7 +804,7 @@ const responsiveConfig_widthHeight: LayoutConfig = {
       },
       {
         size: '30%',
-        title: 'Layout',
+        title: 'Details',
         type: 'component',
         componentType: ColorComponent.typeName,
         componentState: { bg: 'strelit_layout_text.png' },
@@ -883,7 +883,7 @@ const tabDropdownConfig_widthHeight: LayoutConfig = {
             content: [
               {
                 type: 'component',
-                title: 'Golden',
+                title: 'Overview',
                 componentType: TextComponent.typeName,
                 size: '30%',
                 componentState: {
@@ -979,7 +979,7 @@ const tabDropdownConfig_widthHeight: LayoutConfig = {
       },
       {
         size: '30%',
-        title: 'Layout',
+        title: 'Details',
         type: 'component',
         componentType: BooleanComponent.typeName,
         componentState: true,
