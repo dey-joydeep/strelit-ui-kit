@@ -34,6 +34,10 @@ runtime, build, dependency, packaging, and general CI diffs fail closed to the
 product profile and its ordered pipeline. Governance changes remain High risk
 and require independent review under either profile.
 
+`npm run lint` generates the bundled public declarations before type-aware
+Oxlint runs. This keeps lint valid in a clean checkout: the bundled-type
+contract fixture imports `dist/types/index.d.ts`, which API Extractor creates.
+
 Vitest bounds file-worker concurrency in `vitest.config.ts` because each jsdom worker has a substantial memory footprint. The default test timeout also accommodates migration tests that launch real Node and TypeScript processes; compile fixtures have a larger explicit bound. Raise either limit only with evidence from both constrained CI and representative developer machines.
 
 ## Browser Smoke
