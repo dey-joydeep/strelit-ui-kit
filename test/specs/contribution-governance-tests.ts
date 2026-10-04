@@ -1022,6 +1022,8 @@ describe('contribution governance workflow', () => {
     for (const replacement of [
       '- <input type="checkbox" data-checked="true"> <code class="notranslate">npm run verify:pr</code>',
       '- <input type="checkbox" checked-bad="true"> <code class="notranslate">npm run verify:pr</code>',
+      '- <input type="checkbox" data-note="x checked x"> <code class="notranslate">npm run verify:pr</code>',
+      `- <input type="text" data-note='x type="checkbox" x' checked> <code class="notranslate">npm run verify:pr</code>`,
       '- [x] <code class="notranslate">npm run verify:ordered</code>',
     ]) {
       const malformed = body.replace('- [x] `npm run verify:pr`', replacement);
