@@ -153,6 +153,7 @@ interface LedgerModule {
         remainingMs: number,
       ) => ProcessIdentityState;
       currentIdentityLookup?: (remainingMs: number) => ProcessIdentityState;
+      publishLock?: LedgerModule['publishLedgerLock'];
     },
   ): LedgerLock;
   currentSourceState(cwd?: string): {
@@ -638,6 +639,49 @@ describe('agent work ledger', () => {
 
       expect(observedBudget).toBeGreaterThan(0);
       expect(observedBudget).toBeLessThanOrEqual(37);
+    });
+  });
+
+  it('retries when a published lock disappears after an EEXIST collision', () => {
+    withTemporaryRepository((repository) => {
+      initialize(repository);
+      const ledgerFile = ledgerModule.ledgerPath('.tmp/agent-work', repository);
+      let attempts = 0;
+      const lock = ledgerModule.acquireLedgerLock(ledgerFile, {
+        retryMs: 1,
+        publishLock: (fileLock, owner, token) => {
+          attempts++;
+          if (attempts === 1) {
+            throw Object.assign(new Error('transient lock collision'), {
+              code: 'EEXIST',
+            });
+          }
+          return ledgerModule.publishLedgerLock(fileLock, owner, token);
+        },
+      });
+      expect(attempts).toBe(2);
+      ledgerModule.releaseLedgerLock(lock);
+      expect(existsSync(`${ledgerFile}.lock`)).toBe(false);
+    });
+  });
+
+  it('does not retry an access error when no canonical lock exists', () => {
+    withTemporaryRepository((repository) => {
+      initialize(repository);
+      const ledgerFile = ledgerModule.ledgerPath('.tmp/agent-work', repository);
+      let attempts = 0;
+      expect(() =>
+        ledgerModule.acquireLedgerLock(ledgerFile, {
+          publishLock: () => {
+            attempts++;
+            throw Object.assign(new Error('access denied'), {
+              code: 'EACCES',
+            });
+          },
+        }),
+      ).toThrow('access denied');
+      expect(attempts).toBe(1);
+      expect(existsSync(`${ledgerFile}.lock`)).toBe(false);
     });
   });
 

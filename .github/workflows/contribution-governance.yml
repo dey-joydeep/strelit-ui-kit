@@ -63,8 +63,25 @@ jobs:
             });
             const renderedBody = renderedBodyResponse.data;
 
-            function canonicalAnchorText(href, anchorHtml) {
+            function canonicalAnchorText(anchor, href, anchorHtml) {
               const anchorText = anchorHtml.replace(/<[^>]*>/g, '').trim();
+              const commitLink = href.match(
+                /^https:\/\/github\.com\/([^/\s]+)\/([^/\s]+)\/commit\/([0-9a-f]{40})\/?$/i
+              );
+              const abbreviatedCommit = anchorHtml.trim().match(
+                /^<tt>([0-9a-f]{7,40})<\/tt>$/i
+              );
+              if (
+                /\bclass=["'][^"']*\bcommit-link\b[^"']*["']/i.test(anchor) &&
+                commitLink !== null &&
+                abbreviatedCommit !== null &&
+                commitLink[1].toLowerCase() === context.repo.owner.toLowerCase() &&
+                commitLink[2].toLowerCase() === context.repo.repo.toLowerCase() &&
+                commitLink[3].toLowerCase().startsWith(abbreviatedCommit[1].toLowerCase())
+              ) {
+                return commitLink[3];
+              }
+
               const reviewerMention = anchorText.match(
                 /^@([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))$/
               );
@@ -100,7 +117,7 @@ jobs:
               return html
                 .replace(
                   /<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
-                  (_anchor, href, anchorHtml) => canonicalAnchorText(href, anchorHtml)
+                  (anchor, href, anchorHtml) => canonicalAnchorText(anchor, href, anchorHtml)
                 )
                 .replace(/<\/?(?:blockquote|br|div|h[1-6]|li|ol|p|pre|table|td|th|tr|ul)\b[^>]*>/gi, '\n')
                 .replace(/<[^>]*>/g, '')

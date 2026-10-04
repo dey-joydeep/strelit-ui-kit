@@ -66,7 +66,7 @@
     "build:styles": "node ./scripts/css.js",
     "build": "npm run clean && npm run build:js && npm run build:types && npm run build:styles && api-extractor run --verbose && npm run typecheck:bundle",
     "api:report": "api-extractor run --local --verbose",
-    "lint": "oxlint --type-aware --deny-warnings --ignore-path .gitignore . && npm run lint:docs",
+    "lint": "npm run typecheck:bundle:prepare && oxlint --type-aware --deny-warnings --ignore-path .gitignore . && npm run lint:docs",
     "lint:fix": "oxlint --type-aware --fix --ignore-path .gitignore .",
     "lint:docs": "typedoc --options ./typedoc.stripInternal.json --emit none",
     "format": "prettier --write .",
