@@ -241,4 +241,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { observePreview, waitForServer };
+module.exports = { findBrowser, observePreview, waitForServer };

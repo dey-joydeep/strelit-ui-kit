@@ -2,6 +2,7 @@ const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { chromium } = require('playwright');
 const { npmCommand } = require('./npm-command.js');
 
 const repoRoot = path.resolve(__dirname, '..');
@@ -67,15 +68,54 @@ function verifyConsumer(consumerRoot, moduleKind) {
     moduleKind === 'require'
       ? "const packageApi = require('strelit-ui-kit');\n"
       : "import * as packageApi from 'strelit-ui-kit';\n";
+  const browserBundleResolution =
+    moduleKind === 'require'
+      ? "require.resolve('strelit-ui-kit/dist/iife/index.global.js');\n"
+      : '';
   const consumerPath = path.join(consumerRoot, `consumer.${extension}`);
   fs.writeFileSync(
     consumerPath,
-    `${source}if (typeof packageApi.StrelitLayout !== 'function') throw new Error('StrelitLayout export is unavailable');\nif (Object.keys(packageApi).length < 1) throw new Error('Package API is empty');\n`,
+    `${source}if (typeof packageApi.StrelitLayout !== 'function') throw new Error('StrelitLayout export is unavailable');\nif (Object.keys(packageApi).length < 1) throw new Error('Package API is empty');\n${browserBundleResolution}`,
   );
   run(process.execPath, [consumerPath], consumerRoot);
 }
 
-function main() {
+async function verifyBrowserBundle(packageRoot) {
+  const bundlePath = path.join(packageRoot, 'dist', 'iife', 'index.global.js');
+  if (!fs.existsSync(bundlePath)) {
+    throw new Error(`Packed browser bundle is missing: ${bundlePath}`);
+  }
+
+  const browser = await chromium.launch({
+    channel: 'chrome',
+    headless: true,
+    chromiumSandbox: true,
+    args: ['--disable-background-networking'],
+    timeout: 15_000,
+  });
+  try {
+    const context = await browser.newContext();
+    await context.route('**/*', (route) => route.abort());
+    await context.routeWebSocket('**/*', (route) => route.close());
+    const page = await context.newPage();
+    const pageErrors = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+    await page.addScriptTag({ content: fs.readFileSync(bundlePath, 'utf8') });
+    const hasGlobal = await page.evaluate(
+      () => typeof window.strelitUIKit?.StrelitLayout === 'function',
+    );
+    if (!hasGlobal || pageErrors.length > 0) {
+      const detail = pageErrors.length > 0 ? `: ${pageErrors.join('; ')}` : '';
+      throw new Error(
+        `Packed browser bundle does not expose strelitUIKit.StrelitLayout${detail}`,
+      );
+    }
+  } finally {
+    await browser.close();
+  }
+}
+
+async function main(options = {}) {
   const packageJson = JSON.parse(
     fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'),
   );
@@ -115,6 +155,9 @@ function main() {
       path.join(extractedRoot, 'package'),
       path.join(modulesRoot, packageJson.name),
     );
+    if (options.verifyBrowser) {
+      await verifyBrowserBundle(path.join(modulesRoot, packageJson.name));
+    }
     fs.cpSync(
       path.join(repoRoot, 'node_modules', 'tslib'),
       path.join(modulesRoot, 'tslib'),
@@ -124,7 +167,7 @@ function main() {
     verifyConsumer(consumerRoot, 'require');
     verifyConsumer(consumerRoot, 'import');
     process.stdout.write(
-      'Packed package runtime imports passed for CommonJS and ES modules.\n',
+      `Packed package runtime imports${options.verifyBrowser ? ' and browser global' : ''} passed.\n`,
     );
   } finally {
     fs.rmSync(temporaryRoot, { recursive: true, force: true });
@@ -132,12 +175,17 @@ function main() {
 }
 
 if (require.main === module) {
-  try {
-    main();
-  } catch (error) {
+  main().catch((error) => {
     process.stderr.write(`${error.stack ?? error.message}\n`);
     process.exitCode = 1;
-  }
+  });
 }
 
-module.exports = { main, npmCommand, parsePackOutput, run, verifyConsumer };
+module.exports = {
+  main,
+  npmCommand,
+  parsePackOutput,
+  run,
+  verifyBrowserBundle,
+  verifyConsumer,
+};

@@ -25,4 +25,10 @@ export default defineConfig([
     format: ['esm'],
     outDir: 'dist/esm',
   },
+  {
+    ...shared,
+    format: ['iife'],
+    outDir: 'dist/iife',
+    globalName: 'strelitUIKit',
+  },
 ]);

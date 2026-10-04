@@ -1673,6 +1673,7 @@ function validatePullRequestGate(
           'npm run verify:ordered',
           'npm run apitest:build',
           'npm run apitest:smoke',
+          'npm run verify:browser-bundle',
         ];
   if (
     !preflight &&

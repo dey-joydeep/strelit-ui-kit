@@ -21,6 +21,7 @@
       "require": "./dist/cjs/index.js"
     },
     "./dist/css/*": "./dist/css/*",
+    "./dist/iife/*": "./dist/iife/*",
     "./dist/less/*": "./dist/less/*",
     "./dist/scss/*": "./dist/scss/*",
     "./package.json": "./package.json"
@@ -81,6 +82,7 @@
     "verify:ordered": "node ./scripts/verify-ordered.js",
     "verify:governance": "npm run typecheck:tests && npm run test:governance && npm run lint && npm run format:check",
     "verify:package-runtime": "node ./scripts/verify-package-runtime.js",
+    "verify:browser-bundle": "node ./scripts/verify-browser-bundle.js && node --test ./test/smoke/package-browser-runtime.test.cjs",
     "verify:pr": "node ./scripts/verify-pr.js",
     "agent:ledger": "node ./scripts/agent-work-ledger.js",
     "verify:agent-ledger": "node ./scripts/agent-work-ledger.js validate",

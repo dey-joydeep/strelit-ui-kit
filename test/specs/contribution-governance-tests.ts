@@ -2723,6 +2723,7 @@ describe('risk-based PR verification', () => {
       'verify:ordered',
       'apitest:build',
       'apitest:smoke',
+      'verify:browser-bundle',
     ]);
     expect(
       changeDiscipline.verificationScriptsForRisk('high', 'governance'),
@@ -3189,11 +3190,13 @@ describe('risk-based PR verification', () => {
         'verify:ordered',
         'apitest:build',
         'apitest:smoke',
+        'verify:browser-bundle',
       ]),
     ).toEqual([
       'npm run verify:ordered',
       'npm run apitest:build',
       'npm run apitest:smoke',
+      'npm run verify:browser-bundle',
     ]);
   });
 

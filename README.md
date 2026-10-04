@@ -51,6 +51,11 @@ npm run apitest:serve
 npm run migrate:golden-layout -- --target ../my-app --dry-run
 ```
 
+`npm run apitest:serve` opens the local [Layout Workbench](./apitest/README.md)
+at `http://localhost:3000/`. It starts with a populated layout and provides
+configuration editing, guided runtime actions, live saved state, and an API
+method explorer for manual browser verification.
+
 Public API documentation is generated with TypeDoc. `npm run lint` rejects undocumented public reflections, and new or changed public APIs must include a meaningful contract, including relevant failure and resource-limit behavior.
 
 Benchmark workflows:
@@ -68,6 +73,8 @@ both config-oriented and JSDOM-backed layout benchmarks.
 
 - CommonJS output in `dist/cjs`
 - ESM output in `dist/esm`
+- Browser IIFE output in `dist/iife/index.global.js` as `window.strelitUIKit`
+- Browser IIFE package path `strelit-ui-kit/dist/iife/index.global.js`
 - rolled-up declarations in `dist/types`
 - CSS/LESS/SCSS assets in `dist`
 

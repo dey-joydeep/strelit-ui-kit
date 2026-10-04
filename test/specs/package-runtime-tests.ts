@@ -21,6 +21,7 @@ interface PackageRuntimeModule {
     env?: NodeJS.ProcessEnv,
   ): string;
   parsePackOutput(output: string): Array<{ filename: string }>;
+  verifyBrowserBundle(packageRoot: string): Promise<void>;
 }
 
 interface VerifyOrderedModule {
@@ -49,6 +50,18 @@ const verifyOrdered =
   require('../../scripts/verify-ordered.js') as VerifyOrderedModule;
 
 describe('package runtime verification', () => {
+  it('diagnoses a missing packed browser bundle without launching Chrome', async () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), 'strelit-browser-bundle-'));
+
+    try {
+      await expect(
+        packageRuntime.verifyBrowserBundle(packageRoot),
+      ).rejects.toThrow('Packed browser bundle is missing');
+    } finally {
+      rmSync(packageRoot, { recursive: true, force: true });
+    }
+  });
+
   it('keeps repository npm launchers independent of executable-selecting environment variables', () => {
     for (const script of [
       'scripts/review-handoff.js',

@@ -467,6 +467,7 @@ function gateOptions(ledger: Ledger): {
       'npm run verify:ordered',
       'npm run apitest:build',
       'npm run apitest:smoke',
+      'npm run verify:browser-bundle',
     ],
   };
 }
@@ -2207,6 +2208,14 @@ describe('agent work ledger', () => {
         ledgerModule.validatePullRequestGate(ledger, source, {
           ...gateOptions(ledger),
           executedCommands: [],
+        }),
+      ).toThrow('gate-executed');
+      expect(() =>
+        ledgerModule.validatePullRequestGate(ledger, source, {
+          ...gateOptions(ledger),
+          executedCommands: gateOptions(ledger).executedCommands.filter(
+            (command) => command !== 'npm run verify:browser-bundle',
+          ),
         }),
       ).toThrow('gate-executed');
 

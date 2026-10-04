@@ -43,8 +43,12 @@ Vitest bounds file-worker concurrency in `vitest.config.ts` because each jsdom w
 The browser smoke is separate from `verify:ordered` because an external browser
 executable is not a package dependency. `npm run verify:pr` includes it for
 high-risk product-profile changes after the ordered pipeline and API demo
-build. CI, release, and migration environments must install a supported
-browser.
+build. That gate then runs `verify:browser-bundle`, which executes the packed
+IIFE and browser-isolation fixtures in sandboxed Chrome. The ordered package
+stage checks the packed CJS/ESM entries and IIFE export path without launching
+a browser, so `npm run verify:ordered` and Vitest also run on browser-free hosts.
+CI, release, and migration environments running the high-risk gate must install
+a supported browser.
 
 ## Frozen Candidate Review Gate
 
