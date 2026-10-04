@@ -706,6 +706,7 @@ function acquireLedgerLock(
         remainingMs,
       ),
     currentIdentityLookup = currentProcessInstanceIdentity,
+    publishLock = publishLedgerLock,
   } = {},
 ) {
   for (const [value, label] of [
@@ -754,13 +755,13 @@ function acquireLedgerLock(
       );
     }
     try {
-      return publishLedgerLock(fileLock, owner, token);
+      return publishLock(fileLock, owner, token);
     } catch (error) {
       if (
         error === null ||
         typeof error !== 'object' ||
         !['EACCES', 'EEXIST', 'ENOTEMPTY', 'EPERM'].includes(error.code) ||
-        !existsSync(fileLock)
+        (error.code !== 'EEXIST' && !existsSync(fileLock))
       ) {
         throw error;
       }
