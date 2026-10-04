@@ -216,6 +216,7 @@ async function runPullRequestMetadataPolicy(
   reviewComments: readonly PullRequestReviewComment[] = [],
   issueCommentEvent = false,
   renderAttributedCode = false,
+  renderCommitAutolinks = false,
 ): Promise<string[]> {
   const workflow = readFileSync(
     resolve('.github/workflows/contribution-governance.yml'),
@@ -253,8 +254,14 @@ async function runPullRequestMetadataPolicy(
   const listComments = () => undefined;
   const riskPolicy = readFileSync(resolve('.github/change-risk.json'), 'utf8');
   const renderGitHubMarkdown = (markdownBody: string) => {
+    const source = renderCommitAutolinks
+      ? markdownBody.replace(
+          `Reviewed boundary: ${pullRequestHead}`,
+          `Reviewed boundary: <a class="commit-link" href="https://github.com/CTHub/strelit-ui-kit/commit/${pullRequestHead}"><tt>${pullRequestHead.slice(0, 7)}</tt></a>`,
+        )
+      : markdownBody;
     const renderedMarkdown = renderGfmAnchors
-      ? markdownBody
+      ? source
           .replace(
             /(^|[\s>(|])@([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))(?![A-Za-z0-9-])/g,
             '$1[@$2](https://github.com/$2)',
@@ -263,7 +270,7 @@ async function runPullRequestMetadataPolicy(
             /(^|[\s>(|])#([1-9]\d*)\b/g,
             '$1[#$2](https://github.com/CTHub/strelit-ui-kit/issues/$2)',
           )
-      : markdownBody;
+      : source;
     const rendered = (renderGfmAnchors ? gfmMarkdown : markdown).render(
       renderedMarkdown
         .replace(
@@ -606,6 +613,66 @@ describe('contribution governance workflow', () => {
         reviews,
       ),
     ).toContain(duplicateFailure);
+  });
+
+  it('accepts a GitHub commit autolink as the exact reviewed head only for this repository', async () => {
+    const review = [
+      'Review mode: **Independent**',
+      'Reviewer: @reviewer-user',
+      'Review scope: **Whole PR**',
+      'Review pass: **Fresh discovery**',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 0; High 0; Medium 0; Low 0',
+      'Open Critical/High findings: **0**',
+      'Review artifact: Whole PR review',
+      'Finding dispositions: No findings',
+      'Residual risks: No known residual risks',
+    ].join('\n');
+    const body = createPullRequestBody('High', review)
+      .replace(
+        'Regression tests were added for executable behavior.',
+        'The contribution governance suite executes this generated workflow policy fixture.',
+      )
+      .replace(
+        '\nPath: test/specs/layout-lifecycle-tests.ts | Contract: lifecycle regression evidence | Domains: Tests and documentation | Assignments: Tests and documentation => @reviewer-user | Adjacent: layout lifecycle tests | Tests: self-validating governance fixture',
+        '',
+      );
+    const files = [{ filename: 'src/ts/layout-manager.ts', changes: 12 }];
+    const reviews = [
+      {
+        commit_id: pullRequestHead,
+        state: 'APPROVED',
+        user: { login: 'reviewer-user' },
+      },
+    ];
+
+    expect(
+      await runPullRequestMetadataPolicy(
+        body,
+        files,
+        reviews,
+        false,
+        [],
+        false,
+        [],
+        false,
+        false,
+        true,
+      ),
+    ).toEqual([]);
+
+    const wrongRepositoryBody = body.replace(
+      `Reviewed boundary: ${pullRequestHead}`,
+      `Reviewed boundary: <a class="commit-link" href="https://github.com/other/repository/commit/${pullRequestHead}"><tt>${pullRequestHead.slice(0, 7)}</tt></a>`,
+    );
+    expect(
+      await runPullRequestMetadataPolicy(wrongRepositoryBody, files, reviews),
+    ).toContain(
+      'High-risk review boundary must equal the current PR head SHA.',
+    );
   });
 
   it('rejects pending review evidence and requires self-review for every change', () => {
