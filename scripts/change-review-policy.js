@@ -695,6 +695,57 @@ function createPullRequestReviewGate(baseHead, implementer, cwd) {
   };
 }
 
+function coverageManifestScaffold(
+  baseRef,
+  headRef = 'HEAD',
+  cwd = process.cwd(),
+) {
+  const paths = collectCommittedChangedFiles(baseRef, headRef, cwd);
+  if (paths.length === 0) {
+    throw new Error('No committed changed paths found between base and head.');
+  }
+  return paths
+    .map(
+      (path) =>
+        `Path: ${path} | Contract:  | Domains: ${domainsForPath(path).join('; ')} | Assignments:  | Adjacent:  | Tests: `,
+    )
+    .join('\n');
+}
+
+if (require.main === module) {
+  const args = process.argv.slice(2);
+  const validArgs = args.length === 2 || args.length === 4;
+  const baseIndex = args.indexOf('--base');
+  const headIndex = args.indexOf('--head');
+  if (
+    !validArgs ||
+    baseIndex < 0 ||
+    baseIndex + 1 >= args.length ||
+    (args.length === 4 && (headIndex < 0 || headIndex + 1 >= args.length)) ||
+    args.some(
+      (arg, index) =>
+        index !== baseIndex &&
+        index !== baseIndex + 1 &&
+        index !== headIndex &&
+        index !== headIndex + 1,
+    )
+  ) {
+    process.stderr.write(
+      'Usage: node scripts/change-review-policy.js --base <ref> [--head <ref>]\n',
+    );
+    process.exitCode = 1;
+  } else {
+    try {
+      process.stdout.write(
+        `${coverageManifestScaffold(args[baseIndex + 1], headIndex < 0 ? 'HEAD' : args[headIndex + 1])}\n`,
+      );
+    } catch (error) {
+      process.stderr.write(`${error.message}\n`);
+      process.exitCode = 1;
+    }
+  }
+}
+
 module.exports = {
   canonicalDomains,
   classifyChangeRisk,
@@ -703,6 +754,7 @@ module.exports = {
   collectChangedFiles,
   collectCommittedChangedFiles,
   collectNonGeneratedLines,
+  coverageManifestScaffold,
   createPullRequestReviewGate,
   domainsForPath,
   normalizeFileName,

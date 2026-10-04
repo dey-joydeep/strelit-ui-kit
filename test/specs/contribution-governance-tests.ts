@@ -40,6 +40,11 @@ interface ChangeDisciplineModule {
 }
 
 interface ChangeReviewPolicyModule {
+  coverageManifestScaffold(
+    baseRef: string,
+    headRef?: string,
+    cwd?: string,
+  ): string;
   classifyTrustedChange(
     fileNames: string[],
     baseHead: string,
@@ -210,6 +215,7 @@ async function runPullRequestMetadataPolicy(
   renderGfmAnchors = false,
   reviewComments: readonly PullRequestReviewComment[] = [],
   issueCommentEvent = false,
+  renderAttributedCode = false,
 ): Promise<string[]> {
   const workflow = readFileSync(
     resolve('.github/workflows/contribution-governance.yml'),
@@ -258,7 +264,7 @@ async function runPullRequestMetadataPolicy(
             '$1[#$2](https://github.com/CTHub/strelit-ui-kit/issues/$2)',
           )
       : markdownBody;
-    return (renderGfmAnchors ? gfmMarkdown : markdown).render(
+    const rendered = (renderGfmAnchors ? gfmMarkdown : markdown).render(
       renderedMarkdown
         .replace(
           /^(\s*-\s+)\[[xX]\]\s+/gm,
@@ -266,6 +272,9 @@ async function runPullRequestMetadataPolicy(
         )
         .replace(/^(\s*-\s+)\[ \]\s+/gm, '$1<input type="checkbox"> '),
     );
+    return renderAttributedCode
+      ? rendered.replace(/<code>/g, '<code class="notranslate">')
+      : rendered;
   };
   const github = {
     paginate: async (method: () => undefined) =>
@@ -953,6 +962,79 @@ describe('contribution governance workflow', () => {
         { filename: 'README.md', changes: 10 },
       ]),
     ).toContain(
+      'Verification must confirm a successful npm run verify:pr with a checked box.',
+    );
+  });
+
+  it('accepts a checked verification item when rendered code has attributes', async () => {
+    const review = [
+      'Review mode: **Self-review**',
+      'Reviewer: Implementer Agent',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric: `docs/contributing/ai-change-quality-rubric.md`',
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 0; High 0; Medium 0; Low 0',
+      'Open Critical/High findings: **0**',
+      'Review artifact: Local review record',
+      'Finding dispositions: No findings recorded',
+      'Residual risks: No known residual risks',
+    ].join('\n');
+    const files = [{ filename: 'README.md', changes: 10 }];
+    const body = createPullRequestBody('Low', review);
+    expect(
+      await runPullRequestMetadataPolicy(
+        body,
+        files,
+        [],
+        false,
+        [],
+        false,
+        [],
+        false,
+        true,
+      ),
+    ).not.toContain(
+      'Verification must confirm a successful npm run verify:pr with a checked box.',
+    );
+
+    const unchecked = body.replace(
+      '- [x] `npm run verify:pr`',
+      '- [ ] `npm run verify:pr`',
+    );
+    expect(
+      await runPullRequestMetadataPolicy(
+        unchecked,
+        files,
+        [],
+        false,
+        [],
+        false,
+        [],
+        false,
+        true,
+      ),
+    ).toContain(
+      'Verification must confirm a successful npm run verify:pr with a checked box.',
+    );
+
+    for (const replacement of [
+      '- <input type="checkbox" data-checked="true"> <code class="notranslate">npm run verify:pr</code>',
+      '- <input type="checkbox" checked-bad="true"> <code class="notranslate">npm run verify:pr</code>',
+      '- [x] <code class="notranslate">npm run verify:ordered</code>',
+    ]) {
+      const malformed = body.replace('- [x] `npm run verify:pr`', replacement);
+      expect(await runPullRequestMetadataPolicy(malformed, files)).toContain(
+        'Verification must confirm a successful npm run verify:pr with a checked box.',
+      );
+    }
+
+    const absent = body.replace(
+      '- [x] `npm run verify:pr`',
+      'Verification pending.',
+    );
+    expect(await runPullRequestMetadataPolicy(absent, files)).toContain(
       'Verification must confirm a successful npm run verify:pr with a checked box.',
     );
   });
@@ -2667,6 +2749,58 @@ describe('contribution governance workflow', () => {
 });
 
 describe('risk-based PR verification', () => {
+  it('scaffolds the committed PR paths and canonical domains without dirty files', () => {
+    const repository = mkdtempSync(
+      join(tmpdir(), 'strelit-coverage-manifest-'),
+    );
+    try {
+      execFileSync('git', ['init'], { cwd: repository });
+      execFileSync('git', ['config', 'user.email', 'fixture@example.com'], {
+        cwd: repository,
+      });
+      execFileSync('git', ['config', 'user.name', 'Fixture'], {
+        cwd: repository,
+      });
+      writeFileSync(join(repository, 'README.md'), 'base\n');
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Base.'], { cwd: repository });
+      const base = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: repository,
+        encoding: 'utf8',
+      }).trim();
+      mkdirSync(join(repository, '.github', 'workflows'), { recursive: true });
+      writeFileSync(
+        join(repository, '.github', 'workflows', 'governance.yml'),
+        'on: push\n',
+      );
+      writeFileSync(join(repository, 'README.md'), 'changed\n');
+      execFileSync('git', ['add', '.'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Candidate.'], { cwd: repository });
+      writeFileSync(join(repository, 'unrelated.html'), 'untracked\n');
+
+      const scaffold = changeReviewPolicy.coverageManifestScaffold(
+        base,
+        'HEAD',
+        repository,
+      );
+      expect(scaffold.split('\n')).toEqual([
+        'Path: .github/workflows/governance.yml | Contract:  | Domains: Tooling, CI, and verification | Assignments:  | Adjacent:  | Tests: ',
+        'Path: README.md | Contract:  | Domains: Tests and documentation | Assignments:  | Adjacent:  | Tests: ',
+      ]);
+      expect(
+        execFileSync(
+          process.execPath,
+          [resolve('scripts/change-review-policy.js'), '--base', base],
+          { cwd: repository, encoding: 'utf8' },
+        ).trimEnd(),
+      ).toBe(scaffold.trimEnd());
+      expect(() =>
+        changeReviewPolicy.coverageManifestScaffold('HEAD', 'HEAD', repository),
+      ).toThrow('No committed changed paths');
+    } finally {
+      rmSync(repository, { recursive: true, force: true });
+    }
+  });
   it.each([
     ['docs/index.md', 'low'],
     ['test/specs/tab-tests.ts', 'medium'],

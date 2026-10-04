@@ -164,8 +164,17 @@ fields requires the separately authorized workflow-enforcement stage.
 High-risk PRs require exactly one line per changed path in this format:
 Path: path/from/repository/root | Contract: behavioral contract inspected | Domains: Domain one; Domain two | Assignments: Domain one => @reviewer-one; Domain two => @reviewer-two | Adjacent: inspected call paths | Tests: relevant test evidence
 
+After committing the candidate, run
+`node scripts/change-review-policy.js --base origin/main` (add `--head <ref>`
+when needed) to print one scaffold line per committed path with the canonical
+domains already filled. Use the PR's actual target branch as `--base`. The
+command excludes uncommitted and unrelated untracked files. Copy the lines here,
+then fill Contract, Assignments, Adjacent, and Tests with actual review evidence.
+Do not mark the review complete while any scaffold field is empty. Regenerate
+after each head change; the manifest must cover the current PR diff.
+
 The Domains value must exactly equal the applicable canonical domains from
-AGENTS.md; extra canonical domains are invalid.
+the repository's change-review policy; extra canonical domains are invalid.
 Large high-risk PR entries must be assigned to declared domain-discovery
 reviewers, not the PR author or synthesis reviewer. Every applicable domain must
 have one assignment; a reviewer may own multiple domains. Non-large high-risk
