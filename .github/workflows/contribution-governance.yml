@@ -780,10 +780,31 @@ jobs:
             }
 
             const verificationHtml = getSectionHtml('## Verification') ?? '';
+            function parsedInputAttributes(rawAttributes) {
+              const attributes = new Map();
+              const attribute = /\s+([^\s=\/>"'<>`]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/gy;
+              let offset = 0;
+              while (offset < rawAttributes.length) {
+                if (/^\s*\/?\s*$/.test(rawAttributes.slice(offset))) {
+                  break;
+                }
+                attribute.lastIndex = offset;
+                const match = attribute.exec(rawAttributes);
+                if (match === null || attributes.has(match[1].toLowerCase())) {
+                  return null;
+                }
+                attributes.set(match[1].toLowerCase(), match[2] ?? match[3] ?? match[4] ?? '');
+                offset = attribute.lastIndex;
+              }
+              return attributes;
+            }
             const hasCheckedVerification =
-              /<li\b[^>]*>\s*<input\b(?=[^>]*\btype=["']checkbox["'])(?=[^>]*\bchecked(?:=["'][^"']*["'])?)[^>]*>\s*<code>npm run verify:pr<\/code>\s*<\/li>/i.test(
-                verificationHtml
-              );
+              [...verificationHtml.matchAll(/<li\b[^>]*>\s*<input\b([^>]*)>\s*<code\b[^>]*>npm run verify:pr<\/code>\s*<\/li>/gi)]
+                .some((match) => {
+                  const attributes = parsedInputAttributes(match[1]);
+                  return attributes?.get('type')?.toLowerCase() === 'checkbox' &&
+                    attributes.has('checked');
+                });
             if (!hasCheckedVerification) {
               errors.push(
                 'Verification must confirm a successful npm run verify:pr with a checked box.'
