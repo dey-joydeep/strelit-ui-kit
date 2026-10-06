@@ -258,3 +258,104 @@ test('miniStack keeps white component text legible', async ({ page }) => {
   expect(colors.background).not.toBe('rgb(255, 255, 255)');
   expect(colors.background).not.toBe('rgba(0, 0, 0, 0)');
 });
+
+test('dragging the only tab between stacks leaves a saveable layout', async ({
+  page,
+}) => {
+  const runtimeErrors: string[] = [];
+  page.on('pageerror', (error) => runtimeErrors.push(error.message));
+  await page.goto('/');
+  await page.selectOption('#layoutSelect', 'miniRow');
+  await page.locator('#loadLayoutButton').click();
+
+  await page.locator('.lm_tab[title="Details"]').evaluate((tab) => {
+    const rect = tab.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    tab.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        isPrimary: true,
+        pointerId: 71,
+        pointerType: 'touch',
+        clientX: x,
+        clientY: y,
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        pointerId: 71,
+        pointerType: 'touch',
+        clientX: x + 40,
+        clientY: y + 40,
+      }),
+    );
+    if (document.querySelector('.lm_dragProxy') === null) {
+      throw new Error('The cancelled pointer gesture did not start a drag');
+    }
+    document.dispatchEvent(
+      new PointerEvent('pointercancel', {
+        bubbles: true,
+        pointerId: 71,
+        pointerType: 'touch',
+      }),
+    );
+  });
+  await expect(page.locator('.lm_dragProxy')).toHaveCount(0);
+  await expect(page.locator('.lm_stack')).toHaveCount(2);
+  await expect(page.locator('.lm_tab')).toHaveCount(2);
+  const originalStackTitles = await page
+    .locator('.lm_stack')
+    .evaluateAll((stacks) =>
+      stacks.map((stack) =>
+        Array.from(stack.querySelectorAll('.lm_tab')).map((tab) =>
+          tab.getAttribute('title'),
+        ),
+      ),
+    );
+  expect(originalStackTitles).toEqual([['Overview'], ['Details']]);
+  await page.locator('#saveLayoutButton').click();
+  await expect(page.locator('#reloadSavedLayoutButton')).toBeEnabled();
+  await page.locator('#reloadSavedLayoutButton').click();
+  await expect(page.locator('.lm_stack')).toHaveCount(2);
+  const restoredStackTitles = await page
+    .locator('.lm_stack')
+    .evaluateAll((stacks) =>
+      stacks.map((stack) =>
+        Array.from(stack.querySelectorAll('.lm_tab')).map((tab) =>
+          tab.getAttribute('title'),
+        ),
+      ),
+    );
+  expect(restoredStackTitles).toEqual([['Overview'], ['Details']]);
+
+  const source = page.locator('.lm_tab[title="Details"]');
+  const target = page.locator('.lm_tab[title="Overview"]');
+  const targetBox = await target.boundingBox();
+  if (targetBox === null) {
+    throw new Error('Expected the target tab to be visible');
+  }
+  await source.dragTo(target, {
+    targetPosition: { x: targetBox.width - 2, y: targetBox.height / 2 },
+    steps: 20,
+  });
+
+  await expect(page.locator('.lm_dragProxy')).toHaveCount(0);
+  await expect(page.locator('.lm_tab')).toHaveCount(2);
+  const saved = await page.evaluate(() => {
+    const app = window.strelitApiTestApp as unknown as {
+      _strelitLayout: {
+        saveLayout(): unknown;
+      };
+    };
+    return app._strelitLayout.saveLayout();
+  });
+  const titles = JSON.stringify(saved).match(/"title":"(?:Overview|Details)"/g);
+  expect(titles?.sort()).toEqual(['"title":"Details"', '"title":"Overview"']);
+  expect((saved as { root?: { type: string } }).root?.type).toBe('stack');
+  await page.locator('#saveLayoutButton').click();
+  await page.locator('#reloadSavedLayoutButton').click();
+  await expect(page.locator('.lm_tab')).toHaveCount(2);
+  expect(runtimeErrors).toEqual([]);
+});
