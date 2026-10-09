@@ -278,12 +278,20 @@ test('dragging the only tab between stacks leaves a saveable layout', async ({
     const app = window.strelitApiTestApp as unknown as {
       _strelitLayout: {
         on(eventName: 'stateChanged', callback: () => void): void;
+        saveLayout(): unknown;
       };
     };
-    const state = window as unknown as { phase2StateChanges: number };
+    const state = window as unknown as {
+      phase2SavedLayouts: string[];
+      phase2StateChanges: number;
+    };
+    state.phase2SavedLayouts = [];
     state.phase2StateChanges = 0;
     app._strelitLayout.on('stateChanged', () => {
       state.phase2StateChanges++;
+      state.phase2SavedLayouts.push(
+        JSON.stringify(app._strelitLayout.saveLayout()),
+      );
     });
     const rect = tab.getBoundingClientRect();
     const x = rect.left + rect.width / 2;
@@ -362,6 +370,15 @@ test('dragging the only tab between stacks leaves a saveable layout', async ({
     );
   expect(restoredStackTitles).toEqual([['Overview'], ['Details']]);
 
+  await page.evaluate(() => {
+    const state = window as unknown as {
+      phase2SavedLayouts: string[];
+      phase2StateChanges: number;
+    };
+    state.phase2SavedLayouts = [];
+    state.phase2StateChanges = 0;
+  });
+
   const source = page.locator('.lm_tab[title="Details"]');
   const target = page.locator('.lm_tab[title="Overview"]');
   const targetBox = await target.boundingBox();
@@ -375,6 +392,25 @@ test('dragging the only tab between stacks leaves a saveable layout', async ({
 
   await expect(page.locator('.lm_dragProxy')).toHaveCount(0);
   await expect(page.locator('.lm_tab')).toHaveCount(2);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  const autosavedLayouts = await page.evaluate(
+    () =>
+      (window as unknown as { phase2SavedLayouts: string[] })
+        .phase2SavedLayouts,
+  );
+  expect(autosavedLayouts.length).toBeGreaterThan(0);
+  const autosavedTitles = autosavedLayouts
+    .at(-1)
+    ?.match(/"title":"(?:Overview|Details)"/g);
+  expect(autosavedTitles?.sort()).toEqual([
+    '"title":"Details"',
+    '"title":"Overview"',
+  ]);
   const saved = await page.evaluate(() => {
     const app = window.strelitApiTestApp as unknown as {
       _strelitLayout: {
