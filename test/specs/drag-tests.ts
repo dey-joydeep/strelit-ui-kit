@@ -171,6 +171,54 @@ describe('drag source', function () {
     expect(internals._dragListener).toBeNull();
   });
 
+  it('publishes real layout changes during an active external drag', async function () {
+    dragSourceElement = document.createElement('div');
+    document.body.appendChild(dragSourceElement);
+    layout.newDragSource(dragSourceElement, () => ({
+      type: 'component',
+      componentType: TestTools.TEST_COMPONENT_NAME,
+    }));
+    await nextAnimationFrame();
+    await nextAnimationFrame();
+    const stateChanged = vi.fn();
+    layout.on('stateChanged', stateChanged);
+
+    dragSourceElement.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        isPrimary: true,
+        pointerId: 32,
+        pointerType: 'touch',
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        clientX: 20,
+        clientY: 20,
+        pointerId: 32,
+        pointerType: 'touch',
+      }),
+    );
+    expect(TestTools.getDragProxy()).not.toBeNull();
+
+    const componentItem = layout.rootItem?.contentItems[0] as ComponentItem;
+    componentItem.setTitle('Updated during external drag');
+    await nextAnimationFrame();
+    await nextAnimationFrame();
+
+    expect(stateChanged).toHaveBeenCalled();
+
+    document.dispatchEvent(
+      new PointerEvent('pointercancel', {
+        bubbles: true,
+        pointerId: 32,
+        pointerType: 'touch',
+      }),
+    );
+    expect(TestTools.getDragProxy()).toBeNull();
+  });
+
   it('uses document scroll offsets for constrained drag bounds', function () {
     const element = document.createElement('div');
     vi.spyOn(element, 'getBoundingClientRect').mockReturnValue(

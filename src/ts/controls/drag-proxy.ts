@@ -86,7 +86,9 @@ export class DragProxy extends EventEmitter {
       if (this._componentItemFocused) {
         this._componentItem.blur();
       }
-      this.suppressLayoutManagerStateChangedEvents();
+      if (!this._originalParent.isGround) {
+        this.suppressLayoutManagerStateChangedEvents();
+      }
       this.detachComponentItem();
 
       this.setDimensions();
