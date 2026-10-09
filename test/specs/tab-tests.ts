@@ -235,6 +235,42 @@ describe('Tabs configuration and behavior', function () {
     expect(container.lastVisibleTabIndex).toBe(0);
   });
 
+  it('preserves the visible prefix when removing a hidden tab before a visible active overflow tab', function () {
+    const container = new TabsContainer(
+      layout,
+      () => {},
+      () => {},
+      () => {},
+      () => {},
+    );
+    const internals = container as unknown as {
+      _tabs: Array<{
+        componentItem: ComponentItem;
+        element: HTMLElement;
+        destroy(): void;
+      }>;
+      _lastVisibleTabIndex: number;
+    };
+    const components = Array.from({ length: 3 }, () => ({}) as ComponentItem);
+    for (const [index, componentItem] of components.entries()) {
+      const element = document.createElement('div');
+      const parent =
+        index === 1 ? container.dropdownElement : container.element;
+      parent.appendChild(element);
+      internals._tabs.push({
+        componentItem,
+        element,
+        destroy: () => element.remove(),
+      });
+    }
+    internals._lastVisibleTabIndex = 0;
+
+    container.removeTab(components[1]);
+
+    expect(container.element.children).toHaveLength(2);
+    expect(container.lastVisibleTabIndex).toBe(0);
+  });
+
   it('closes a closable tab on a middle-button auxclick', function () {
     layout.loadLayout({
       root: {

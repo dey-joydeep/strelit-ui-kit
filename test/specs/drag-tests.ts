@@ -113,6 +113,11 @@ describe('drag source', function () {
     expect(countComponentItems(internals._dummyGroundContentItem)).toBe(0);
     expect(destroyContainer).toHaveBeenCalledOnce();
     expect(TestTools.getDragProxy()).toBeNull();
+    expect(
+      (layout as unknown as Record<symbol, unknown>)[
+        Symbol.for('strelit-ui-kit.event-dispatch-guard')
+      ],
+    ).toBeUndefined();
   });
 
   function countComponentItems(item: {
@@ -441,6 +446,82 @@ describe('drag source', function () {
     expect(itemDropped).not.toHaveBeenCalled();
   });
 
+  it('does not publish transient state while an internal tab drag is detached', async function () {
+    layout.destroy();
+    layout = TestTools.createLayout({
+      root: {
+        type: 'stack',
+        content: [
+          {
+            type: 'component',
+            id: 'transient-drag',
+            componentType: TestTools.TEST_COMPONENT_NAME,
+          },
+        ],
+      },
+    });
+    const item = layout.findFirstComponentItemById('transient-drag');
+    if (item === undefined) {
+      throw new Error('Expected a component item');
+    }
+    await nextAnimationFrame();
+    await nextAnimationFrame();
+    const savedLayouts: string[] = [];
+    const eventDispatchGuardSymbol = Symbol.for(
+      'strelit-ui-kit.event-dispatch-guard',
+    );
+    const previousEventDispatchGuard = () => true;
+    const guardedLayout = layout as unknown as Record<symbol, unknown>;
+    guardedLayout[eventDispatchGuardSymbol] = previousEventDispatchGuard;
+    layout.on('stateChanged', () => {
+      savedLayouts.push(JSON.stringify(layout.saveLayout()));
+    });
+
+    item.tab.element.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        clientX: 0,
+        clientY: 0,
+        isPrimary: true,
+        pointerId: 41,
+        pointerType: 'touch',
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        clientX: 20,
+        clientY: 20,
+        pointerId: 41,
+        pointerType: 'touch',
+      }),
+    );
+    expect(TestTools.getDragProxy()).not.toBeNull();
+    expect(guardedLayout[eventDispatchGuardSymbol]).not.toBe(
+      previousEventDispatchGuard,
+    );
+
+    await nextAnimationFrame();
+    await nextAnimationFrame();
+    expect(savedLayouts).toEqual([]);
+
+    document.dispatchEvent(
+      new PointerEvent('pointercancel', {
+        bubbles: true,
+        pointerId: 41,
+        pointerType: 'touch',
+      }),
+    );
+    await nextAnimationFrame();
+    await nextAnimationFrame();
+
+    expect(savedLayouts).toHaveLength(1);
+    expect(savedLayouts[0]).toContain('transient-drag');
+    expect(guardedLayout[eventDispatchGuardSymbol]).toBe(
+      previousEventDispatchGuard,
+    );
+  });
+
   it('cancels and owns an active drag during layout destruction', function () {
     layout.destroy();
     layout = TestTools.createLayout({
@@ -565,6 +646,10 @@ describe('drag source', function () {
         .length,
     ).toBe(1);
     expect(componentItem.tab.reorderEnabled).toBe(false);
+  }
+
+  function nextAnimationFrame(): Promise<void> {
+    return new Promise((resolve) => requestAnimationFrame(() => resolve()));
   }
 
   function startDrag(): void {

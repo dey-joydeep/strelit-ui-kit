@@ -122,10 +122,9 @@ export class TabsContainer {
         const tab = this._tabs[i];
         tab.destroy();
         this._tabs.splice(i, 1);
-        this._lastVisibleTabIndex =
-          this._tabs.filter((remainingTab) =>
-            this._element.contains(remainingTab.element),
-          ).length - 1;
+        if (i <= this._lastVisibleTabIndex) {
+          this._lastVisibleTabIndex--;
+        }
         return;
       }
     }

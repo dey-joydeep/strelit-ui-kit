@@ -267,8 +267,24 @@ test('dragging the only tab between stacks leaves a saveable layout', async ({
   await page.goto('/');
   await page.selectOption('#layoutSelect', 'miniRow');
   await page.locator('#loadLayoutButton').click();
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
 
   await page.locator('.lm_tab[title="Details"]').evaluate((tab) => {
+    const app = window.strelitApiTestApp as unknown as {
+      _strelitLayout: {
+        on(eventName: 'stateChanged', callback: () => void): void;
+      };
+    };
+    const state = window as unknown as { phase2StateChanges: number };
+    state.phase2StateChanges = 0;
+    app._strelitLayout.on('stateChanged', () => {
+      state.phase2StateChanges++;
+    });
     const rect = tab.getBoundingClientRect();
     const x = rect.left + rect.width / 2;
     const y = rect.top + rect.height / 2;
@@ -294,6 +310,22 @@ test('dragging the only tab between stacks leaves a saveable layout', async ({
     if (document.querySelector('.lm_dragProxy') === null) {
       throw new Error('The cancelled pointer gesture did not start a drag');
     }
+  });
+  await expect(page.locator('.lm_dragProxy')).toHaveCount(1);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  expect(
+    await page.evaluate(
+      () =>
+        (window as unknown as { phase2StateChanges: number })
+          .phase2StateChanges,
+    ),
+  ).toBe(0);
+  await page.evaluate(() => {
     document.dispatchEvent(
       new PointerEvent('pointercancel', {
         bubbles: true,
