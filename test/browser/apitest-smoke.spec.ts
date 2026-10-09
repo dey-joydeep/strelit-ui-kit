@@ -369,6 +369,12 @@ test('dragging the only tab between stacks leaves a saveable layout', async ({
       ),
     );
   expect(restoredStackTitles).toEqual([['Overview'], ['Details']]);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
 
   await page.evaluate(() => {
     const state = window as unknown as {
@@ -404,9 +410,17 @@ test('dragging the only tab between stacks leaves a saveable layout', async ({
         .phase2SavedLayouts,
   );
   expect(autosavedLayouts.length).toBeGreaterThan(0);
-  const autosavedTitles = autosavedLayouts
-    .at(-1)
-    ?.match(/"title":"(?:Overview|Details)"/g);
+  const latestAutosave = autosavedLayouts.at(-1);
+  if (latestAutosave === undefined) {
+    throw new Error('Expected a successful-drop autosave');
+  }
+  const autosavedLayout = JSON.parse(latestAutosave) as {
+    root?: { type?: string };
+  };
+  expect(autosavedLayout.root?.type).toBe('stack');
+  const autosavedTitles = latestAutosave.match(
+    /"title":"(?:Overview|Details)"/g,
+  );
   expect(autosavedTitles?.sort()).toEqual([
     '"title":"Details"',
     '"title":"Overview"',
