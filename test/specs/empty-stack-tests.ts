@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   ContentItem,
+  Stack,
   StrelitLayout,
   LayoutConfig,
   LayoutManagerLocationSelectorTypeId,
@@ -87,5 +88,25 @@ describe('layout with empty stack', function () {
     expect(itemInOriginallyEmptyStack as ContentItem | undefined).toEqual(
       addedItem,
     );
+  });
+
+  it('saves an attached stack after its only component is detached and restored', function () {
+    const stack = layout.rootItem?.contentItems[2];
+    if (!(stack instanceof Stack)) {
+      throw new Error('Expected the non-closable stack');
+    }
+    const item = stack.addItem({
+      type: 'component',
+      componentType: TestTools.TEST_COMPONENT_NAME,
+    });
+    const component = stack.contentItems[item];
+    stack.removeChild(component, true);
+
+    expect(stack.contentItems).toHaveLength(0);
+    expect(() => layout.saveLayout()).not.toThrow();
+
+    stack.addChild(component);
+    expect(stack.contentItems).toHaveLength(1);
+    expect(() => layout.saveLayout()).not.toThrow();
   });
 });

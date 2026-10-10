@@ -534,7 +534,9 @@ export class Stack extends ComponentParentableItem {
 
     super.removeChild(componentItem, true);
 
-    if (!stackWillBeDeleted) {
+    if (stackWillBeDeleted) {
+      this._activeComponentItem = undefined;
+    } else {
       this._header.updateClosability();
     }
 

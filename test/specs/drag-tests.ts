@@ -113,6 +113,12 @@ describe('drag source', function () {
     expect(countComponentItems(internals._dummyGroundContentItem)).toBe(0);
     expect(destroyContainer).toHaveBeenCalledOnce();
     expect(TestTools.getDragProxy()).toBeNull();
+    expect(
+      (layout as unknown as Record<symbol, unknown>)[
+        Symbol.for('strelit-ui-kit.event-dispatch-guard')
+      ],
+    ).toBeUndefined();
+    expect(() => layout.saveLayout()).not.toThrow();
   });
 
   function countComponentItems(item: {
@@ -164,6 +170,55 @@ describe('drag source', function () {
 
     expect(TestTools.getDragProxy()).toBeNull();
     expect(internals._dragListener).toBeNull();
+  });
+
+  it('publishes real layout changes during an active external drag', async function () {
+    dragSourceElement = document.createElement('div');
+    document.body.appendChild(dragSourceElement);
+    layout.newDragSource(dragSourceElement, () => ({
+      type: 'component',
+      componentType: TestTools.TEST_COMPONENT_NAME,
+    }));
+    await nextAnimationFrame();
+    await nextAnimationFrame();
+    const stateChanged = vi.fn();
+    layout.on('stateChanged', stateChanged);
+
+    dragSourceElement.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        isPrimary: true,
+        pointerId: 32,
+        pointerType: 'touch',
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        clientX: 20,
+        clientY: 20,
+        pointerId: 32,
+        pointerType: 'touch',
+      }),
+    );
+    expect(TestTools.getDragProxy()).not.toBeNull();
+    expect(() => layout.saveLayout()).not.toThrow();
+
+    const componentItem = layout.rootItem?.contentItems[0] as ComponentItem;
+    componentItem.setTitle('Updated during external drag');
+    await nextAnimationFrame();
+    await nextAnimationFrame();
+
+    expect(stateChanged).toHaveBeenCalled();
+
+    document.dispatchEvent(
+      new PointerEvent('pointercancel', {
+        bubbles: true,
+        pointerId: 32,
+        pointerType: 'touch',
+      }),
+    );
+    expect(TestTools.getDragProxy()).toBeNull();
   });
 
   it('uses document scroll offsets for constrained drag bounds', function () {
@@ -220,8 +275,8 @@ describe('drag source', function () {
     item.on('blur', blurObserver);
 
     try {
-      expect(
-        () => new DragProxy(0, 0, dragListener, layout, item, originalParent),
+      expect(() =>
+        layout.startComponentDrag(0, 0, dragListener, item, originalParent),
       ).toThrow('blur observer failed');
 
       expect(item.parent).toBe(originalParent);
@@ -229,6 +284,7 @@ describe('drag source', function () {
       expect(item.element.parentElement).toBe(originalElementParent);
       expect(item.focused).toBe(true);
       expect(TestTools.getDragProxy()).toBeNull();
+      expect(() => layout.saveLayout()).not.toThrow();
     } finally {
       item.off('blur', blurObserver);
       dragListener.destroy();
@@ -441,6 +497,262 @@ describe('drag source', function () {
     expect(itemDropped).not.toHaveBeenCalled();
   });
 
+  it('does not publish transient state while an internal tab drag is detached', async function () {
+    layout.destroy();
+    layout = TestTools.createLayout({
+      root: {
+        type: 'stack',
+        content: [
+          {
+            type: 'component',
+            id: 'transient-drag',
+            componentType: TestTools.TEST_COMPONENT_NAME,
+          },
+        ],
+      },
+    });
+    const item = layout.findFirstComponentItemById('transient-drag');
+    if (item === undefined) {
+      throw new Error('Expected a component item');
+    }
+    await nextAnimationFrame();
+    await nextAnimationFrame();
+    const savedLayouts: string[] = [];
+    const eventDispatchGuardSymbol = Symbol.for(
+      'strelit-ui-kit.event-dispatch-guard',
+    );
+    const previousEventDispatchGuard = () => true;
+    const guardedLayout = layout as unknown as Record<symbol, unknown>;
+    guardedLayout[eventDispatchGuardSymbol] = previousEventDispatchGuard;
+    layout.on('stateChanged', () => {
+      savedLayouts.push(JSON.stringify(layout.saveLayout()));
+    });
+
+    item.tab.element.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        clientX: 0,
+        clientY: 0,
+        isPrimary: true,
+        pointerId: 41,
+        pointerType: 'touch',
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        clientX: 20,
+        clientY: 20,
+        pointerId: 41,
+        pointerType: 'touch',
+      }),
+    );
+    expect(TestTools.getDragProxy()).not.toBeNull();
+    expect(guardedLayout[eventDispatchGuardSymbol]).not.toBe(
+      previousEventDispatchGuard,
+    );
+
+    await nextAnimationFrame();
+    await nextAnimationFrame();
+    expect(savedLayouts).toEqual([]);
+
+    document.dispatchEvent(
+      new PointerEvent('pointercancel', {
+        bubbles: true,
+        pointerId: 41,
+        pointerType: 'touch',
+      }),
+    );
+    await nextAnimationFrame();
+    await nextAnimationFrame();
+
+    expect(savedLayouts).toHaveLength(1);
+    expect(savedLayouts[0]).toContain('transient-drag');
+    expect(guardedLayout[eventDispatchGuardSymbol]).toBe(
+      previousEventDispatchGuard,
+    );
+  });
+
+  it('rejects direct saves while an internal tab drag is detached', function () {
+    layout.destroy();
+    layout = TestTools.createLayout({
+      root: {
+        type: 'stack',
+        content: [
+          {
+            type: 'component',
+            id: 'direct-save-drag',
+            componentType: TestTools.TEST_COMPONENT_NAME,
+          },
+        ],
+      },
+    });
+    const item = layout.findFirstComponentItemById('direct-save-drag');
+    if (item === undefined) {
+      throw new Error('Expected a component item');
+    }
+
+    item.tab.element.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        clientX: 0,
+        clientY: 0,
+        isPrimary: true,
+        pointerId: 42,
+        pointerType: 'touch',
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        clientX: 20,
+        clientY: 20,
+        pointerId: 42,
+        pointerType: 'touch',
+      }),
+    );
+    expect(TestTools.getDragProxy()).not.toBeNull();
+
+    expect(() => layout.saveLayout()).toThrow(
+      "Can't create config while an internal component drag is active",
+    );
+
+    document.dispatchEvent(
+      new PointerEvent('pointercancel', {
+        bubbles: true,
+        pointerId: 42,
+        pointerType: 'touch',
+      }),
+    );
+
+    expect(JSON.stringify(layout.saveLayout())).toContain('direct-save-drag');
+  });
+
+  it('allows a synchronous itemDropped listener to save the restored layout', function () {
+    layout.destroy();
+    layout = TestTools.createLayout({
+      root: {
+        type: 'stack',
+        content: [
+          {
+            type: 'component',
+            id: 'drop-callback-save',
+            componentType: TestTools.TEST_COMPONENT_NAME,
+          },
+        ],
+      },
+    });
+    const item = layout.findFirstComponentItemById('drop-callback-save');
+    if (item === undefined) {
+      throw new Error('Expected a component item');
+    }
+    const savedLayouts: string[] = [];
+    const callbackErrors: unknown[] = [];
+    layout.on('itemDropped', () => {
+      try {
+        savedLayouts.push(JSON.stringify(layout.saveLayout()));
+      } catch (error) {
+        callbackErrors.push(error);
+      }
+    });
+
+    item.tab.element.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        clientX: 0,
+        clientY: 0,
+        isPrimary: true,
+        pointerId: 43,
+        pointerType: 'touch',
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        clientX: 20,
+        clientY: 20,
+        pointerId: 43,
+        pointerType: 'touch',
+      }),
+    );
+    expect(TestTools.getDragProxy()).not.toBeNull();
+
+    document.dispatchEvent(
+      new PointerEvent('pointerup', {
+        bubbles: true,
+        pointerId: 43,
+        pointerType: 'touch',
+      }),
+    );
+
+    expect(callbackErrors).toEqual([]);
+    expect(savedLayouts).toHaveLength(1);
+    expect(savedLayouts[0]).toContain('drop-callback-save');
+  });
+
+  it('does not add pop-in ownership when popout is rejected during an internal drag', function () {
+    layout.destroy();
+    layout = TestTools.createLayout({
+      root: {
+        type: 'stack',
+        content: [
+          {
+            type: 'component',
+            id: 'popout-during-drag',
+            componentType: TestTools.TEST_COMPONENT_NAME,
+          },
+        ],
+      },
+    });
+    const item = layout.findFirstComponentItemById('popout-during-drag');
+    const originalParent = item?.parent;
+    if (
+      item === undefined ||
+      originalParent === null ||
+      originalParent === undefined
+    ) {
+      throw new Error('Expected a component item with a parent');
+    }
+    const originalPopInParentIds = [...originalParent.popInParentIds];
+
+    item.tab.element.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        clientX: 0,
+        clientY: 0,
+        isPrimary: true,
+        pointerId: 43,
+        pointerType: 'touch',
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        clientX: 20,
+        clientY: 20,
+        pointerId: 43,
+        pointerType: 'touch',
+      }),
+    );
+    expect(TestTools.getDragProxy()).not.toBeNull();
+
+    expect(() => item.popout()).toThrow(
+      "Can't create config while an internal component drag is active",
+    );
+    expect(originalParent.popInParentIds).toEqual(originalPopInParentIds);
+
+    document.dispatchEvent(
+      new PointerEvent('pointercancel', {
+        bubbles: true,
+        pointerId: 43,
+        pointerType: 'touch',
+      }),
+    );
+
+    expect(originalParent.popInParentIds).toEqual(originalPopInParentIds);
+    expect(JSON.stringify(layout.saveLayout())).toContain('popout-during-drag');
+  });
+
   it('cancels and owns an active drag during layout destruction', function () {
     layout.destroy();
     layout = TestTools.createLayout({
@@ -565,6 +877,10 @@ describe('drag source', function () {
         .length,
     ).toBe(1);
     expect(componentItem.tab.reorderEnabled).toBe(false);
+  }
+
+  function nextAnimationFrame(): Promise<void> {
+    return new Promise((resolve) => requestAnimationFrame(() => resolve()));
   }
 
   function startDrag(): void {

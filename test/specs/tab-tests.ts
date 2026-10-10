@@ -6,6 +6,7 @@ import {
   LayoutConfig,
   Stack,
 } from '../../src';
+import { TabsContainer } from '../../src/ts/controls/tabs-container';
 
 describe('Tabs configuration and behavior', function () {
   let layout: StrelitLayout;
@@ -194,6 +195,80 @@ describe('Tabs configuration and behavior', function () {
     expect(stack.header.tabsContainerElement.firstElementChild).toBe(
       thirdComponent.tab.element,
     );
+  });
+
+  it('updates visible tab count when a visible tab leaves an overflowing stack', function () {
+    const container = new TabsContainer(
+      layout,
+      () => {},
+      () => {},
+      () => {},
+      () => {},
+    );
+    const internals = container as unknown as {
+      _tabs: Array<{
+        componentItem: ComponentItem;
+        element: HTMLElement;
+        destroy(): void;
+      }>;
+      _lastVisibleTabIndex: number;
+    };
+    const components = Array.from({ length: 3 }, () => ({}) as ComponentItem);
+    for (const [index, componentItem] of components.entries()) {
+      const element = document.createElement('div');
+      if (index < 2) {
+        container.element.appendChild(element);
+      } else {
+        container.dropdownElement.appendChild(element);
+      }
+      internals._tabs.push({
+        componentItem,
+        element,
+        destroy: () => element.remove(),
+      });
+    }
+    internals._lastVisibleTabIndex = 1;
+
+    container.removeTab(components[1]);
+
+    expect(container.element.children).toHaveLength(1);
+    expect(container.lastVisibleTabIndex).toBe(0);
+  });
+
+  it('preserves the visible prefix when removing a hidden tab before a visible active overflow tab', function () {
+    const container = new TabsContainer(
+      layout,
+      () => {},
+      () => {},
+      () => {},
+      () => {},
+    );
+    const internals = container as unknown as {
+      _tabs: Array<{
+        componentItem: ComponentItem;
+        element: HTMLElement;
+        destroy(): void;
+      }>;
+      _lastVisibleTabIndex: number;
+    };
+    const components = Array.from({ length: 3 }, () => ({}) as ComponentItem);
+    for (const [index, componentItem] of components.entries()) {
+      const element = document.createElement('div');
+      const parent =
+        index === 1 ? container.dropdownElement : container.element;
+      parent.appendChild(element);
+      internals._tabs.push({
+        componentItem,
+        element,
+        destroy: () => element.remove(),
+      });
+    }
+    internals._lastVisibleTabIndex = 0;
+
+    container.removeTab(components[1]);
+
+    expect(container.element.children).toHaveLength(2);
+    expect(container.lastVisibleTabIndex).toBe(0);
   });
 
   it('closes a closable tab on a middle-button auxclick', function () {

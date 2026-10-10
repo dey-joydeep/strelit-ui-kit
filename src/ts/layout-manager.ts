@@ -372,6 +372,7 @@ export abstract class LayoutManager extends EventEmitter {
   /** @internal */
   private _dragSources: DragSource[] = [];
   private _activeDragProxy: DragProxy | undefined;
+  private _internalComponentDragActive = false;
   /** @internal */
   private _updatingColumnsResponsive = false;
   /** @internal */
@@ -864,11 +865,13 @@ export abstract class LayoutManager extends EventEmitter {
    *
    * @public
    * @returns StrelitLayout configuration
+   * @throws Error when the layout is not initialised or an internal component drag has temporarily detached an item.
    */
   saveLayout(): ResolvedLayoutConfig {
     if (!this._isInitialised) {
       throw new Error("Can't create config, layout not yet initialised");
     } else {
+      this.checkNoInternalComponentDrag();
       // if (root !== undefined && !(root instanceof ContentItem)) {
       //     throw new Error('Root must be a ContentItem');
       // }
@@ -925,6 +928,14 @@ export abstract class LayoutManager extends EventEmitter {
       };
 
       return config;
+    }
+  }
+
+  private checkNoInternalComponentDrag(): void {
+    if (this._internalComponentDragActive) {
+      throw new Error(
+        "Can't create config while an internal component drag is active",
+      );
     }
   }
 
@@ -1430,6 +1441,7 @@ export abstract class LayoutManager extends EventEmitter {
     parentId: string | null,
     indexInParent: number | null | undefined,
   ): BrowserPopout {
+    this.checkNoInternalComponentDrag();
     /**
      * If the item is the only component within a stack or for some
      * other reason the only child of its parent the parent will be destroyed
@@ -1738,19 +1750,27 @@ export abstract class LayoutManager extends EventEmitter {
     if (this._activeDragProxy !== undefined) {
       throw new Error('A drag proxy is already active');
     }
-    const dragProxy = new DragProxy(
-      x,
-      y,
-      dragListener,
-      this,
-      componentItem,
-      originalParent,
-      (finishedDragProxy) => {
-        if (this._activeDragProxy === finishedDragProxy) {
-          this._activeDragProxy = undefined;
-        }
-      },
-    );
+    this._internalComponentDragActive = !originalParent.isGround;
+    let dragProxy: DragProxy;
+    try {
+      dragProxy = new DragProxy(
+        x,
+        y,
+        dragListener,
+        this,
+        componentItem,
+        originalParent,
+        (finishedDragProxy) => {
+          if (this._activeDragProxy === finishedDragProxy) {
+            this._activeDragProxy = undefined;
+            this._internalComponentDragActive = false;
+          }
+        },
+      );
+    } catch (error) {
+      this._internalComponentDragActive = false;
+      throw error;
+    }
     this._activeDragProxy = dragProxy;
     return dragProxy.element;
   }

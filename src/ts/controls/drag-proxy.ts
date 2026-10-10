@@ -12,6 +12,11 @@ import { EventEmitter } from '../utils/event-emitter';
 import { Side } from '../utils/types';
 import { numberToPixels } from '../utils/utils';
 
+const eventDispatchGuardSymbol = Symbol.for(
+  'strelit-ui-kit.event-dispatch-guard',
+);
+type EventDispatchGuard = (eventName: string) => boolean;
+
 /**
  * This class creates a temporary container
  * for the component whilst it is being dragged
@@ -31,6 +36,9 @@ export class DragProxy extends EventEmitter {
   private _componentItemFocused: boolean;
   private readonly _originalIndex: number;
   private readonly _originalParentWasClosable: boolean;
+  private _previousLayoutManagerEventDispatchGuard:
+    EventDispatchGuard | undefined;
+  private _layoutManagerStateChangedEventsSuppressed = false;
   private _dragListenersRegistered = false;
   private _finished = false;
 
@@ -78,6 +86,9 @@ export class DragProxy extends EventEmitter {
       if (this._componentItemFocused) {
         this._componentItem.blur();
       }
+      if (!this._originalParent.isGround) {
+        this.suppressLayoutManagerStateChangedEvents();
+      }
       this.detachComponentItem();
 
       this.setDimensions();
@@ -94,6 +105,7 @@ export class DragProxy extends EventEmitter {
         this._dragListener.off('dragStop', this._onDragStopHandler);
         this._dragListenersRegistered = false;
       }
+      this.resumeLayoutManagerStateChangedEvents();
       if (this._componentItem.parent === null) {
         this._originalParent.addChild(this._componentItem, this._originalIndex);
       }
@@ -271,6 +283,7 @@ export class DragProxy extends EventEmitter {
       this._dragListenersRegistered = false;
     }
     attempt(() => this._componentItem.exitDragMode());
+    this.resumeLayoutManagerStateChangedEvents();
 
     /*
      * Valid drop area found
@@ -337,6 +350,9 @@ export class DragProxy extends EventEmitter {
       attempt(() => this.removeEmptyOriginalParent());
     }
 
+    this._finished = true;
+    this._finishedEvent(this);
+
     if (!cancelled && droppedComponentItem !== undefined) {
       attempt(() =>
         this._layoutManager.emit('itemDropped', this._componentItem),
@@ -346,8 +362,6 @@ export class DragProxy extends EventEmitter {
     if (this._componentItemFocused && this._componentItem.parent !== null) {
       attempt(() => this._componentItem.focus());
     }
-    this._finished = true;
-    this._finishedEvent(this);
     if (firstError !== undefined) {
       throw firstError;
     }
@@ -433,6 +447,36 @@ export class DragProxy extends EventEmitter {
     } finally {
       parentInternals._isClosable = this._originalParentWasClosable;
     }
+  }
+
+  private suppressLayoutManagerStateChangedEvents(): void {
+    const guardedLayoutManager = this._layoutManager as unknown as Record<
+      symbol,
+      EventDispatchGuard | undefined
+    >;
+    const previousGuard = guardedLayoutManager[eventDispatchGuardSymbol];
+    this._previousLayoutManagerEventDispatchGuard = previousGuard;
+    guardedLayoutManager[eventDispatchGuardSymbol] = (eventName) =>
+      eventName !== 'stateChanged' && (previousGuard?.(eventName) ?? true);
+    this._layoutManagerStateChangedEventsSuppressed = true;
+  }
+
+  private resumeLayoutManagerStateChangedEvents(): void {
+    if (!this._layoutManagerStateChangedEventsSuppressed) {
+      return;
+    }
+    const guardedLayoutManager = this._layoutManager as unknown as Record<
+      symbol,
+      EventDispatchGuard | undefined
+    >;
+    if (this._previousLayoutManagerEventDispatchGuard === undefined) {
+      delete guardedLayoutManager[eventDispatchGuardSymbol];
+    } else {
+      guardedLayoutManager[eventDispatchGuardSymbol] =
+        this._previousLayoutManagerEventDispatchGuard;
+    }
+    this._previousLayoutManagerEventDispatchGuard = undefined;
+    this._layoutManagerStateChangedEventsSuppressed = false;
   }
 
   private removeEmptyOriginalParent(): void {
