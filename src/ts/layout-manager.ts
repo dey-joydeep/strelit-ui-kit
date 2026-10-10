@@ -870,11 +870,8 @@ export abstract class LayoutManager extends EventEmitter {
   saveLayout(): ResolvedLayoutConfig {
     if (!this._isInitialised) {
       throw new Error("Can't create config, layout not yet initialised");
-    } else if (this._internalComponentDragActive) {
-      throw new Error(
-        "Can't create config while an internal component drag is active",
-      );
     } else {
+      this.checkNoInternalComponentDrag();
       // if (root !== undefined && !(root instanceof ContentItem)) {
       //     throw new Error('Root must be a ContentItem');
       // }
@@ -931,6 +928,14 @@ export abstract class LayoutManager extends EventEmitter {
       };
 
       return config;
+    }
+  }
+
+  private checkNoInternalComponentDrag(): void {
+    if (this._internalComponentDragActive) {
+      throw new Error(
+        "Can't create config while an internal component drag is active",
+      );
     }
   }
 
@@ -1436,6 +1441,7 @@ export abstract class LayoutManager extends EventEmitter {
     parentId: string | null,
     indexInParent: number | null | undefined,
   ): BrowserPopout {
+    this.checkNoInternalComponentDrag();
     /**
      * If the item is the only component within a stack or for some
      * other reason the only child of its parent the parent will be destroyed

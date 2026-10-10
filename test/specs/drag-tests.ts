@@ -628,6 +628,69 @@ describe('drag source', function () {
     expect(JSON.stringify(layout.saveLayout())).toContain('direct-save-drag');
   });
 
+  it('does not add pop-in ownership when popout is rejected during an internal drag', function () {
+    layout.destroy();
+    layout = TestTools.createLayout({
+      root: {
+        type: 'stack',
+        content: [
+          {
+            type: 'component',
+            id: 'popout-during-drag',
+            componentType: TestTools.TEST_COMPONENT_NAME,
+          },
+        ],
+      },
+    });
+    const item = layout.findFirstComponentItemById('popout-during-drag');
+    const originalParent = item?.parent;
+    if (
+      item === undefined ||
+      originalParent === null ||
+      originalParent === undefined
+    ) {
+      throw new Error('Expected a component item with a parent');
+    }
+    const originalPopInParentIds = [...originalParent.popInParentIds];
+
+    item.tab.element.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        clientX: 0,
+        clientY: 0,
+        isPrimary: true,
+        pointerId: 43,
+        pointerType: 'touch',
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        clientX: 20,
+        clientY: 20,
+        pointerId: 43,
+        pointerType: 'touch',
+      }),
+    );
+    expect(TestTools.getDragProxy()).not.toBeNull();
+
+    expect(() => item.popout()).toThrow(
+      "Can't create config while an internal component drag is active",
+    );
+    expect(originalParent.popInParentIds).toEqual(originalPopInParentIds);
+
+    document.dispatchEvent(
+      new PointerEvent('pointercancel', {
+        bubbles: true,
+        pointerId: 43,
+        pointerType: 'touch',
+      }),
+    );
+
+    expect(originalParent.popInParentIds).toEqual(originalPopInParentIds);
+    expect(JSON.stringify(layout.saveLayout())).toContain('popout-during-drag');
+  });
+
   it('cancels and owns an active drag during layout destruction', function () {
     layout.destroy();
     layout = TestTools.createLayout({
