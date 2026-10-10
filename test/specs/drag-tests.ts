@@ -118,6 +118,7 @@ describe('drag source', function () {
         Symbol.for('strelit-ui-kit.event-dispatch-guard')
       ],
     ).toBeUndefined();
+    expect(() => layout.saveLayout()).not.toThrow();
   });
 
   function countComponentItems(item: {
@@ -201,6 +202,7 @@ describe('drag source', function () {
       }),
     );
     expect(TestTools.getDragProxy()).not.toBeNull();
+    expect(() => layout.saveLayout()).not.toThrow();
 
     const componentItem = layout.rootItem?.contentItems[0] as ComponentItem;
     componentItem.setTitle('Updated during external drag');
@@ -568,6 +570,61 @@ describe('drag source', function () {
     expect(guardedLayout[eventDispatchGuardSymbol]).toBe(
       previousEventDispatchGuard,
     );
+  });
+
+  it('rejects direct saves while an internal tab drag is detached', function () {
+    layout.destroy();
+    layout = TestTools.createLayout({
+      root: {
+        type: 'stack',
+        content: [
+          {
+            type: 'component',
+            id: 'direct-save-drag',
+            componentType: TestTools.TEST_COMPONENT_NAME,
+          },
+        ],
+      },
+    });
+    const item = layout.findFirstComponentItemById('direct-save-drag');
+    if (item === undefined) {
+      throw new Error('Expected a component item');
+    }
+
+    item.tab.element.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        clientX: 0,
+        clientY: 0,
+        isPrimary: true,
+        pointerId: 42,
+        pointerType: 'touch',
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        clientX: 20,
+        clientY: 20,
+        pointerId: 42,
+        pointerType: 'touch',
+      }),
+    );
+    expect(TestTools.getDragProxy()).not.toBeNull();
+
+    expect(() => layout.saveLayout()).toThrow(
+      "Can't create config while an internal component drag is active",
+    );
+
+    document.dispatchEvent(
+      new PointerEvent('pointercancel', {
+        bubbles: true,
+        pointerId: 42,
+        pointerType: 'touch',
+      }),
+    );
+
+    expect(JSON.stringify(layout.saveLayout())).toContain('direct-save-drag');
   });
 
   it('cancels and owns an active drag during layout destruction', function () {

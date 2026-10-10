@@ -372,6 +372,7 @@ export abstract class LayoutManager extends EventEmitter {
   /** @internal */
   private _dragSources: DragSource[] = [];
   private _activeDragProxy: DragProxy | undefined;
+  private _internalComponentDragActive = false;
   /** @internal */
   private _updatingColumnsResponsive = false;
   /** @internal */
@@ -868,6 +869,10 @@ export abstract class LayoutManager extends EventEmitter {
   saveLayout(): ResolvedLayoutConfig {
     if (!this._isInitialised) {
       throw new Error("Can't create config, layout not yet initialised");
+    } else if (this._internalComponentDragActive) {
+      throw new Error(
+        "Can't create config while an internal component drag is active",
+      );
     } else {
       // if (root !== undefined && !(root instanceof ContentItem)) {
       //     throw new Error('Root must be a ContentItem');
@@ -1738,19 +1743,27 @@ export abstract class LayoutManager extends EventEmitter {
     if (this._activeDragProxy !== undefined) {
       throw new Error('A drag proxy is already active');
     }
-    const dragProxy = new DragProxy(
-      x,
-      y,
-      dragListener,
-      this,
-      componentItem,
-      originalParent,
-      (finishedDragProxy) => {
-        if (this._activeDragProxy === finishedDragProxy) {
-          this._activeDragProxy = undefined;
-        }
-      },
-    );
+    this._internalComponentDragActive = !originalParent.isGround;
+    let dragProxy: DragProxy;
+    try {
+      dragProxy = new DragProxy(
+        x,
+        y,
+        dragListener,
+        this,
+        componentItem,
+        originalParent,
+        (finishedDragProxy) => {
+          if (this._activeDragProxy === finishedDragProxy) {
+            this._activeDragProxy = undefined;
+            this._internalComponentDragActive = false;
+          }
+        },
+      );
+    } catch (error) {
+      this._internalComponentDragActive = false;
+      throw error;
+    }
     this._activeDragProxy = dragProxy;
     return dragProxy.element;
   }
