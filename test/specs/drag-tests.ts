@@ -275,8 +275,8 @@ describe('drag source', function () {
     item.on('blur', blurObserver);
 
     try {
-      expect(
-        () => new DragProxy(0, 0, dragListener, layout, item, originalParent),
+      expect(() =>
+        layout.startComponentDrag(0, 0, dragListener, item, originalParent),
       ).toThrow('blur observer failed');
 
       expect(item.parent).toBe(originalParent);
@@ -284,6 +284,7 @@ describe('drag source', function () {
       expect(item.element.parentElement).toBe(originalElementParent);
       expect(item.focused).toBe(true);
       expect(TestTools.getDragProxy()).toBeNull();
+      expect(() => layout.saveLayout()).not.toThrow();
     } finally {
       item.off('blur', blurObserver);
       dragListener.destroy();

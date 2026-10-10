@@ -18,7 +18,7 @@ This document describes how the current runtime is assembled from `LayoutManager
 ## Load and Save
 
 - `loadLayout()` resolves a fresh `LayoutConfig`, asks `GroundItem` to replace the root, then re-applies maximise and responsive behavior.
-- `saveLayout()` walks the current tree via `calculateConfigContent()`, reconciles popouts, and returns a fully `resolved: true` config object.
+- `saveLayout()` walks the current tree via `calculateConfigContent()`, reconciles popouts, and returns a fully `resolved: true` config object. It rejects calls during an internal component drag because that transaction temporarily detaches the dragged item; callers can retry after the drop or cancellation completes. External drag sources do not block saving because they do not detach an item from the live layout.
 - A component loaded directly as root is normalized back into a stack shape when persisted and reloaded.
 
 ## Item Creation Rule

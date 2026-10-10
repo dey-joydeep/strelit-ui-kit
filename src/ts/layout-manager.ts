@@ -865,6 +865,7 @@ export abstract class LayoutManager extends EventEmitter {
    *
    * @public
    * @returns StrelitLayout configuration
+   * @throws Error when the layout is not initialised or an internal component drag has temporarily detached an item.
    */
   saveLayout(): ResolvedLayoutConfig {
     if (!this._isInitialised) {
