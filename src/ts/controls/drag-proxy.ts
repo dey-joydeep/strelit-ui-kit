@@ -350,6 +350,9 @@ export class DragProxy extends EventEmitter {
       attempt(() => this.removeEmptyOriginalParent());
     }
 
+    this._finished = true;
+    this._finishedEvent(this);
+
     if (!cancelled && droppedComponentItem !== undefined) {
       attempt(() =>
         this._layoutManager.emit('itemDropped', this._componentItem),
@@ -359,8 +362,6 @@ export class DragProxy extends EventEmitter {
     if (this._componentItemFocused && this._componentItem.parent !== null) {
       attempt(() => this._componentItem.focus());
     }
-    this._finished = true;
-    this._finishedEvent(this);
     if (firstError !== undefined) {
       throw firstError;
     }

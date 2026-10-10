@@ -628,6 +628,68 @@ describe('drag source', function () {
     expect(JSON.stringify(layout.saveLayout())).toContain('direct-save-drag');
   });
 
+  it('allows a synchronous itemDropped listener to save the restored layout', function () {
+    layout.destroy();
+    layout = TestTools.createLayout({
+      root: {
+        type: 'stack',
+        content: [
+          {
+            type: 'component',
+            id: 'drop-callback-save',
+            componentType: TestTools.TEST_COMPONENT_NAME,
+          },
+        ],
+      },
+    });
+    const item = layout.findFirstComponentItemById('drop-callback-save');
+    if (item === undefined) {
+      throw new Error('Expected a component item');
+    }
+    const savedLayouts: string[] = [];
+    const callbackErrors: unknown[] = [];
+    layout.on('itemDropped', () => {
+      try {
+        savedLayouts.push(JSON.stringify(layout.saveLayout()));
+      } catch (error) {
+        callbackErrors.push(error);
+      }
+    });
+
+    item.tab.element.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        clientX: 0,
+        clientY: 0,
+        isPrimary: true,
+        pointerId: 43,
+        pointerType: 'touch',
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        clientX: 20,
+        clientY: 20,
+        pointerId: 43,
+        pointerType: 'touch',
+      }),
+    );
+    expect(TestTools.getDragProxy()).not.toBeNull();
+
+    document.dispatchEvent(
+      new PointerEvent('pointerup', {
+        bubbles: true,
+        pointerId: 43,
+        pointerType: 'touch',
+      }),
+    );
+
+    expect(callbackErrors).toEqual([]);
+    expect(savedLayouts).toHaveLength(1);
+    expect(savedLayouts[0]).toContain('drop-callback-save');
+  });
+
   it('does not add pop-in ownership when popout is rejected during an internal drag', function () {
     layout.destroy();
     layout = TestTools.createLayout({
