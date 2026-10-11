@@ -179,7 +179,10 @@ describe('Tabs configuration and behavior', function () {
     const stack = layout.rootItem as Stack;
     const tabsContainer = (
       stack.header as unknown as {
-        _tabsContainer: { _lastVisibleTabIndex: number };
+        _tabsContainer: {
+          _lastVisibleTabIndex: number;
+          dropdownElement: HTMLElement;
+        };
       }
     )._tabsContainer;
     tabsContainer._lastVisibleTabIndex = 0;
@@ -188,6 +191,7 @@ describe('Tabs configuration and behavior', function () {
       throw new Error('Expected a component item');
     }
     const thirdComponent = thirdContentItem as ComponentItem;
+    tabsContainer.dropdownElement.appendChild(thirdComponent.tab.element);
 
     stack.setActiveComponentItem(thirdComponent, false);
 

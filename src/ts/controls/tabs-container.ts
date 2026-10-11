@@ -150,11 +150,8 @@ export class TabsContainer {
          * If the tab selected was in the dropdown, move everything down one to make way for this one to be the first.
          * This will make sure the most used tabs stay visible.
          */
-        if (
-          this._lastVisibleTabIndex !== -1 &&
-          activeIndex > this._lastVisibleTabIndex
-        ) {
-          const activeTab = this._tabs[activeIndex];
+        const activeTab = this._tabs[activeIndex];
+        if (activeTab.element.parentElement === this._dropdownElement) {
           for (let j = activeIndex; j > 0; j--) {
             this._tabs[j] = this._tabs[j - 1];
           }
