@@ -263,7 +263,11 @@ export function removeFromArray<T>(item: T, array: T[]): void {
 
 /** @internal */
 export function getUniqueId(): string {
-  return (Math.random() * 1000000000000000).toString(36).replace('.', '');
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join(
+    '',
+  );
 }
 
 /** @internal */

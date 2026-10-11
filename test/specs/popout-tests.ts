@@ -665,8 +665,9 @@ describe('BrowserPopout functionality (item.popout())', function () {
     expect(layout.findFirstComponentItemById('pending-close')).toBeDefined();
   });
 
-  it('keeps the item in the layout when popup creation is blocked', function () {
-    vi.spyOn(window, 'open').mockReturnValue(null);
+  it('keeps blocked popout attempts separate and leaves the item in the layout', function () {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const openWindow = vi.spyOn(window, 'open').mockReturnValue(null);
     const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem');
 
     layout.loadLayout({
@@ -689,6 +690,22 @@ describe('BrowserPopout functionality (item.popout())', function () {
       'blockedPopoutComponent',
     ) as ComponentItem;
     item.popout();
+    item.popout();
+
+    expect(openWindow).toHaveBeenCalledTimes(2);
+    const [firstUrl, firstTarget] = openWindow.mock.calls[0];
+    const [secondUrl, secondTarget] = openWindow.mock.calls[1];
+    if (firstUrl === undefined || secondUrl === undefined) {
+      throw new Error('Expected both popout URLs');
+    }
+    const firstKey = new URL(firstUrl).searchParams.get('strelit-window');
+    const secondKey = new URL(secondUrl).searchParams.get('strelit-window');
+    expect(firstTarget).not.toBe(secondTarget);
+    expect(firstKey).toMatch(/^strelit-window-config-[0-9a-f]{32}$/);
+    expect(secondKey).toMatch(/^strelit-window-config-[0-9a-f]{32}$/);
+    expect(firstKey).not.toBe(secondKey);
+    expect(removeItemSpy).toHaveBeenCalledWith(firstKey);
+    expect(removeItemSpy).toHaveBeenCalledWith(secondKey);
 
     expect(
       layout.findFirstComponentItemById('blockedPopoutComponent'),
