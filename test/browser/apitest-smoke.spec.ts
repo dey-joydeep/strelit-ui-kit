@@ -1,5 +1,73 @@
 import { expect, test } from '@playwright/test';
 
+test('within-stack drag keeps visible, runtime, and saved tab order aligned', async ({
+  page,
+}) => {
+  const runtimeErrors: string[] = [];
+  page.on('pageerror', (error) => runtimeErrors.push(error.message));
+  await page.goto('/');
+  await page.selectOption('#layoutSelect', 'miniStack');
+  await page.locator('#loadLayoutButton').click();
+  await expect(page.locator('.lm_stack .lm_tab')).toHaveCount(2);
+
+  const snapshot = () =>
+    page.evaluate(() => {
+      const layout = window.strelitApiTestApp._strelitLayout;
+      const stack = layout.rootItem as {
+        contentItems: Array<{ title: string }>;
+        getActiveComponentItem(): { title: string } | undefined;
+      };
+      const saved = layout.saveLayout().root as {
+        content: Array<{ title: string }>;
+        activeItemIndex: number;
+      };
+      return {
+        visible: Array.from(
+          document.querySelectorAll('.lm_stack .lm_tabs .lm_tab'),
+        ).map((tab) => tab.getAttribute('title')),
+        runtime: stack.contentItems.map((item) => item.title),
+        saved: saved.content.map((item) => item.title),
+        active: stack.getActiveComponentItem()?.title,
+        savedActive: saved.content[saved.activeItemIndex]?.title,
+      };
+    });
+
+  expect(await snapshot()).toEqual({
+    visible: ['Overview', 'Details'],
+    runtime: ['Overview', 'Details'],
+    saved: ['Overview', 'Details'],
+    active: 'Overview',
+    savedActive: 'Overview',
+  });
+
+  const target = page.locator('.lm_stack .lm_tab[title="Details"]');
+  const targetBox = await target.boundingBox();
+  if (targetBox === null)
+    throw new Error('Expected the target tab to be visible');
+  await page.locator('.lm_stack .lm_tab[title="Overview"]').dragTo(target, {
+    targetPosition: { x: targetBox.width - 2, y: targetBox.height / 2 },
+    steps: 20,
+  });
+
+  expect(await snapshot()).toEqual({
+    visible: ['Details', 'Overview'],
+    runtime: ['Details', 'Overview'],
+    saved: ['Details', 'Overview'],
+    active: 'Overview',
+    savedActive: 'Overview',
+  });
+  await page.locator('#saveLayoutButton').click();
+  await page.locator('#reloadSavedLayoutButton').click();
+  expect(await snapshot()).toEqual({
+    visible: ['Details', 'Overview'],
+    runtime: ['Details', 'Overview'],
+    saved: ['Details', 'Overview'],
+    active: 'Overview',
+    savedActive: 'Overview',
+  });
+  expect(runtimeErrors).toEqual([]);
+});
+
 test('loads, saves, and renders the API demo without browser errors', async ({
   page,
 }) => {
