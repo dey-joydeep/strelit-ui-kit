@@ -553,7 +553,7 @@ export class BrowserPopout extends EventEmitter {
      * same title. The actual title will be set by the new window's
      * StrelitLayout instance if it detects that it is in subWindowMode
      */
-    const target = Math.floor(Math.random() * 1000000).toString(36);
+    const target = getUniqueId();
 
     /**
      * The options as used in the window.open string
