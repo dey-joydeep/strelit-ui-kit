@@ -1083,6 +1083,53 @@ function assertOptionalHeaderedItemHeader(value: unknown): void {
   }
 }
 
+function assertResolvedStackFields(
+  value: Record<string, unknown>,
+  name: string,
+): void {
+  const content = value.content as unknown[];
+  for (let index = 0; index < content.length; index++) {
+    const child = content[index];
+    assertRecord(child, `${name}.content[${index}]`);
+    if (child.type !== ItemType.component) {
+      throw new ConfigurationError(
+        `${name}.content must contain only components`,
+      );
+    }
+  }
+  if (content.length === 0) {
+    if (value.activeItemIndex !== undefined) {
+      throw new ConfigurationError(
+        `${name}.activeItemIndex must be undefined for an empty stack`,
+      );
+    }
+  } else if (
+    typeof value.activeItemIndex !== 'number' ||
+    !Number.isInteger(value.activeItemIndex) ||
+    value.activeItemIndex < 0 ||
+    value.activeItemIndex >= content.length
+  ) {
+    throw new ConfigurationError(
+      `${name}.activeItemIndex must be an in-range integer`,
+    );
+  }
+}
+
+function assertResolvedComponentFields(
+  value: Record<string, unknown>,
+  name: string,
+): void {
+  if ((value.content as unknown[]).length !== 0) {
+    throw new ConfigurationError(
+      `${name}.content must be empty for a component`,
+    );
+  }
+  assertBoolean(value.reorderEnabled, `${name}.reorderEnabled`);
+  if (typeof value.title !== 'string') {
+    throw new ConfigurationError(`${name}.title must be a string`);
+  }
+}
+
 function assertResolvedItemFields(
   value: Record<string, unknown>,
 ): asserts value is Record<string, unknown> & { content: unknown[] } {
@@ -1117,41 +1164,9 @@ function assertResolvedItemFields(
     assertOptionalHeaderedItemHeader(value.header);
   }
   if (value.type === ItemType.stack) {
-    for (let index = 0; index < value.content.length; index++) {
-      const child = value.content[index];
-      assertRecord(child, `${name}.content[${index}]`);
-      if (child.type !== ItemType.component) {
-        throw new ConfigurationError(
-          `${name}.content must contain only components`,
-        );
-      }
-    }
-    if (value.content.length === 0) {
-      if (value.activeItemIndex !== undefined) {
-        throw new ConfigurationError(
-          `${name}.activeItemIndex must be undefined for an empty stack`,
-        );
-      }
-    } else if (
-      typeof value.activeItemIndex !== 'number' ||
-      !Number.isInteger(value.activeItemIndex) ||
-      value.activeItemIndex < 0 ||
-      value.activeItemIndex >= value.content.length
-    ) {
-      throw new ConfigurationError(
-        `${name}.activeItemIndex must be an in-range integer`,
-      );
-    }
+    assertResolvedStackFields(value, name);
   } else if (value.type === ItemType.component) {
-    if (value.content.length !== 0) {
-      throw new ConfigurationError(
-        `${name}.content must be empty for a component`,
-      );
-    }
-    assertBoolean(value.reorderEnabled, `${name}.reorderEnabled`);
-    if (typeof value.title !== 'string') {
-      throw new ConfigurationError(`${name}.title must be a string`);
-    }
+    assertResolvedComponentFields(value, name);
   }
 }
 
@@ -1181,20 +1196,88 @@ export function _assertResolvedItemConfigStructure(
   }
 }
 
-function assertResolvedLayoutConfigStructure(value: unknown): void {
-  type Frame =
-    | {
-        readonly kind: 'layout';
-        readonly value: unknown;
-        readonly popoutDepth: number;
-      }
-    | {
-        readonly kind: 'item';
-        readonly value: unknown;
-        readonly itemDepth: number;
-      };
+type ResolvedValidationFrame =
+  | {
+      readonly kind: 'layout';
+      readonly value: unknown;
+      readonly popoutDepth: number;
+    }
+  | {
+      readonly kind: 'item';
+      readonly value: unknown;
+      readonly itemDepth: number;
+    };
 
-  const stack: Frame[] = [{ kind: 'layout', value, popoutDepth: 0 }];
+function assertResolvedLayoutFrame(
+  value: Record<string, unknown>,
+  popoutDepth: number,
+  stack: ResolvedValidationFrame[],
+): void {
+  if (value.resolved !== true) {
+    throw new ConfigurationError(
+      'Unminified layout configuration must be resolved',
+    );
+  }
+  if (!Array.isArray(value.openPopouts)) {
+    throw new ConfigurationError(
+      'Unminified layout configuration openPopouts must be an array',
+    );
+  }
+  assertResolvedSettings(value.settings);
+  assertResolvedDimensions(value.dimensions);
+  assertResolvedHeader(value.header);
+  if (popoutDepth > 0) {
+    assertResolvedPopoutFields(value);
+  }
+  if (value.root !== undefined) {
+    stack.push({ kind: 'item', value: value.root, itemDepth: 0 });
+  }
+  for (let index = value.openPopouts.length - 1; index >= 0; index--) {
+    stack.push({
+      kind: 'layout',
+      value: value.openPopouts[index],
+      popoutDepth: popoutDepth + 1,
+    });
+  }
+}
+
+function assertResolvedItemFrame(
+  value: Record<string, unknown>,
+  itemDepth: number,
+  stack: ResolvedValidationFrame[],
+): void {
+  if (
+    value.type !== ItemType.row &&
+    value.type !== ItemType.column &&
+    value.type !== ItemType.stack &&
+    value.type !== ItemType.component
+  ) {
+    throw new ConfigurationError(
+      'Unminified layout item configuration has an invalid type',
+    );
+  }
+  assertResolvedItemFields(value);
+  if (
+    value.type === ItemType.component &&
+    !Object.prototype.hasOwnProperty.call(value, 'componentType')
+  ) {
+    throw new ConfigurationError(
+      'Unminified component configuration requires componentType',
+    );
+  }
+  for (let index = value.content.length - 1; index >= 0; index--) {
+    stack.push({
+      kind: 'item',
+      value: value.content[index],
+      itemDepth: itemDepth + 1,
+    });
+  }
+}
+
+function assertResolvedLayoutConfigStructure(value: unknown): void {
+  const stack: ResolvedValidationFrame[] = [
+    { kind: 'layout', value, popoutDepth: 0 },
+  ];
   let nodes = 0;
   while (stack.length > 0) {
     const frame = stack.pop();
@@ -1223,63 +1306,9 @@ function assertResolvedLayoutConfigStructure(value: unknown): void {
     }
 
     if (frame.kind === 'layout') {
-      if (frame.value.resolved !== true) {
-        throw new ConfigurationError(
-          'Unminified layout configuration must be resolved',
-        );
-      }
-      if (!Array.isArray(frame.value.openPopouts)) {
-        throw new ConfigurationError(
-          'Unminified layout configuration openPopouts must be an array',
-        );
-      }
-      assertResolvedSettings(frame.value.settings);
-      assertResolvedDimensions(frame.value.dimensions);
-      assertResolvedHeader(frame.value.header);
-      if (frame.popoutDepth > 0) {
-        assertResolvedPopoutFields(frame.value);
-      }
-      if (frame.value.root !== undefined) {
-        stack.push({ kind: 'item', value: frame.value.root, itemDepth: 0 });
-      }
-      for (
-        let index = frame.value.openPopouts.length - 1;
-        index >= 0;
-        index--
-      ) {
-        stack.push({
-          kind: 'layout',
-          value: frame.value.openPopouts[index],
-          popoutDepth: frame.popoutDepth + 1,
-        });
-      }
+      assertResolvedLayoutFrame(frame.value, frame.popoutDepth, stack);
     } else {
-      if (
-        frame.value.type !== ItemType.row &&
-        frame.value.type !== ItemType.column &&
-        frame.value.type !== ItemType.stack &&
-        frame.value.type !== ItemType.component
-      ) {
-        throw new ConfigurationError(
-          'Unminified layout item configuration has an invalid type',
-        );
-      }
-      assertResolvedItemFields(frame.value);
-      if (
-        frame.value.type === ItemType.component &&
-        !Object.prototype.hasOwnProperty.call(frame.value, 'componentType')
-      ) {
-        throw new ConfigurationError(
-          'Unminified component configuration requires componentType',
-        );
-      }
-      for (let index = frame.value.content.length - 1; index >= 0; index--) {
-        stack.push({
-          kind: 'item',
-          value: frame.value.content[index],
-          itemDepth: frame.itemDepth + 1,
-        });
-      }
+      assertResolvedItemFrame(frame.value, frame.itemDepth, stack);
     }
   }
 }

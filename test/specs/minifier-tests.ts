@@ -97,6 +97,56 @@ describe('resolved layout config minifier', function () {
     );
   });
 
+  it('validates popouts before the root and keeps the first structural diagnostic', function () {
+    const resolved = resolveLayoutConfig({
+      root: { type: 'component', componentType: 'root' },
+      openPopouts: [{ root: { type: 'component', componentType: 'popout' } }],
+    });
+    const malformed = {
+      ...resolved,
+      root: { ...resolved.root, size: undefined },
+      openPopouts: [{ ...resolved.openPopouts[0], parentId: undefined }],
+    };
+
+    expect(() =>
+      unminifyResolvedLayoutConfig(
+        minifyResolvedLayoutConfig(malformed as never),
+      ),
+    ).toThrow(
+      'Unminified popout configuration.parentId must be a string or null',
+    );
+  });
+
+  it('validates stack children before the active index', function () {
+    const resolved = resolveLayoutConfig({
+      root: {
+        type: 'stack',
+        content: [{ type: 'component', componentType: 'panel' }],
+      },
+    });
+    if (resolved.root?.type !== 'stack') {
+      throw new Error('Expected resolved stack');
+    }
+    const malformed = {
+      ...resolved,
+      root: {
+        ...resolved.root,
+        content: [
+          resolveLayoutConfig({ root: { type: 'row', content: [] } }).root,
+        ],
+        activeItemIndex: 2,
+      },
+    };
+
+    expect(() =>
+      unminifyResolvedLayoutConfig(
+        minifyResolvedLayoutConfig(malformed as never),
+      ),
+    ).toThrow(
+      'Unminified layout item configuration.content must contain only components',
+    );
+  });
+
   it('preserves unknown compact value tokens while unminifying', function () {
     expect(translateObject({ value: 'a' }, false)).toEqual({ value: 'a' });
     expect(translateObject({ value: 'z' }, false)).toEqual({ value: 'z' });
@@ -315,6 +365,12 @@ describe('resolved layout config minifier', function () {
     const cyclic: Record<string, unknown> = {};
     cyclic.self = cyclic;
     expect(() => translateObject(cyclic, true)).toThrow(/cyclic/i);
+
+    const arrayCycle: unknown[] = [];
+    arrayCycle.push(arrayCycle);
+    expect(() => translateObject({ nested: arrayCycle }, false)).toThrow(
+      'Configuration contains a cyclic object graph',
+    );
   });
 
   it('preserves depth-first getter evaluation order without duplicate reads', function () {

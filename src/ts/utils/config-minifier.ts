@@ -74,153 +74,177 @@ export function checkConfigMinifierInitialise(): void {
   // Retained as an initialization hook for callers and future validation.
 }
 
+type TranslationContainer = Record<string, unknown> | unknown[];
+type TranslationEnterFrame = {
+  kind: 'enter';
+  from: TranslationContainer;
+  to: TranslationContainer;
+  depth: number;
+  representationDepth: number;
+};
+type TranslationIterateFrame = {
+  kind: 'iterate';
+  from: TranslationContainer;
+  to: TranslationContainer;
+  depth: number;
+  representationDepth: number;
+  index: number;
+  valueCount: number;
+  array: unknown[] | undefined;
+  keys: string[] | undefined;
+};
+type TranslationFrame =
+  | TranslationEnterFrame
+  | TranslationIterateFrame
+  | { kind: 'exit'; from: TranslationContainer };
+type TranslationState = {
+  stack: TranslationFrame[];
+  ancestors: WeakSet<object>;
+  nodes: number;
+  minify: boolean;
+};
+
 export function translateObject(
   from: Record<string, unknown>,
   minify: boolean,
 ): Record<string, unknown> {
-  type Container = Record<string, unknown> | unknown[];
-  type Frame =
-    | {
-        kind: 'enter';
-        from: Container;
-        to: Container;
-        depth: number;
-        representationDepth: number;
-      }
-    | {
-        kind: 'iterate';
-        from: Container;
-        to: Container;
-        depth: number;
-        representationDepth: number;
-        index: number;
-        valueCount: number;
-        array: unknown[] | undefined;
-        keys: string[] | undefined;
-      }
-    | { kind: 'exit'; from: Container };
-
   const to: Record<string, unknown> = {};
-  const stack: Frame[] = [
-    { kind: 'enter', from, to, depth: 0, representationDepth: 0 },
-  ];
-  const ancestors = new WeakSet<object>();
-  let nodes = 1;
-
-  while (stack.length > 0) {
-    const frame = stack.pop();
+  const state: TranslationState = {
+    stack: [{ kind: 'enter', from, to, depth: 0, representationDepth: 0 }],
+    ancestors: new WeakSet<object>(),
+    nodes: 1,
+    minify,
+  };
+  while (state.stack.length > 0) {
+    const frame = state.stack.pop();
     if (frame === undefined) {
       break;
     }
     if (frame.kind === 'exit') {
-      ancestors.delete(frame.from);
-      continue;
-    }
-    if (frame.kind === 'enter') {
-      if (
-        frame.depth > maximumConfigDepth ||
-        frame.representationDepth > maximumTranslationDepth
-      ) {
-        throwTranslationLimitError();
-      }
-      if (ancestors.has(frame.from)) {
-        throw new ConfigurationError(
-          'Configuration contains a cyclic object graph',
-        );
-      }
-      ancestors.add(frame.from);
-
-      const array = Array.isArray(frame.from) ? frame.from : undefined;
-      const keys = array === undefined ? Object.keys(frame.from) : undefined;
-      const valueCount = array === undefined ? keys!.length : array.length;
-      if (valueCount > maximumConfigNodes - nodes) {
-        throwTranslationLimitError();
-      }
-      nodes += valueCount;
-
-      stack.push({ kind: 'exit', from: frame.from });
-      if (valueCount > 0) {
-        stack.push({
-          kind: 'iterate',
-          from: frame.from,
-          to: frame.to,
-          depth: frame.depth,
-          representationDepth: frame.representationDepth,
-          index: 0,
-          valueCount,
-          array,
-          keys,
-        });
-      }
+      state.ancestors.delete(frame.from);
+    } else if (frame.kind === 'enter') {
+      enterTranslationContainer(frame, state);
     } else {
-      const { array, keys, index } = frame;
-      const key = array === undefined ? keys![index] : index;
-      const value =
-        array !== undefined
-          ? array[index]
-          : (frame.from as Record<string, unknown>)[key as string];
-      if (index + 1 < frame.valueCount) {
-        stack.push({ ...frame, index: index + 1 });
-      }
-
-      let translatedValue: unknown;
-      if (typeof value === 'object' && value !== null) {
-        const childRepresentationDepth = frame.representationDepth + 1;
-        const semanticKey =
-          array === undefined
-            ? minify
-              ? (key as string)
-              : unminifyKey(key as string)
-            : undefined;
-        const startsIndependentSemanticDomain =
-          semanticKey === 'root' ||
-          semanticKey === 'componentType' ||
-          semanticKey === 'componentState' ||
-          semanticKey === 'openPopouts';
-        const childDepth = startsIndependentSemanticDomain
-          ? 0
-          : Array.isArray(value)
-            ? frame.depth
-            : frame.depth + 1;
-        if (
-          childDepth > maximumConfigDepth ||
-          childRepresentationDepth > maximumTranslationDepth ||
-          (Array.isArray(value) && value.length > maximumConfigNodes - nodes)
-        ) {
-          throwTranslationLimitError();
-        }
-        const childTo: Container = Array.isArray(value)
-          ? Array<unknown>(value.length)
-          : {};
-        translatedValue = childTo;
-        stack.push({
-          kind: 'enter',
-          from: value as Container,
-          to: childTo,
-          depth: childDepth,
-          representationDepth: childRepresentationDepth,
-        });
-      } else {
-        translatedValue = minify ? minifyValue(value) : unminifyValue(value);
-      }
-
-      if (Array.isArray(frame.to)) {
-        frame.to[index] = translatedValue;
-      } else {
-        const translatedKey = minify
-          ? minifyKey(key as string)
-          : unminifyKey(key as string);
-        Object.defineProperty(frame.to, translatedKey, {
-          configurable: true,
-          enumerable: true,
-          value: translatedValue,
-          writable: true,
-        });
-      }
+      translateContainerEntry(frame, state);
     }
   }
-
   return to;
+}
+
+function enterTranslationContainer(
+  frame: TranslationEnterFrame,
+  state: TranslationState,
+): void {
+  if (
+    frame.depth > maximumConfigDepth ||
+    frame.representationDepth > maximumTranslationDepth
+  ) {
+    throwTranslationLimitError();
+  }
+  if (state.ancestors.has(frame.from)) {
+    throw new ConfigurationError(
+      'Configuration contains a cyclic object graph',
+    );
+  }
+  state.ancestors.add(frame.from);
+  const array = Array.isArray(frame.from) ? frame.from : undefined;
+  const keys = array === undefined ? Object.keys(frame.from) : undefined;
+  const valueCount = array === undefined ? keys!.length : array.length;
+  if (valueCount > maximumConfigNodes - state.nodes) {
+    throwTranslationLimitError();
+  }
+  state.nodes += valueCount;
+  state.stack.push({ kind: 'exit', from: frame.from });
+  if (valueCount > 0) {
+    state.stack.push({
+      kind: 'iterate',
+      from: frame.from,
+      to: frame.to,
+      depth: frame.depth,
+      representationDepth: frame.representationDepth,
+      index: 0,
+      valueCount,
+      array,
+      keys,
+    });
+  }
+}
+
+function translateContainerEntry(
+  frame: TranslationIterateFrame,
+  state: TranslationState,
+): void {
+  const { array, keys, index } = frame;
+  const key = array === undefined ? keys![index] : index;
+  const value =
+    array !== undefined
+      ? array[index]
+      : (frame.from as Record<string, unknown>)[key as string];
+  if (index + 1 < frame.valueCount) {
+    state.stack.push({ ...frame, index: index + 1 });
+  }
+  const translatedValue =
+    typeof value === 'object' && value !== null
+      ? enterTranslationChild(frame, key, value, state)
+      : state.minify
+        ? minifyValue(value)
+        : unminifyValue(value);
+  if (Array.isArray(frame.to)) {
+    frame.to[index] = translatedValue;
+  } else {
+    const translatedKey = state.minify
+      ? minifyKey(key as string)
+      : unminifyKey(key as string);
+    Object.defineProperty(frame.to, translatedKey, {
+      configurable: true,
+      enumerable: true,
+      value: translatedValue,
+      writable: true,
+    });
+  }
+}
+
+function enterTranslationChild(
+  frame: TranslationIterateFrame,
+  key: string | number,
+  value: object,
+  state: TranslationState,
+): TranslationContainer {
+  const childRepresentationDepth = frame.representationDepth + 1;
+  const semanticKey =
+    frame.array === undefined
+      ? state.minify
+        ? (key as string)
+        : unminifyKey(key as string)
+      : undefined;
+  const startsIndependentSemanticDomain =
+    semanticKey === 'root' ||
+    semanticKey === 'componentType' ||
+    semanticKey === 'componentState' ||
+    semanticKey === 'openPopouts';
+  const childDepth = startsIndependentSemanticDomain
+    ? 0
+    : Array.isArray(value)
+      ? frame.depth
+      : frame.depth + 1;
+  if (
+    childDepth > maximumConfigDepth ||
+    childRepresentationDepth > maximumTranslationDepth ||
+    (Array.isArray(value) && value.length > maximumConfigNodes - state.nodes)
+  ) {
+    throwTranslationLimitError();
+  }
+  const childTo: TranslationContainer = Array.isArray(value)
+    ? Array<unknown>(value.length)
+    : {};
+  state.stack.push({
+    kind: 'enter',
+    from: value as TranslationContainer,
+    to: childTo,
+    depth: childDepth,
+    representationDepth: childRepresentationDepth,
+  });
+  return childTo;
 }
 
 function throwTranslationLimitError(): never {
