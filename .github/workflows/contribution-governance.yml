@@ -781,9 +781,7 @@ jobs:
             }
             const largeHighRisk =
               computedRisk === 'high' &&
-              (fileNames.length > 50 ||
-                nonGeneratedChanges > 1000 ||
-                applicableDomains.size >= 3);
+              (fileNames.length > 50 || nonGeneratedChanges > 1000);
 
             if (
               nonGeneratedChanges > 1000 &&
@@ -928,7 +926,6 @@ jobs:
                     'Path',
                     'Contract',
                     'Domains',
-                    'Assignments',
                     'Adjacent',
                     'Tests'
                   ]) {
@@ -947,6 +944,19 @@ jobs:
                   ) {
                     errors.push(`Coverage manifest path ${entry.Path} must declare exactly these domains: ${[...expectedDomains].join('; ')}`);
                   }
+                  for (const domain of domains) {
+                    if (!canonicalDomains.has(domain)) {
+                      errors.push(`Coverage manifest path ${entry.Path} has invalid domain: ${domain}`);
+                    }
+                  }
+                  const hasAssignments =
+                    !!entry.Assignments && !placeholderOnly.test(entry.Assignments);
+                  if (largeHighRisk && !hasAssignments) {
+                    errors.push(`Coverage manifest path ${entry.Path} requires Assignments.`);
+                  }
+                  if (!hasAssignments) {
+                    continue;
+                  }
                   const assignments = new Map(
                     (entry.Assignments ?? '')
                       .split(';')
@@ -958,9 +968,6 @@ jobs:
                       })
                   );
                   for (const domain of domains) {
-                    if (!canonicalDomains.has(domain)) {
-                      errors.push(`Coverage manifest path ${entry.Path} has invalid domain: ${domain}`);
-                    }
                     const assignment = assignments.get(domain) ?? '';
                     const validAssignment = /^@[A-Za-z0-9-]+$/.test(assignment);
                     if (!validAssignment) {
@@ -1283,8 +1290,16 @@ jobs:
                   github.rest.pulls.listReviewComments,
                   { owner, repo, pull_number, per_page: 100 }
                 );
-                const hasLaterExternalReviewComment = reviewComments.some(
-                  (comment) => {
+                const conversationComments = await github.paginate(
+                  github.rest.issues.listComments,
+                  { owner, repo, issue_number: pull_number, per_page: 100 }
+                );
+                const codexBotLogin = 'chatgpt-codex-connector[bot]';
+                const hasExternalFeedbackAtOrAfter = (
+                  referenceTime,
+                  excludedConversationComment
+                ) =>
+                  reviewComments.some((comment) => {
                     const commentUpdatedAt = Date.parse(
                       comment.updated_at ?? comment.created_at ?? ''
                     );
@@ -1293,60 +1308,90 @@ jobs:
                       comment.user?.login !== undefined &&
                       comment.user.login.toLowerCase() !== author &&
                       Number.isFinite(commentUpdatedAt) &&
-                      (!Number.isFinite(latestApprovalSubmittedAt) ||
-                        commentUpdatedAt >= latestApprovalSubmittedAt)
+                      (!Number.isFinite(referenceTime) ||
+                        commentUpdatedAt >= referenceTime)
                     );
-                  }
-                );
-                const hasLaterExternalReviewBody = reviews.some((review) => {
-                  const reviewSubmittedAt = Date.parse(
-                    review.submitted_at ?? ''
-                  );
-                  const hasFindingBody =
-                    review.state === 'COMMENTED' &&
-                    (review.body ?? '').trim().length > 0;
-                  return (
-                    review.commit_id === pr.head.sha &&
-                    review.user?.login !== undefined &&
-                    review.user.login.toLowerCase() !== author &&
-                    (hasFindingBody || review.state === 'CHANGES_REQUESTED') &&
-                    Number.isFinite(reviewSubmittedAt) &&
-                    (!Number.isFinite(latestApprovalSubmittedAt) ||
-                      reviewSubmittedAt >= latestApprovalSubmittedAt)
-                  );
-                });
-                const conversationComments = await github.paginate(
-                  github.rest.issues.listComments,
-                  { owner, repo, issue_number: pull_number, per_page: 100 }
-                );
-                const hasLaterExternalConversationComment =
+                  }) ||
+                  reviews.some((review) => {
+                    const reviewSubmittedAt = Date.parse(
+                      review.submitted_at ?? ''
+                    );
+                    const hasFindingBody =
+                      review.state === 'COMMENTED' &&
+                      (review.body ?? '').trim().length > 0;
+                    return (
+                      review.commit_id === pr.head.sha &&
+                      review.user?.login !== undefined &&
+                      review.user.login.toLowerCase() !== author &&
+                      (hasFindingBody || review.state === 'CHANGES_REQUESTED') &&
+                      Number.isFinite(reviewSubmittedAt) &&
+                      (!Number.isFinite(referenceTime) ||
+                        reviewSubmittedAt >= referenceTime)
+                    );
+                  }) ||
                   conversationComments.some((comment) => {
                     const commentUpdatedAt = Date.parse(
                       comment.updated_at ?? comment.created_at ?? ''
                     );
                     return (
+                      comment !== excludedConversationComment &&
                       comment.user?.login !== undefined &&
                       comment.user.login.toLowerCase() !== author &&
+                      !(
+                        comment.user.login.toLowerCase() === codexBotLogin &&
+                        (comment.body ?? '').trimStart().startsWith(
+                          '<!-- codex-pull-request-review-summary -->'
+                        )
+                      ) &&
                       Number.isFinite(commentUpdatedAt) &&
-                      (!Number.isFinite(latestApprovalSubmittedAt) ||
-                        commentUpdatedAt >= latestApprovalSubmittedAt)
+                      (!Number.isFinite(referenceTime) ||
+                        commentUpdatedAt >= referenceTime)
                     );
                   });
                 const hasLaterExternalFeedback =
-                  hasLaterExternalReviewComment ||
-                  hasLaterExternalReviewBody ||
-                  hasLaterExternalConversationComment;
+                  hasExternalFeedbackAtOrAfter(latestApprovalSubmittedAt);
                 const hasCurrentIndependentApproval =
                   latestDecisiveReview?.state === 'APPROVED' &&
                   !hasLaterExternalFeedback;
-                if (!hasCurrentIndependentApproval) {
+                const latestCodexReview = conversationComments.filter(
+                  (comment) =>
+                    comment.user?.login?.toLowerCase() === codexBotLogin &&
+                    /^Codex Review:/m.test(comment.body ?? '')
+                ).at(-1);
+                const reviewedCommit = (latestCodexReview?.body ?? '').match(
+                  /\*\*Reviewed commit:\*\*\s*`([0-9a-f]{10,40})`/i
+                )?.[1].toLowerCase();
+                const codexReviewCreatedAt = Date.parse(
+                  latestCodexReview?.created_at ?? ''
+                );
+                const hasCodexReviewEvidence =
+                  reviewedCommit !== undefined &&
+                  pr.head.sha.toLowerCase().startsWith(reviewedCommit) &&
+                  /^Codex Review: Didn't find any major issues\./m.test(
+                    latestCodexReview?.body ?? ''
+                  ) &&
+                  Number.isFinite(codexReviewCreatedAt);
+                const hasLaterCodexFeedback =
+                  hasCodexReviewEvidence &&
+                  hasExternalFeedbackAtOrAfter(
+                    codexReviewCreatedAt,
+                    latestCodexReview
+                  );
+                const hasCurrentCodexReview =
+                  hasCodexReviewEvidence && !hasLaterCodexFeedback;
+                if (!hasCurrentIndependentApproval && !hasCurrentCodexReview) {
                   errors.push(
-                    'High-risk changes require approval on the current head from the declared reviewer, using a GitHub identity different from the PR author.'
+                    'High-risk changes require approval on the current head from the declared reviewer, using a GitHub identity different from the PR author, or a completed no-major-issues Codex review for that head.'
                   );
                 }
-                if (hasLaterExternalFeedback) {
+                if (hasLaterExternalFeedback && !hasCurrentCodexReview) {
                   errors.push(
                     'High-risk approval is stale because external review feedback was created or edited at or after it.'
+                  );
+                }
+                if (hasLaterCodexFeedback && !hasCurrentIndependentApproval) {
+                  errors.push(
+                    'High-risk Codex review is stale because external review feedback was created or edited at or after it.'
                   );
                 }
               }

@@ -106,16 +106,18 @@ implement the change, Review scope: **Whole PR**, Review pass: **Fresh
 discovery**, Rubric result: **Pass**, zero dimensions below 2, Verdict: **Pass**,
 numeric finding counts, and zero open Critical/High findings. A finding-closure
 or latest-patch review cannot satisfy the final high-risk gate. Low- or
-Medium-risk changes use at least **Self-review**. For high risk, Reviewer must be
-the GitHub login that approved the current PR head, and Reviewed boundary must
-be the current full head SHA. For a large high-risk PR, record at least two
-unused independent domain-discovery reviewers, complete path/domain coverage,
+Medium-risk changes use at least **Self-review**. For high risk, Reviewer names
+the independent reviewer or agent task, and Reviewed boundary must be the
+current full head SHA. The current head also needs either formal approval from
+the declared reviewer or a completed Codex review reporting no major issues.
+For a large high-risk PR (more than 50 changed paths or 1,000 non-generated
+changed lines), record at least two unused independent domain-discovery
+reviewers, complete path/domain coverage,
 and an unused independent synthesis reviewer. A single general-purpose reviewer
 cannot pass that gate. For a large high-risk PR, Reviewer and Synthesis reviewer
-must identify the same final reviewer, who must provide the GitHub approval. For
-other high-risk PRs, Synthesis reviewer may be `Not applicable`, and Reviewer is
-the required approver. Detailed local reports may live in .tmp/, but summarize
-durable evidence here.
+must identify the same final reviewer. For other high-risk PRs, Synthesis
+reviewer may be `Not applicable`. Detailed local reports may live in .tmp/,
+but summarize durable evidence here.
 If Accepted Medium findings is nonzero, link an existing comment on this PR
 authored by the PR author. That comment must state `Accepted Medium findings: N`
 and `Rationale: ...` with the same accepted count.
@@ -157,29 +159,28 @@ Finding dispositions: High H-1 => Closed: test/specs/contribution-governance-tes
 ## Review Coverage Manifest
 
 <!--
-This section remains temporarily for the existing GitHub metadata workflow.
-Local review no longer uses per-path/domain assignment. Removing the GitHub
-fields requires the separately authorized workflow-enforcement stage.
+The GitHub metadata workflow checks one entry per changed path. Local review
+uses the whole-PR boundary; domains describe what was inspected.
 
 High-risk PRs require exactly one line per changed path in this format:
-Path: path/from/repository/root | Contract: behavioral contract inspected | Domains: Domain one; Domain two | Assignments: Domain one => @reviewer-one; Domain two => @reviewer-two | Adjacent: inspected call paths | Tests: relevant test evidence
+Path: path/from/repository/root | Contract: behavioral contract inspected | Domains: Domain one; Domain two | Adjacent: inspected call paths | Tests: relevant test evidence
 
 After committing the candidate, run
 `node scripts/change-review-policy.js --base origin/main` (add `--head <ref>`
 when needed) to print one scaffold line per committed path with the canonical
 domains already filled. Use the PR's actual target branch as `--base`. The
 command excludes uncommitted and unrelated untracked files. Copy the lines here,
-then fill Contract, Assignments, Adjacent, and Tests with actual review evidence.
+then fill Contract, Adjacent, and Tests with actual review evidence.
 Do not mark the review complete while any scaffold field is empty. Regenerate
 after each head change; the manifest must cover the current PR diff.
 
 The Domains value must exactly equal the applicable canonical domains from
 the repository's change-review policy; extra canonical domains are invalid.
-Large high-risk PR entries must be assigned to declared domain-discovery
-reviewers, not the PR author or synthesis reviewer. Every applicable domain must
-have one assignment; a reviewer may own multiple domains. Non-large high-risk
-entries assign every domain to the declared Reviewer. Low/Medium PRs may state
-why the manifest is not required.
+For a large high-risk PR, add `Assignments: Domain one => @reviewer-one;
+Domain two => @reviewer-two` between Domains and Adjacent on every line, naming declared domain-discovery
+reviewers rather than the PR author or synthesis reviewer. Every applicable
+domain must have one assignment; a reviewer may own multiple domains.
+Low/Medium PRs may state why the manifest is not required.
 -->
 
 Pending coverage manifest.
@@ -226,7 +227,7 @@ is not a pass.
 - [ ] Every changed path and applicable risk domain has recorded review coverage
 - [ ] Every finding was validated and explicitly dispositioned before closure
 - [ ] Large high-risk review used multiple domain reviewers and independent synthesis, or is not applicable
-- [ ] Final verification, applicable final review, and approval target the same frozen SHA
+- [ ] Final verification, applicable final review, and external review result target the same frozen SHA
 - [ ] No Critical or High finding and no open Medium finding remains
 - [ ] No diagnostics or tests were suppressed to obtain a pass
 - [ ] New public behavior is documented

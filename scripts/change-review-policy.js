@@ -707,7 +707,7 @@ function coverageManifestScaffold(
   return paths
     .map(
       (path) =>
-        `Path: ${path} | Contract:  | Domains: ${domainsForPath(path).join('; ')} | Assignments:  | Adjacent:  | Tests: `,
+        `Path: ${path} | Contract:  | Domains: ${domainsForPath(path).join('; ')} | Adjacent:  | Tests: `,
     )
     .join('\n');
 }

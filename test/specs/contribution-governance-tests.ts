@@ -84,6 +84,7 @@ interface AgentWorkLedgerModule {
 }
 
 const require = createRequire(import.meta.url);
+const yaml = require('yaml') as { parse(source: string): unknown };
 const MarkdownIt = require('markdown-it') as new (options?: {
   html?: boolean;
   linkify?: boolean;
@@ -1183,7 +1184,7 @@ describe('contribution governance workflow', () => {
     );
 
     expect(fabricated).toContain(
-      'High-risk changes require approval on the current head from the declared reviewer, using a GitHub identity different from the PR author.',
+      'High-risk changes require approval on the current head from the declared reviewer, using a GitHub identity different from the PR author, or a completed no-major-issues Codex review for that head.',
     );
 
     const staleApproval = await runPullRequestMetadataPolicy(
@@ -1198,7 +1199,7 @@ describe('contribution governance workflow', () => {
       ],
     );
     expect(staleApproval).toContain(
-      'High-risk changes require approval on the current head from the declared reviewer, using a GitHub identity different from the PR author.',
+      'High-risk changes require approval on the current head from the declared reviewer, using a GitHub identity different from the PR author, or a completed no-major-issues Codex review for that head.',
     );
 
     const supersededApproval = await runPullRequestMetadataPolicy(
@@ -1218,7 +1219,7 @@ describe('contribution governance workflow', () => {
       ],
     );
     expect(supersededApproval).toContain(
-      'High-risk changes require approval on the current head from the declared reviewer, using a GitHub identity different from the PR author.',
+      'High-risk changes require approval on the current head from the declared reviewer, using a GitHub identity different from the PR author, or a completed no-major-issues Codex review for that head.',
     );
 
     const accepted = await runPullRequestMetadataPolicy(
@@ -1467,6 +1468,206 @@ describe('contribution governance workflow', () => {
       ],
     );
     expect(unaffectedByNonFindingFeedback).toEqual([]);
+  });
+
+  it('accepts a current-head Codex review without a GitHub approval for a three-domain PR', async () => {
+    const review = [
+      'Review mode: **Independent**',
+      'Reviewer: /root/independent-reviewer',
+      'Review scope: **Whole PR**',
+      'Review pass: **Fresh discovery**',
+      `Reviewed boundary: ${pullRequestHead}`,
+      'Rubric result: **Pass**',
+      'Dimensions below 2: **0**',
+      'Verdict: **Pass**',
+      'Findings: Critical 0; High 0; Medium 0; Low 0',
+      'Open Critical/High findings: 0',
+      'Review artifact: Independent whole-PR review',
+      'Finding dispositions: No findings',
+      'Residual risks: No known residual risks',
+    ].join('\n');
+    const body = createPullRequestBody('High', review).replace(
+      / \| Assignments: [^|\n]+(?= \| Adjacent:)/g,
+      '',
+    );
+    const files = [
+      { filename: 'src/ts/layout-manager.ts', changes: 10 },
+      { filename: 'test/specs/layout-lifecycle-tests.ts', changes: 10 },
+    ];
+    const codexReview = {
+      body: `Codex Review: Didn't find any major issues.\n\n**Reviewed commit:** \`${pullRequestHead.slice(0, 10)}\``,
+      created_at: '2026-08-31T10:00:00Z',
+      html_url: 'https://github.com/CTHub/strelit-ui-kit/pull/1#issuecomment-1',
+      user: { login: 'chatgpt-codex-connector[bot]' },
+    };
+    const failures = await runPullRequestMetadataPolicy(
+      body,
+      files,
+      [],
+      false,
+      [codexReview],
+    );
+
+    expect(failures).toEqual([]);
+
+    const missingReview =
+      'High-risk changes require approval on the current head from the declared reviewer, using a GitHub identity different from the PR author, or a completed no-major-issues Codex review for that head.';
+    for (const comments of [
+      [{ ...codexReview, user: { login: 'implementer-user' } }],
+      [{ ...codexReview, user: { login: 'chatgpt-codex-connector' } }],
+      [
+        {
+          ...codexReview,
+          body: codexReview.body.replace(
+            pullRequestHead.slice(0, 10),
+            'abcdef0123',
+          ),
+        },
+      ],
+      [
+        codexReview,
+        {
+          ...codexReview,
+          body: codexReview.body.replace(
+            "Didn't find any major issues.",
+            'Found a major issue.',
+          ),
+        },
+      ],
+    ]) {
+      expect(
+        await runPullRequestMetadataPolicy(body, files, [], false, comments),
+      ).toContain(missingReview);
+    }
+
+    const laterFeedback =
+      'High-risk Codex review is stale because external review feedback was created or edited at or after it.';
+    for (const reviewComments of [
+      [
+        {
+          commit_id: pullRequestHead,
+          created_at: '2026-08-31T10:01:00Z',
+          user: { login: 'external-reviewer' },
+        },
+      ],
+      [
+        {
+          commit_id: pullRequestHead,
+          created_at: '2026-08-31T10:00:00Z',
+          user: { login: 'external-reviewer' },
+        },
+      ],
+    ]) {
+      const failures = await runPullRequestMetadataPolicy(
+        body,
+        files,
+        [],
+        false,
+        [codexReview],
+        false,
+        reviewComments,
+      );
+      expect(failures).toContain(laterFeedback);
+    }
+    const editedCodexReview = await runPullRequestMetadataPolicy(
+      body,
+      files,
+      [],
+      false,
+      [{ ...codexReview, updated_at: '2026-08-31T10:02:00Z' }],
+      false,
+      [
+        {
+          commit_id: pullRequestHead,
+          created_at: '2026-08-31T10:01:00Z',
+          user: { login: 'external-reviewer' },
+        },
+      ],
+    );
+    expect(editedCodexReview).toContain(laterFeedback);
+    const reviewFeedback = await runPullRequestMetadataPolicy(
+      body,
+      files,
+      [
+        {
+          commit_id: pullRequestHead,
+          submitted_at: '2026-08-31T10:01:00Z',
+          state: 'CHANGES_REQUESTED',
+          user: { login: 'external-reviewer' },
+        },
+      ],
+      false,
+      [codexReview],
+    );
+    expect(reviewFeedback).toContain(laterFeedback);
+    const conversationFeedback = await runPullRequestMetadataPolicy(
+      body,
+      files,
+      [],
+      false,
+      [
+        codexReview,
+        {
+          body: 'This failure path still needs a fix.',
+          created_at: '2026-08-31T10:01:00Z',
+          html_url:
+            'https://github.com/CTHub/strelit-ui-kit/pull/1#issuecomment-2',
+          user: { login: 'external-reviewer' },
+        },
+      ],
+    );
+    expect(conversationFeedback).toContain(laterFeedback);
+    const cleanRereview = await runPullRequestMetadataPolicy(
+      body,
+      files,
+      [],
+      false,
+      [
+        codexReview,
+        {
+          body: 'This failure path still needs a fix.',
+          created_at: '2026-08-31T10:01:00Z',
+          html_url:
+            'https://github.com/CTHub/strelit-ui-kit/pull/1#issuecomment-2',
+          user: { login: 'external-reviewer' },
+        },
+        {
+          ...codexReview,
+          created_at: '2026-08-31T10:02:00Z',
+          html_url:
+            'https://github.com/CTHub/strelit-ui-kit/pull/1#issuecomment-3',
+        },
+      ],
+    );
+    expect(cleanRereview).toEqual([]);
+
+    const liveReview = {
+      ...codexReview,
+      body: `Codex Review: Didn't find any major issues. More of your lovely PRs please.\n\n**Reviewed commit:** \`${pullRequestHead.slice(0, 10)}\``,
+      created_at: '2026-10-11T16:29:23Z',
+      html_url:
+        'https://github.com/CTHub/strelit-ui-kit/pull/1#issuecomment-6111162952',
+    };
+    const summary = {
+      body: '<!-- codex-pull-request-review-summary -->\n\n## Codex Review Summary\n\n| Review | Status | Commit | Review trigger |\n| Code Review | Completed | head | Manual request |',
+      created_at: '2026-10-11T16:17:24Z',
+      updated_at: '2026-10-11T16:29:25Z',
+      html_url:
+        'https://github.com/CTHub/strelit-ui-kit/pull/1#issuecomment-6111049759',
+      user: { login: 'chatgpt-codex-connector[bot]' },
+    };
+    expect(
+      await runPullRequestMetadataPolicy(body, files, [], false, [
+        summary,
+        liveReview,
+      ]),
+    ).toEqual([]);
+    expect(
+      await runPullRequestMetadataPolicy(body, files, [], false, [
+        { ...summary, user: { login: 'external-reviewer' } },
+        liveReview,
+      ]),
+    ).toContain(laterFeedback);
   });
 
   it('rejects incomplete per-path domain declarations', async () => {
@@ -2818,6 +3019,33 @@ describe('contribution governance workflow', () => {
 });
 
 describe('risk-based PR verification', () => {
+  it('provides a stable PR check covering both CI verification jobs', () => {
+    const workflow = yaml.parse(
+      readFileSync(resolve('.github/workflows/CI.yml'), 'utf8'),
+    ) as {
+      jobs: Record<
+        string,
+        {
+          name?: string;
+          needs?: string[];
+          if?: string;
+          steps?: Array<{ env?: Record<string, string>; run?: string }>;
+        }
+      >;
+    };
+    const gate = workflow.jobs['ci-required'];
+
+    expect(gate.name).toBe('ci-required');
+    expect(gate.needs).toEqual(['verify', 'browser-smoke']);
+    expect(gate.if).toContain('always()');
+    expect(gate.if).toContain("github.event_name == 'pull_request'");
+    expect(gate.steps?.[0].env?.VERIFY_RESULT).toContain('needs.verify.result');
+    expect(gate.steps?.[0].env?.BROWSER_RESULT).toContain(
+      'needs.browser-smoke.result',
+    );
+    expect(gate.steps?.[0].run).toContain('test "$VERIFY_RESULT" = success');
+    expect(gate.steps?.[0].run).toContain('test "$BROWSER_RESULT" = success');
+  });
   it('scaffolds the committed PR paths and canonical domains without dirty files', () => {
     const repository = mkdtempSync(
       join(tmpdir(), 'strelit-coverage-manifest-'),
@@ -2853,8 +3081,8 @@ describe('risk-based PR verification', () => {
         repository,
       );
       expect(scaffold.split('\n')).toEqual([
-        'Path: .github/workflows/governance.yml | Contract:  | Domains: Tooling, CI, and verification | Assignments:  | Adjacent:  | Tests: ',
-        'Path: README.md | Contract:  | Domains: Tests and documentation | Assignments:  | Adjacent:  | Tests: ',
+        'Path: .github/workflows/governance.yml | Contract:  | Domains: Tooling, CI, and verification | Adjacent:  | Tests: ',
+        'Path: README.md | Contract:  | Domains: Tests and documentation | Adjacent:  | Tests: ',
       ]);
       expect(
         execFileSync(

@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
 describe('CI security contracts', () => {
-  it('limits both verification jobs to a read-only contents token', () => {
+  it('limits every CI job to a read-only contents token', () => {
     const workflow = readFileSync(resolve('.github/workflows/CI.yml'), 'utf8');
     const parsed = parse(workflow) as {
       permissions?: unknown;
@@ -15,6 +15,7 @@ describe('CI security contracts', () => {
     expect(parsed.permissions).toEqual({ contents: 'read' });
     expect(Object.keys(parsed.jobs).sort()).toEqual([
       'browser-smoke',
+      'ci-required',
       'verify',
     ]);
     for (const job of Object.values(parsed.jobs)) {

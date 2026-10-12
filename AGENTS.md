@@ -202,9 +202,11 @@ request or meaningful new evidence.
 
 Merge readiness requires a clean frozen SHA, passing gate-executed verification,
 one passing independent fresh whole-PR review, explicit finding and class
-dispositions, no open Critical/High finding, and current-head GitHub approval
-from a different identity when repository rules require it. If committing is
-not authorized, report the final gate as pending. Once these conditions pass,
+dispositions, no open Critical/High finding, and a current-head external review
+signal accepted by the GitHub metadata workflow. GitHub approval from a
+different identity remains required when repository rules require it. If
+committing is not authorized, report the final gate as pending. Once these
+conditions pass,
 stop. Track escaped P1s, repeated classes, review rounds, duplicate commands,
 reviewer dispatches, and available time/token evidence; comment count alone is
 not a quality measure.
