@@ -22,10 +22,11 @@ discovery pass. Do not freeze or restart discovery after every fix commit.
 If an independent reviewer is unavailable, the high-risk change remains
 incomplete. A same-context role change, checklist completion, or fresh prompt in
 the implementation conversation does not satisfy the independent-review gate.
-For a pull request, the declared reviewer must also approve the current head
-commit using a GitHub identity different from the PR author. Repository text can
-record agent review evidence, but self-attested text alone cannot prove
-independence.
+For a pull request, the metadata workflow requires an external current-head
+signal: approval by the declared reviewer using a different GitHub identity, or
+a completed Codex review reporting no major issues. Repository rules may still
+require formal approval. Repository text records the independent local review,
+but self-attested text alone cannot prove independence.
 
 ## Review Scale And Coverage
 
@@ -40,8 +41,8 @@ class records its search query, hit count, dispositioned count, and summary.
 Unexplained or undispositioned hits prevent `Pass`.
 
 The final review targets one clean frozen SHA. A new commit invalidates that
-decision and approval; incremental closure reports may be reused while preparing
-the next candidate. Cloud P2 findings are triaged under repository severity
+decision and the external review signal; incremental closure reports may be
+reused while preparing the next candidate. Cloud P2 findings are triaged under repository severity
 definitions instead of being automatically fixed.
 
 ## Severity

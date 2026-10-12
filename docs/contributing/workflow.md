@@ -38,8 +38,8 @@ refuses to replace a pre-existing custom hook path.
 Use `npm run review:prepare` when only the local gate and receipt are needed,
 and `npm run review:request -- --pr <number>` when the verified commit is already
 on GitHub. A new commit or working-tree change invalidates the receipt. These
-commands do not replace independent review, GitHub approval, finding
-disposition, or the maintainer's merge decision.
+commands do not replace independent review, the external current-head review
+signal, finding disposition, or the maintainer's merge decision.
 
 Review requests are idempotent for a pull request, exact head, and reviewed
 base. A retry therefore does not create another comment after an ambiguous
@@ -48,15 +48,28 @@ client failure. To intentionally reopen review for the same boundary, run
 
 The independent reviewer must be a human or separate agent context that did not
 implement the change. If that reviewer is unavailable, high-risk work remains
-incomplete. A high-risk pull request additionally requires approval of its
-current head commit by the declared reviewer using a GitHub identity different
-from the author; updating the head invalidates that approval.
+incomplete. A high-risk pull request additionally requires a current-head
+external review signal: either formal approval by the declared reviewer or a
+completed Codex review reporting no major issues. Repository branch rules may
+require formal approval separately. Updating the head invalidates either signal.
 
 Use a finding-closure pass to verify specific fixes, then use a fresh reviewer
 context for final discovery over the whole PR from merge base through current
 head. A review of only the latest patch cannot satisfy the high-risk gate. Record
 `Review scope: Whole PR` and `Review pass: Fresh discovery` in the PR review
 evidence.
+
+## Main Branch Enforcement
+
+After the governance workflow is merged and its checks pass on a test pull
+request, configure `main` to require `pr-metadata` and the stable `ci-required`
+check. Remove obsolete version-specific CI check names. For a repository with
+no distinct GitHub approver, set the required approving-review count to zero
+and disable required code-owner reviews while retaining the independent local
+review and current-head external review gates above. Enforce branch protection
+for administrators so a failed required check cannot be bypassed during a
+routine merge. Repository settings are a separate deployment step; editing
+this file does not change them.
 
 ## Preferred Validation Set
 

@@ -57,3 +57,17 @@ jobs:
 
       - name: Exercise API demo across browser engines
         run: npm run apitest:browser-smoke
+
+  ci-required:
+    name: ci-required
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    needs: [verify, browser-smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require verification and browser smoke
+        env:
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          BROWSER_RESULT: ${{ needs.browser-smoke.result }}
+        run: |
+          test "$VERIFY_RESULT" = success
+          test "$BROWSER_RESULT" = success
