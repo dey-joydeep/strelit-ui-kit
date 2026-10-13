@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   ConfigurationError,
   createComponentItemConfigFromResolved,
@@ -279,6 +279,44 @@ describe('configuration resource limits', () => {
       expect(() => layout.createContentItem(resolvedRoot, groundItem!)).toThrow(
         'Resolved layout configuration exceeds resource limits',
       );
+    } finally {
+      layout.destroy();
+    }
+  });
+
+  it('constructs indexed children even when a resolved array overrides its iterator', () => {
+    const child = resolveComponentItemConfig({
+      type: 'component',
+      componentType: 'panel',
+    });
+    const content = [child];
+    const customIterator = vi.fn(() => {
+      throw new Error('custom iterator must not run');
+    });
+    Object.defineProperty(content, Symbol.iterator, { value: customIterator });
+    const rowConfig: RowOrColumnItemConfig = {
+      type: 'row',
+      content: [
+        {
+          type: 'component',
+          componentType: 'panel',
+        } satisfies ComponentItemConfig,
+      ],
+    };
+    const resolvedRow = {
+      ...(resolveItemConfig(rowConfig) as ResolvedRowOrColumnItemConfig),
+      content,
+    };
+
+    const layout = new StrelitLayout();
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    try {
+      const groundItem = layout.groundItem;
+      expect(groundItem).toBeDefined();
+      const row = layout.createContentItem(resolvedRow, groundItem!);
+      expect(row.contentItems).toHaveLength(1);
+      expect(customIterator).not.toHaveBeenCalled();
+      row.destroy();
     } finally {
       layout.destroy();
     }

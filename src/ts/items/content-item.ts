@@ -687,8 +687,10 @@ export abstract class ContentItem extends EventEmitter {
   private createContentItems(content: readonly ResolvedItemConfig[]) {
     const result: ContentItem[] = [];
     try {
-      for (let i = 0; i < content.length; i++) {
-        result.push(this.layoutManager.createContentItem(content[i], this));
+      for (const childConfig of Array.prototype.values.call(
+        content,
+      ) as Iterable<ResolvedItemConfig>) {
+        result.push(this.layoutManager.createContentItem(childConfig, this));
       }
     } catch (error) {
       for (let i = result.length - 1; i >= 0; i--) {
