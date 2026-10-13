@@ -121,11 +121,14 @@ export class ComponentItem extends ContentItem {
       this,
       layoutManager,
       containerElement,
-      (itemConfig) => this.handleUpdateItemConfigEvent(itemConfig),
-      () => this.show(),
-      () => this.hide(),
-      (suppressEvent) => this.focus(suppressEvent),
-      (suppressEvent) => this.blur(suppressEvent),
+      {
+        updateItemConfig: (itemConfig) =>
+          this.handleUpdateItemConfigEvent(itemConfig),
+        show: () => this.show(),
+        hide: () => this.hide(),
+        focus: (suppressEvent) => this.focus(suppressEvent),
+        blur: (suppressEvent) => this.blur(suppressEvent),
+      },
     );
   }
 

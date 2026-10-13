@@ -62,6 +62,19 @@ export interface HeaderSettings {
   tabDropdownLabel: string;
 }
 
+/** @internal */
+interface HeaderEvents {
+  getActiveComponentItem: HeaderGetActiveComponentItemEvent;
+  close: HeaderCloseEvent;
+  popout: HeaderPopoutEvent | undefined;
+  maximiseToggle: HeaderMaximiseToggleEvent | undefined;
+  click: HeaderClickEvent | undefined;
+  touchStart: HeaderTouchStartEvent | undefined;
+  componentRemove: HeaderComponentRemoveEvent | undefined;
+  componentFocus: HeaderComponentFocusEvent | undefined;
+  componentDragStart: HeaderComponentDragStartEvent | undefined;
+}
+
 /**
  * This class represents a header above a Stack ContentItem.
  * @public
@@ -130,6 +143,22 @@ export class Header extends EventEmitter {
   private readonly _tabDropdownButton!: HeaderButton;
   /** @internal */
   private readonly _maximiseButton: HeaderButton | undefined;
+  /** @internal */
+  private _getActiveComponentItemEvent: HeaderGetActiveComponentItemEvent;
+  /** @internal */
+  private _popoutEvent: HeaderPopoutEvent | undefined;
+  /** @internal */
+  private _maximiseToggleEvent: HeaderMaximiseToggleEvent | undefined;
+  /** @internal */
+  private _clickEvent: HeaderClickEvent | undefined;
+  /** @internal */
+  private _touchStartEvent: HeaderTouchStartEvent | undefined;
+  /** @internal */
+  private _componentRemoveEvent: HeaderComponentRemoveEvent | undefined;
+  /** @internal */
+  private _componentFocusEvent: HeaderComponentFocusEvent | undefined;
+  /** @internal */
+  private _componentDragStartEvent: HeaderComponentDragStartEvent | undefined;
   // /** @internal */
   // private _activeComponentItem: ComponentItem | null = null; // only used to identify active tab
 
@@ -184,15 +213,7 @@ export class Header extends EventEmitter {
     parent: Stack,
     settings: HeaderSettings,
     configClosable: boolean,
-    getActiveComponentItemEvent: HeaderGetActiveComponentItemEvent,
-    closeEvent: HeaderCloseEvent,
-    popoutEvent: HeaderPopoutEvent | undefined,
-    maximiseToggleEvent: HeaderMaximiseToggleEvent | undefined,
-    clickEvent: HeaderClickEvent | undefined,
-    touchStartEvent: HeaderTouchStartEvent | undefined,
-    componentRemoveEvent: HeaderComponentRemoveEvent | undefined,
-    componentFocusEvent: HeaderComponentFocusEvent | undefined,
-    componentDragStartEvent: HeaderComponentDragStartEvent | undefined,
+    events: HeaderEvents,
   );
   /** @internal */
   constructor(
@@ -203,25 +224,19 @@ export class Header extends EventEmitter {
     settings: HeaderSettings,
     /** @internal */
     private readonly _configClosable: boolean,
-    /** @internal */
-    private _getActiveComponentItemEvent: HeaderGetActiveComponentItemEvent,
-    closeEvent: HeaderCloseEvent,
-    /** @internal */
-    private _popoutEvent: HeaderPopoutEvent | undefined,
-    /** @internal */
-    private _maximiseToggleEvent: HeaderMaximiseToggleEvent | undefined,
-    /** @internal */
-    private _clickEvent: HeaderClickEvent | undefined,
-    /** @internal */
-    private _touchStartEvent: HeaderTouchStartEvent | undefined,
-    /** @internal */
-    private _componentRemoveEvent: HeaderComponentRemoveEvent | undefined,
-    /** @internal */
-    private _componentFocusEvent: HeaderComponentFocusEvent | undefined,
-    /** @internal */
-    private _componentDragStartEvent: HeaderComponentDragStartEvent | undefined,
+    events: HeaderEvents,
   ) {
     super();
+
+    const closeEvent = events.close;
+    this._getActiveComponentItemEvent = events.getActiveComponentItem;
+    this._popoutEvent = events.popout;
+    this._maximiseToggleEvent = events.maximiseToggle;
+    this._clickEvent = events.click;
+    this._touchStartEvent = events.touchStart;
+    this._componentRemoveEvent = events.componentRemove;
+    this._componentFocusEvent = events.componentFocus;
+    this._componentDragStartEvent = events.componentDragStart;
 
     this._tabsContainer = new TabsContainer(
       this._layoutManager,

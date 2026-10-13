@@ -106,37 +106,37 @@ interface RegisteredStrelitLayoutComponentInstantiator extends AnyStrelitLayoutC
  */
 export class StrelitLayout extends VirtualLayout {
   /** @internal */
-  private _componentTypesMap = new Map<
+  private readonly _componentTypesMap = new Map<
     string,
     RegisteredStrelitLayoutComponentInstantiator
   >();
   /** @internal */
-  private _registeredComponentMap = new Map<
+  private readonly _registeredComponentMap = new Map<
     ComponentContainer,
     ComponentContainerComponent | undefined
   >();
   /** @internal */
-  private _virtualComponentMap = new Map<
+  private readonly _virtualComponentMap = new Map<
     ComponentContainer,
     StrelitLayoutVirtualComponent
   >();
   /** @internal */
   private _strelitLayoutBoundingClientRect!: DOMRect;
   /** @internal */
-  private _containerBoundingClientRectCache = new Map<
+  private readonly _containerBoundingClientRectCache = new Map<
     ComponentContainer,
     DOMRect
   >();
 
   /** @internal */
-  private _containerVirtualRectingRequiredEventListener = (
+  private readonly _containerVirtualRectingRequiredEventListener = (
     container: ComponentContainer,
     width: number,
     height: number,
   ) =>
     this.handleContainerVirtualRectingRequiredEvent(container, width, height);
   /** @internal */
-  private _containerVirtualVisibilityChangeRequiredEventListener = (
+  private readonly _containerVirtualVisibilityChangeRequiredEventListener = (
     container: ComponentContainer,
     visible: boolean,
   ) =>
@@ -145,7 +145,7 @@ export class StrelitLayout extends VirtualLayout {
       visible,
     );
   /** @internal */
-  private _containerVirtualZIndexChangeRequiredEventListener = (
+  private readonly _containerVirtualZIndexChangeRequiredEventListener = (
     container: ComponentContainer,
     logicalZIndex: LogicalZIndex,
     defaultZIndex: string,

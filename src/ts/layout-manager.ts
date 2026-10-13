@@ -1497,7 +1497,7 @@ export abstract class LayoutManager extends EventEmitter {
           indexInParent,
           () => {
             if (child.parent === parent) {
-              parent.removeChild(child);
+              child.remove();
             }
           },
         );
@@ -2417,7 +2417,7 @@ export abstract class LayoutManager extends EventEmitter {
                       column,
                     );
                     if (rootContentItem.contentItems.includes(column)) {
-                      rootContentItem.removeChild(column);
+                      column.remove();
                     }
                   }
                 } finally {
