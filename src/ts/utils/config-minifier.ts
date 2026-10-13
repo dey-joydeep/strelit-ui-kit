@@ -242,7 +242,7 @@ function enterTranslationChild(
     throwTranslationLimitError();
   }
   const childTo: TranslationContainer = Array.isArray(value)
-    ? Array<unknown>(value.length)
+    ? Array.from({ length: value.length })
     : {};
   state.stack.push({
     kind: 'enter',
@@ -283,7 +283,7 @@ function minifyKey(value: string): string {
 
 function unminifyKey(key: string): string {
   if (key.length === 1) {
-    return configMinifierKeys[parseInt(key, 36)] ?? key;
+    return configMinifierKeys[Number.parseInt(key, 36)] ?? key;
   }
 
   if (key.startsWith('______')) {
@@ -299,7 +299,7 @@ function unminifyKey(key: string): string {
   }
 
   if (/^~[0-9a-z]+$/.test(key)) {
-    const index = parseInt(key.slice(1), 36);
+    const index = Number.parseInt(key.slice(1), 36);
     return configMinifierKeys[index] ?? key;
   }
 
@@ -330,14 +330,14 @@ function unminifyValue(value: unknown): unknown {
     typeof value === 'string' &&
     (value.startsWith('@') || value.startsWith('~'))
   ) {
-    const idx = parseInt(value.slice(1), 36);
+    const idx = Number.parseInt(value.slice(1), 36);
     if (!Number.isNaN(idx) && idx >= 0 && idx < configMinifierValues.length) {
       return configMinifierValues[idx];
     }
   }
 
   if (typeof value === 'string' && value.length === 1) {
-    return configMinifierValues[parseInt(value, 36)] ?? value;
+    return configMinifierValues[Number.parseInt(value, 36)] ?? value;
   }
 
   if (typeof value === 'string' && value.startsWith('______')) {

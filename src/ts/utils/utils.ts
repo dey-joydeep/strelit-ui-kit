@@ -112,6 +112,10 @@ export function ensureElementPositionAbsolute(element: HTMLElement): void {
   }
 }
 
+function createCloneBudget(): { nodes: number } {
+  return { nodes: 0 };
+}
+
 /**
  * Clones serializable component state without recursive call-stack growth.
  *
@@ -120,7 +124,7 @@ export function ensureElementPositionAbsolute(element: HTMLElement): void {
  */
 export function deepCloneValue(
   value: unknown,
-  budget: { nodes: number } = { nodes: 0 },
+  budget: { nodes: number } = createCloneBudget(),
 ): unknown {
   interface CloneFrame {
     readonly source: object;
