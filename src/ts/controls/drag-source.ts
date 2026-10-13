@@ -130,7 +130,7 @@ export class DragSource {
       } catch (error) {
         try {
           const parent = componentItem.parent;
-          if (parent !== null && parent.contentItems.includes(componentItem)) {
+          if (parent?.contentItems.includes(componentItem)) {
             componentItem.remove();
           } else {
             componentItem.destroy();

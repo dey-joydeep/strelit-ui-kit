@@ -335,8 +335,7 @@ export class DragProxy extends EventEmitter {
     } catch (error) {
       firstError ??= error;
       if (
-        this._componentItem.parent !== null &&
-        this._componentItem.parent.contentItems.includes(this._componentItem)
+        this._componentItem.parent?.contentItems.includes(this._componentItem)
       ) {
         droppedComponentItem = this._componentItem;
       } else {
@@ -401,7 +400,7 @@ export class DragProxy extends EventEmitter {
     let current: ContentItem | null = parent;
     while (current !== null && !current.isGround) {
       const nextParent: ContentItem | null = current.parent;
-      if (nextParent === null || !nextParent.contentItems.includes(current)) {
+      if (!nextParent?.contentItems.includes(current)) {
         return false;
       }
       current = nextParent;
