@@ -50,7 +50,7 @@ import {
 function stringifyConfigurationValue(value: unknown): string {
   try {
     const serialized = JSON.stringify(value);
-    return serialized === undefined ? String(value) : serialized;
+    return serialized ?? String(value);
   } catch {
     return '[unserializable configuration]';
   }
@@ -1555,8 +1555,8 @@ function resolvePixelDimension(
   value: number | undefined,
   defaultValue: number,
 ): number {
-  const resolved = value === undefined ? defaultValue : value;
-  if (!Number.isFinite(resolved) || resolved < 0) {
+  const resolved = value ?? defaultValue;
+  if (value === null || !Number.isFinite(resolved) || resolved < 0) {
     throw new ConfigurationError(
       `Layout dimension ${name} must be finite and nonnegative`,
     );

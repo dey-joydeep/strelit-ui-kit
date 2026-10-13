@@ -78,6 +78,13 @@ describe('configuration resource limits', () => {
     );
   });
 
+  it('uses a fresh node budget for each top-level clone', () => {
+    const nearLimit = Array(maximumNodes - 1).fill(null);
+
+    expect(deepCloneValue(nearLimit)).toEqual(nearLimit);
+    expect(deepCloneValue(nearLimit)).toEqual(nearLimit);
+  });
+
   it('rejects cyclic state with a controlled configuration error', () => {
     const cyclic: Record<string, SerializableValue> = {};
     cyclic.self = cyclic;
