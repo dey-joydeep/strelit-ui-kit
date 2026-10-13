@@ -301,6 +301,15 @@ export class Stack extends ComponentParentableItem {
 
     super.init();
 
+    const createdTabs = this.createInitialTabs();
+    this._header.updateClosability();
+    this.initContentItems();
+    for (const tab of createdTabs) {
+      this.layoutManager.emit('tabCreated', tab);
+    }
+  }
+
+  private createInitialTabs(): Tab[] {
     const contentItems = this.contentItems;
     const contentItemCount = contentItems.length;
     const createdTabs: Tab[] = [];
@@ -339,11 +348,7 @@ export class Stack extends ComponentParentableItem {
       }
     }
 
-    this._header.updateClosability();
-    this.initContentItems();
-    for (const tab of createdTabs) {
-      this.layoutManager.emit('tabCreated', tab);
-    }
+    return createdTabs;
   }
 
   /** Sets active component item. */
