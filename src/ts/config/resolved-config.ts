@@ -240,16 +240,20 @@ export function createResolvedStackItemConfigCopy(
     content !== undefined
       ? createResolvedStackItemConfigContentCopy(content)
       : createResolvedStackItemConfigContentCopy(original.content);
-  const activeItemIndex =
-    content === undefined
-      ? original.activeItemIndex
-      : copiedContent.length === 0
-        ? undefined
-        : original.activeItemIndex !== undefined &&
-            original.activeItemIndex >= 0 &&
-            original.activeItemIndex < copiedContent.length
-          ? original.activeItemIndex
-          : 0;
+  let activeItemIndex: number | undefined;
+  if (content === undefined) {
+    activeItemIndex = original.activeItemIndex;
+  } else if (copiedContent.length === 0) {
+    activeItemIndex = undefined;
+  } else if (
+    original.activeItemIndex !== undefined &&
+    original.activeItemIndex >= 0 &&
+    original.activeItemIndex < copiedContent.length
+  ) {
+    activeItemIndex = original.activeItemIndex;
+  } else {
+    activeItemIndex = 0;
+  }
   const result: ResolvedStackItemConfig = {
     type: original.type,
     content: copiedContent,
