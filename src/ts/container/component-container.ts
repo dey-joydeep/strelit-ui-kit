@@ -95,6 +95,15 @@ export type ComponentContainerUpdateItemConfigEventHandler = (
   itemConfig: ResolvedComponentItemConfig,
 ) => void;
 
+/** @internal */
+interface ComponentContainerEvents {
+  updateItemConfig: ComponentContainerUpdateItemConfigEventHandler;
+  show: ComponentContainerShowEventHandler;
+  hide: ComponentContainerHideEventHandler;
+  focus: ComponentContainerFocusEventHandler;
+  blur: ComponentContainerBlurEventHandler;
+}
+
 /**
  * Provides component container behavior.
  * @public
@@ -128,6 +137,16 @@ export class ComponentContainer extends EventEmitter {
   private _destroyComponentUnbound = false;
   private _destroyEventEmitted = false;
   private _destroyed = false;
+  /** @internal */
+  private readonly _updateItemConfigEvent: ComponentContainerUpdateItemConfigEventHandler;
+  /** @internal */
+  private readonly _showEvent: ComponentContainerShowEventHandler;
+  /** @internal */
+  private readonly _hideEvent: ComponentContainerHideEventHandler;
+  /** @internal */
+  private readonly _focusEvent: ComponentContainerFocusEventHandler;
+  /** @internal */
+  private readonly _blurEvent: ComponentContainerBlurEventHandler;
 
   /** The state request event. */
   stateRequestEvent: ComponentContainerStateRequestEventHandler | undefined;
@@ -206,11 +225,7 @@ export class ComponentContainer extends EventEmitter {
     parent: ComponentItem,
     layoutManager: LayoutManager,
     element: HTMLElement,
-    updateItemConfigEvent: ComponentContainerUpdateItemConfigEventHandler,
-    showEvent: ComponentContainerShowEventHandler,
-    hideEvent: ComponentContainerHideEventHandler,
-    focusEvent: ComponentContainerFocusEventHandler,
-    blurEvent: ComponentContainerBlurEventHandler,
+    events: ComponentContainerEvents,
   );
   /** @internal */
   constructor(
@@ -222,18 +237,15 @@ export class ComponentContainer extends EventEmitter {
     private readonly _layoutManager: LayoutManager,
     /** @internal */
     private readonly _element: HTMLElement,
-    /** @internal */
-    private readonly _updateItemConfigEvent: ComponentContainerUpdateItemConfigEventHandler,
-    /** @internal */
-    private readonly _showEvent: ComponentContainerShowEventHandler,
-    /** @internal */
-    private readonly _hideEvent: ComponentContainerHideEventHandler,
-    /** @internal */
-    private readonly _focusEvent: ComponentContainerFocusEventHandler,
-    /** @internal */
-    private readonly _blurEvent: ComponentContainerBlurEventHandler,
+    events: ComponentContainerEvents,
   ) {
     super();
+
+    this._updateItemConfigEvent = events.updateItemConfig;
+    this._showEvent = events.show;
+    this._hideEvent = events.hide;
+    this._focusEvent = events.focus;
+    this._blurEvent = events.blur;
 
     this._width = 0;
     this._height = 0;

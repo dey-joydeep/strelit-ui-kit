@@ -488,7 +488,7 @@ export class DragProxy extends EventEmitter {
     ) {
       const parent = this._originalParent.parent;
       if (parent !== null) {
-        parent.removeChild(this._originalParent);
+        this._originalParent.remove();
       }
     }
   }

@@ -244,16 +244,18 @@ export class Stack extends ComponentParentableItem {
       this,
       headerSettings,
       config.isClosable && close !== false,
-      () => this.getActiveComponentItem(),
-      () => this.remove(),
-      () => this.handlePopoutEvent(),
-      () => this.toggleMaximise(),
-      (ev) => this.handleHeaderClickEvent(ev),
-      (ev) => this.handleHeaderTouchStartEvent(ev),
-      (item) => this.handleHeaderComponentRemoveEvent(item),
-      (item) => this.handleHeaderComponentFocusEvent(item),
-      (x, y, dragListener, item) =>
-        this.handleHeaderComponentStartDragEvent(x, y, dragListener, item),
+      {
+        getActiveComponentItem: () => this.getActiveComponentItem(),
+        close: () => this.remove(),
+        popout: () => this.handlePopoutEvent(),
+        maximiseToggle: () => this.toggleMaximise(),
+        click: (ev) => this.handleHeaderClickEvent(ev),
+        touchStart: (ev) => this.handleHeaderTouchStartEvent(ev),
+        componentRemove: (item) => this.handleHeaderComponentRemoveEvent(item),
+        componentFocus: (item) => this.handleHeaderComponentFocusEvent(item),
+        componentDragStart: (x, y, dragListener, item) =>
+          this.handleHeaderComponentStartDragEvent(x, y, dragListener, item),
+      },
     );
 
     // this._dropZones = {};

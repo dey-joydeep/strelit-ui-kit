@@ -59,14 +59,10 @@ export class ClickBubblingEvent extends EventEmitterBubblingEvent {
 // @public
 export class ComponentContainer extends EventEmitter {
     constructor(_nonConstructible: never, ..._args: never[]);
-    // Warning: (ae-forgotten-export) The symbol "ComponentContainerUpdateItemConfigEventHandler" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "ComponentContainerShowEventHandler" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "ComponentContainerHideEventHandler" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "ComponentContainerFocusEventHandler" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "ComponentContainerBlurEventHandler" needs to be exported by the entry point index.d.ts
+    // Warning: (ae-forgotten-export) The symbol "ComponentContainerEvents" needs to be exported by the entry point index.d.ts
     //
     // @internal
-    constructor(config: ResolvedComponentItemConfig, parent: ComponentItem, layoutManager: LayoutManager, element: HTMLElement, updateItemConfigEvent: ComponentContainerUpdateItemConfigEventHandler, showEvent: ComponentContainerShowEventHandler, hideEvent: ComponentContainerHideEventHandler, focusEvent: ComponentContainerFocusEventHandler, blurEvent: ComponentContainerBlurEventHandler);
+    constructor(config: ResolvedComponentItemConfig, parent: ComponentItem, layoutManager: LayoutManager, element: HTMLElement, events: ComponentContainerEvents);
     blur(suppressEvent?: boolean): void;
     close(): void;
     get component(): ComponentContainerComponent | undefined;
@@ -625,18 +621,10 @@ export function formatUndefinableSize(size: number | undefined, sizeUnit: SizeUn
 export class Header extends EventEmitter {
     constructor(_nonConstructible: never, ..._args: never[]);
     // Warning: (ae-forgotten-export) The symbol "HeaderSettings" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "HeaderGetActiveComponentItemEvent" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "HeaderCloseEvent" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "HeaderPopoutEvent" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "HeaderMaximiseToggleEvent" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "HeaderClickEvent" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "HeaderTouchStartEvent" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "HeaderComponentRemoveEvent" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "HeaderComponentFocusEvent" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "HeaderComponentDragStartEvent" needs to be exported by the entry point index.d.ts
+    // Warning: (ae-forgotten-export) The symbol "HeaderEvents" needs to be exported by the entry point index.d.ts
     //
     // @internal
-    constructor(layoutManager: LayoutManager, parent: Stack, settings: HeaderSettings, configClosable: boolean, getActiveComponentItemEvent: HeaderGetActiveComponentItemEvent, closeEvent: HeaderCloseEvent, popoutEvent: HeaderPopoutEvent | undefined, maximiseToggleEvent: HeaderMaximiseToggleEvent | undefined, clickEvent: HeaderClickEvent | undefined, touchStartEvent: HeaderTouchStartEvent | undefined, componentRemoveEvent: HeaderComponentRemoveEvent | undefined, componentFocusEvent: HeaderComponentFocusEvent | undefined, componentDragStartEvent: HeaderComponentDragStartEvent | undefined);
+    constructor(layoutManager: LayoutManager, parent: Stack, settings: HeaderSettings, configClosable: boolean, events: HeaderEvents);
     // @internal (undocumented)
     applyFocusedValue(value: boolean): void;
     get controlsContainerElement(): HTMLElement;

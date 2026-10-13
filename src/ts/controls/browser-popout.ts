@@ -515,7 +515,7 @@ export class BrowserPopout extends EventEmitter {
     }
     return () => {
       if (parentItem.contentItems.includes(newContentItem)) {
-        parentItem.removeChild(newContentItem);
+        newContentItem.remove();
       }
     };
   }
