@@ -197,6 +197,21 @@ export type EventEmitterUnknownCallback = (
   this: void,
   ...args: EventEmitterUnknownParams
 ) => void;
+
+interface DispatchFailure {
+  occurred: boolean;
+  error: unknown;
+}
+
+function captureDispatchFailure(
+  failure: DispatchFailure,
+  error: unknown,
+): void {
+  if (!failure.occurred) {
+    failure.error = error;
+  }
+  failure.occurred = true;
+}
 /**
  * Represents event emitter callback.
  * @public
@@ -307,6 +322,55 @@ export class EventEmitter {
     return guard?.(eventName) ?? true;
   }
 
+  private emitToSubscribers(
+    eventName: string,
+    args: EventEmitterUnknownParams,
+    failure: DispatchFailure,
+  ): void {
+    const registered = this._subscriptionsMap.get(eventName);
+    if (registered === undefined) {
+      return;
+    }
+
+    const subscriptions = registered.slice();
+    for (let index = 0; index < subscriptions.length; index++) {
+      if (!this.isEventDispatchAllowed(eventName)) {
+        break;
+      }
+      try {
+        subscriptions[index](...args);
+      } catch (error) {
+        captureDispatchFailure(failure, error);
+      }
+    }
+  }
+
+  private dispatchEvent(
+    eventName: string,
+    args: EventEmitterUnknownParams,
+  ): void {
+    const failure: DispatchFailure = { occurred: false, error: undefined };
+    this.emitToSubscribers(eventName, args, failure);
+
+    if (this.isEventDispatchAllowed(eventName)) {
+      try {
+        this.emitAllEvent(eventName, args);
+      } catch (error) {
+        captureDispatchFailure(failure, error);
+      }
+    }
+    if (this.isEventDispatchAllowed(eventName)) {
+      try {
+        this.tryBubbleEvent(eventName, args);
+      } catch (error) {
+        captureDispatchFailure(failure, error);
+      }
+    }
+    if (failure.occurred) {
+      throw failure.error;
+    }
+  }
+
   /** Performs the try bubble event operation. */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   tryBubbleEvent(name: string, args: unknown[]): void {
@@ -323,86 +387,12 @@ export class EventEmitter {
     eventName: K,
     ...args: EventEmitterEventParamsMap[K]
   ): void {
-    let firstError: unknown;
-    let hasError = false;
-    let subscriptions = this._subscriptionsMap.get(eventName);
-
-    if (subscriptions !== undefined) {
-      subscriptions = subscriptions.slice();
-      for (let i = 0; i < subscriptions.length; i++) {
-        if (!this.isEventDispatchAllowed(eventName)) {
-          break;
-        }
-        try {
-          subscriptions[i](...args);
-        } catch (error) {
-          if (!hasError) firstError = error;
-          hasError = true;
-        }
-      }
-    }
-
-    if (this.isEventDispatchAllowed(eventName)) {
-      try {
-        this.emitAllEvent(eventName, args);
-      } catch (error) {
-        if (!hasError) firstError = error;
-        hasError = true;
-      }
-    }
-    if (this.isEventDispatchAllowed(eventName)) {
-      try {
-        this.tryBubbleEvent(eventName, args);
-      } catch (error) {
-        if (!hasError) firstError = error;
-        hasError = true;
-      }
-    }
-    if (hasError) {
-      throw firstError;
-    }
+    this.dispatchEvent(eventName, args);
   }
 
   /** @internal */
   emitUnknown(eventName: string, ...args: EventEmitterUnknownParams): void {
-    let firstError: unknown;
-    let hasError = false;
-    let subs = this._subscriptionsMap.get(eventName);
-
-    if (subs !== undefined) {
-      subs = subs.slice();
-      for (let i = 0; i < subs.length; i++) {
-        if (!this.isEventDispatchAllowed(eventName)) {
-          break;
-        }
-        try {
-          subs[i](...args);
-        } catch (error) {
-          if (!hasError) firstError = error;
-          hasError = true;
-        }
-      }
-    }
-
-    if (this.isEventDispatchAllowed(eventName)) {
-      try {
-        this.emitAllEvent(eventName, args);
-      } catch (error) {
-        if (!hasError) firstError = error;
-        hasError = true;
-      }
-    }
-    if (this.isEventDispatchAllowed(eventName)) {
-      try {
-        this.tryBubbleEvent(eventName, args);
-      } catch (error) {
-        if (!hasError) firstError = error;
-        hasError = true;
-      }
-    }
-    if (hasError) {
-      throw firstError;
-    }
+    this.dispatchEvent(eventName, args);
   }
 
   /* @internal **/

@@ -135,6 +135,60 @@ export function deepCloneValue(
   }
 
   const active = new WeakSet<object>();
+  function createArrayClone(
+    source: unknown[],
+    depth: number,
+  ): { clone: unknown[]; frame: CloneFrame } {
+    if (source.length > maximumConfigNodes - budget.nodes) {
+      throw new ConfigurationError(
+        'Serializable value exceeds resource limits',
+      );
+    }
+    const entries: [string, unknown][] = [];
+    for (let index = 0; index < source.length; index++) {
+      if (index in source) {
+        entries.push([index.toString(), source[index]]);
+      }
+    }
+    if (entries.length !== source.length) {
+      throw new ConfigurationError('Value is not serializable');
+    }
+    const clone = Array<unknown>(source.length);
+    return {
+      clone,
+      frame: { source, target: clone, entries, depth, index: 0 },
+    };
+  }
+
+  function createRecordClone(
+    source: object,
+    depth: number,
+  ): { clone: Record<string, unknown>; frame: CloneFrame } {
+    try {
+      const prototype = Object.getPrototypeOf(source);
+      if (prototype !== null && Object.getPrototypeOf(prototype) !== null) {
+        throw new ConfigurationError('Value is not serializable');
+      }
+    } catch (error) {
+      if (error instanceof ConfigurationError) {
+        throw error;
+      }
+      throw new ConfigurationError('Value is not serializable');
+    }
+
+    const entries = Object.entries(source);
+    if (entries.length > maximumConfigNodes - budget.nodes) {
+      throw new ConfigurationError(
+        'Serializable value exceeds resource limits',
+      );
+    }
+    const clone: Record<string, unknown> = {};
+    return {
+      clone,
+      frame: { source, target: clone, entries, depth, index: 0 },
+    };
+  }
+
   function createClone(
     source: unknown,
     depth: number,
@@ -178,50 +232,9 @@ export function deepCloneValue(
 
     active.add(source);
     if (Array.isArray(source)) {
-      if (source.length > maximumConfigNodes - budget.nodes) {
-        throw new ConfigurationError(
-          'Serializable value exceeds resource limits',
-        );
-      }
-      const entries: [string, unknown][] = [];
-      for (let index = 0; index < source.length; index++) {
-        if (index in source) {
-          entries.push([index.toString(), source[index]]);
-        }
-      }
-      if (entries.length !== source.length) {
-        throw new ConfigurationError('Value is not serializable');
-      }
-      const clone = Array<unknown>(source.length);
-      return {
-        clone,
-        frame: { source, target: clone, entries, depth, index: 0 },
-      };
+      return createArrayClone(source, depth);
     }
-
-    try {
-      const prototype = Object.getPrototypeOf(source);
-      if (prototype !== null && Object.getPrototypeOf(prototype) !== null) {
-        throw new ConfigurationError('Value is not serializable');
-      }
-    } catch (error) {
-      if (error instanceof ConfigurationError) {
-        throw error;
-      }
-      throw new ConfigurationError('Value is not serializable');
-    }
-
-    const entries = Object.entries(source);
-    if (entries.length > maximumConfigNodes - budget.nodes) {
-      throw new ConfigurationError(
-        'Serializable value exceeds resource limits',
-      );
-    }
-    const clone: Record<string, unknown> = {};
-    return {
-      clone,
-      frame: { source, target: clone, entries, depth, index: 0 },
-    };
+    return createRecordClone(source, depth);
   }
 
   const root = createClone(value, 0);
