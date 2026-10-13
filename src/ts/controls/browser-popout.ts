@@ -5,6 +5,7 @@ import {
   minifyResolvedLayoutConfig,
   type ResolvedPopoutLayoutConfig,
   type ResolvedPopoutLayoutConfigWindow,
+  type ResolvedRootItemConfig,
 } from '../config/resolved-config';
 import { PopoutBlockedError } from '../errors/external-error';
 import {
@@ -12,6 +13,7 @@ import {
   UnexpectedUndefinedError,
 } from '../errors/internal-error';
 import { ContentItem } from '../items/content-item';
+import { GroundItem } from '../items/ground-item';
 import { LayoutManager } from '../layout-manager';
 import { EventEmitter } from '../utils/event-emitter';
 import { ItemType, Rect } from '../utils/types';
@@ -357,32 +359,15 @@ export class BrowserPopout extends EventEmitter {
      * Fallback if parentItem is not available. Either add it to the topmost
      * item or make it the topmost item if the layout is empty
      */
-    let rootItemToWrap: ContentItem | undefined;
-    let wrapperItem: ContentItem | undefined;
-    if (parentItem === undefined) {
-      if (groundItem.contentItems.length > 0) {
-        const rootItem = groundItem.contentItems[0];
-        const rootCanAcceptReturnedItem =
-          rootItem.isRow ||
-          rootItem.isColumn ||
-          (rootItem.isStack && copiedRoot.type === ItemType.component);
-        if (!rootCanAcceptReturnedItem) {
-          rootItemToWrap = rootItem;
-          wrapperItem = this._layoutManager.createAndInitContentItem(
-            createResolvedRowOrColumnItemConfigDefault('row'),
-            groundItem,
-          );
-          parentItem = wrapperItem;
-          index = 1;
-        } else {
-          parentItem = rootItem;
-          index = 0;
-        }
-      } else {
-        parentItem = groundItem;
-        index = 0;
-      }
-    }
+    const destination = this.findPopInDestination(
+      groundItem,
+      copiedRoot,
+      parentItem,
+      index,
+    );
+    parentItem = destination.parentItem;
+    index = destination.index;
+    const { rootItemToWrap, wrapperItem } = destination;
 
     let newContentItem: ContentItem;
     try {
@@ -403,89 +388,59 @@ export class BrowserPopout extends EventEmitter {
     }
 
     if (rootItemToWrap !== undefined && wrapperItem !== undefined) {
-      try {
-        wrapperItem.addChild(newContentItem, 0, true);
-      } catch (error) {
-        const cleanupErrors: unknown[] = [];
-        if (!wrapperItem.contentItems.includes(newContentItem)) {
-          try {
-            newContentItem.destroy();
-          } catch (cleanupError) {
-            cleanupErrors.push(cleanupError);
-          }
-        }
-        try {
-          wrapperItem.destroy();
-        } catch (cleanupError) {
-          cleanupErrors.push(cleanupError);
-        }
-        throwWithPopInCleanupErrors(error, cleanupErrors);
-      }
-
-      try {
-        groundItem.removeChild(rootItemToWrap, true);
-        groundItem.addChild(wrapperItem);
-        wrapperItem.addChild(rootItemToWrap, 0, true);
-      } catch (error) {
-        const rollbackErrors: unknown[] = [];
-        if (wrapperItem.contentItems.includes(rootItemToWrap)) {
-          try {
-            wrapperItem.removeChild(rootItemToWrap, true);
-          } catch (rollbackError) {
-            rollbackErrors.push(rollbackError);
-          }
-        }
-        if (groundItem.contentItems.includes(wrapperItem)) {
-          try {
-            groundItem.removeChild(wrapperItem, true);
-          } catch (rollbackError) {
-            rollbackErrors.push(rollbackError);
-          }
-        }
-        if (
-          !groundItem.contentItems.includes(rootItemToWrap) &&
-          !wrapperItem.contentItems.includes(rootItemToWrap)
-        ) {
-          try {
-            groundItem.restoreRootWithoutResize(rootItemToWrap);
-          } catch (rollbackError) {
-            rollbackErrors.push(rollbackError);
-          }
-        }
-        if (
-          !groundItem.contentItems.includes(wrapperItem) &&
-          !wrapperItem.contentItems.includes(rootItemToWrap)
-        ) {
-          try {
-            wrapperItem.destroy();
-          } catch (rollbackError) {
-            rollbackErrors.push(rollbackError);
-          }
-        }
-        if (rollbackErrors.length > 0) {
-          throw Object.assign(
-            new Error(
-              'Pop-in insertion failed and root rollback was incomplete',
-            ),
-            { errors: [error, ...rollbackErrors] },
-          );
-        }
-        throw error;
-      }
-      return () => {
-        if (wrapperItem.contentItems.includes(rootItemToWrap)) {
-          wrapperItem.removeChild(rootItemToWrap, true);
-        }
-        if (groundItem.contentItems.includes(wrapperItem)) {
-          groundItem.removeChild(wrapperItem, true);
-        }
-        if (!groundItem.contentItems.includes(rootItemToWrap)) {
-          groundItem.restoreRootWithoutResize(rootItemToWrap);
-        }
-        wrapperItem.destroy();
-      };
+      return this.insertWrappedPopInItem(
+        groundItem,
+        rootItemToWrap,
+        wrapperItem,
+        newContentItem,
+      );
     }
 
+    return this.insertDirectPopInItem(parentItem, newContentItem, index);
+  }
+
+  private findPopInDestination(
+    groundItem: GroundItem,
+    copiedRoot: ResolvedRootItemConfig,
+    parentItem: ContentItem | undefined,
+    index: number | undefined,
+  ): {
+    parentItem: ContentItem;
+    index: number | undefined;
+    rootItemToWrap?: ContentItem;
+    wrapperItem?: ContentItem;
+  } {
+    if (parentItem !== undefined) {
+      return { parentItem, index };
+    }
+    if (groundItem.contentItems.length === 0) {
+      return { parentItem: groundItem, index: 0 };
+    }
+    const rootItem = groundItem.contentItems[0];
+    const rootCanAcceptReturnedItem =
+      rootItem.isRow ||
+      rootItem.isColumn ||
+      (rootItem.isStack && copiedRoot.type === ItemType.component);
+    if (rootCanAcceptReturnedItem) {
+      return { parentItem: rootItem, index: 0 };
+    }
+    const wrapperItem = this._layoutManager.createAndInitContentItem(
+      createResolvedRowOrColumnItemConfigDefault('row'),
+      groundItem,
+    );
+    return {
+      parentItem: wrapperItem,
+      index: 1,
+      rootItemToWrap: rootItem,
+      wrapperItem,
+    };
+  }
+
+  private insertDirectPopInItem(
+    parentItem: ContentItem,
+    newContentItem: ContentItem,
+    index: number | undefined,
+  ): () => void {
     try {
       if (index !== undefined) {
         const normalizedIndex = Number.isFinite(index) ? Math.trunc(index) : 0;
@@ -518,6 +473,121 @@ export class BrowserPopout extends EventEmitter {
         newContentItem.remove();
       }
     };
+  }
+
+  private insertWrappedPopInItem(
+    groundItem: GroundItem,
+    rootItemToWrap: ContentItem,
+    wrapperItem: ContentItem,
+    newContentItem: ContentItem,
+  ): () => void {
+    try {
+      wrapperItem.addChild(newContentItem, 0, true);
+    } catch (error) {
+      const cleanupErrors: unknown[] = [];
+      if (!wrapperItem.contentItems.includes(newContentItem)) {
+        try {
+          newContentItem.destroy();
+        } catch (cleanupError) {
+          cleanupErrors.push(cleanupError);
+        }
+      }
+      try {
+        wrapperItem.destroy();
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
+      }
+      throwWithPopInCleanupErrors(error, cleanupErrors);
+    }
+
+    try {
+      groundItem.removeChild(rootItemToWrap, true);
+      groundItem.addChild(wrapperItem);
+      wrapperItem.addChild(rootItemToWrap, 0, true);
+    } catch (error) {
+      this.rollbackWrappedPopInInsertion(
+        groundItem,
+        rootItemToWrap,
+        wrapperItem,
+        error,
+      );
+    }
+    return () => {
+      if (wrapperItem.contentItems.includes(rootItemToWrap)) {
+        wrapperItem.removeChild(rootItemToWrap, true);
+      }
+      if (groundItem.contentItems.includes(wrapperItem)) {
+        groundItem.removeChild(wrapperItem, true);
+      }
+      if (!groundItem.contentItems.includes(rootItemToWrap)) {
+        groundItem.restoreRootWithoutResize(rootItemToWrap);
+      }
+      wrapperItem.destroy();
+    };
+  }
+
+  private rollbackWrappedPopInInsertion(
+    groundItem: GroundItem,
+    rootItemToWrap: ContentItem,
+    wrapperItem: ContentItem,
+    error: unknown,
+  ): never {
+    const rollbackErrors: unknown[] = [];
+    if (wrapperItem.contentItems.includes(rootItemToWrap)) {
+      try {
+        wrapperItem.removeChild(rootItemToWrap, true);
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
+    }
+    if (groundItem.contentItems.includes(wrapperItem)) {
+      try {
+        groundItem.removeChild(wrapperItem, true);
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
+    }
+    this.restoreWrappedPopInRoot(
+      groundItem,
+      rootItemToWrap,
+      wrapperItem,
+      rollbackErrors,
+    );
+    if (rollbackErrors.length > 0) {
+      throw Object.assign(
+        new Error('Pop-in insertion failed and root rollback was incomplete'),
+        { errors: [error, ...rollbackErrors] },
+      );
+    }
+    throw error;
+  }
+
+  private restoreWrappedPopInRoot(
+    groundItem: GroundItem,
+    rootItemToWrap: ContentItem,
+    wrapperItem: ContentItem,
+    rollbackErrors: unknown[],
+  ): void {
+    if (
+      !groundItem.contentItems.includes(rootItemToWrap) &&
+      !wrapperItem.contentItems.includes(rootItemToWrap)
+    ) {
+      try {
+        groundItem.restoreRootWithoutResize(rootItemToWrap);
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
+    }
+    if (
+      !groundItem.contentItems.includes(wrapperItem) &&
+      !wrapperItem.contentItems.includes(rootItemToWrap)
+    ) {
+      try {
+        wrapperItem.destroy();
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
+    }
   }
 
   /**
@@ -611,32 +681,35 @@ export class BrowserPopout extends EventEmitter {
     if (this._popoutWindow === null || this._layoutManager.isDestroyed) {
       this.clearCheckReadyInterval();
       return;
-    } else {
-      if (this._popoutWindow.closed) {
-        this.clearCheckReadyInterval();
-        this._onClose();
-      } else if (this._pendingPopInRollback !== undefined) {
-        try {
-          this.rollbackPendingPopIn();
-        } catch {
-          // Keep the rollback handle and retry while the child remains open.
-        }
-      } else {
-        let strelitInstance: LayoutManager | undefined;
-        try {
-          strelitInstance = this._popoutWindow.__strelitInstance;
-        } catch {
-          // A navigated child can become cross-origin. Keep polling closure.
-          return;
-        }
-        if (
-          strelitInstance?.isInitialised &&
-          strelitInstance !== this._initialisedStrelitInstance
-        ) {
-          this.onInitialised(strelitInstance);
-          this.clearCheckReadyInterval();
-        }
+    }
+    if (this._popoutWindow.closed) {
+      this.clearCheckReadyInterval();
+      this._onClose();
+    } else if (this._pendingPopInRollback !== undefined) {
+      try {
+        this.rollbackPendingPopIn();
+      } catch {
+        // Keep the rollback handle and retry while the child remains open.
       }
+    } else {
+      this.checkReadyChildInstance(this._popoutWindow);
+    }
+  }
+
+  private checkReadyChildInstance(popoutWindow: Window): void {
+    let strelitInstance: LayoutManager | undefined;
+    try {
+      strelitInstance = popoutWindow.__strelitInstance;
+    } catch {
+      // A navigated child can become cross-origin. Keep polling closure.
+      return;
+    }
+    if (
+      strelitInstance?.isInitialised &&
+      strelitInstance !== this._initialisedStrelitInstance
+    ) {
+      this.onInitialised(strelitInstance);
+      this.clearCheckReadyInterval();
     }
   }
 
@@ -742,74 +815,84 @@ export class BrowserPopout extends EventEmitter {
     }
     this._closeEventScheduled = true;
     this.clearCheckReadyInterval();
-    setTimeout(() => {
-      const windowClosed =
-        this._popoutWindow === null || this._popoutWindow.closed;
-      if (
-        windowClosed &&
-        !this._layoutManager.isDestroyed &&
-        !this._isClosingOrPoppingIn &&
-        !this._closeRequested &&
-        this._layoutManager.layoutConfig.settings.popInOnClose
-      ) {
-        this._isClosingOrPoppingIn = true;
-        try {
-          this.popInInternal();
-          this._closedWithFailedPopIn = false;
-        } catch (error) {
-          this._closedWithFailedPopIn = true;
-          this._isClosingOrPoppingIn = false;
-          this._closeEventScheduled = false;
-          this.reportAsynchronousError(error);
-          return;
-        }
-      }
-      this._closeEventScheduled = false;
-      if (!windowClosed) {
-        try {
-          this.rollbackPendingPopIn();
-        } catch {
-          // Keep the rollback handle for the readiness interval to retry.
-        }
-        // beforeunload also fires for reloads and navigation. Resume detection
-        // when reconciliation confirms that the window is still open.
+    setTimeout(() => this.reconcileCloseEvent(), 50);
+  }
+
+  private reconcileCloseEvent(): void {
+    const windowClosed =
+      this._popoutWindow === null || this._popoutWindow.closed;
+    if (
+      windowClosed &&
+      !this._layoutManager.isDestroyed &&
+      !this._isClosingOrPoppingIn &&
+      !this._closeRequested &&
+      this._layoutManager.layoutConfig.settings.popInOnClose
+    ) {
+      this._isClosingOrPoppingIn = true;
+      try {
+        this.popInInternal();
+        this._closedWithFailedPopIn = false;
+      } catch (error) {
+        this._closedWithFailedPopIn = true;
         this._isClosingOrPoppingIn = false;
-        if (!this._layoutManager.isDestroyed) {
-          this._checkReadyInterval = setInterval(() => this.checkReady(), 10);
-        }
-      } else {
-        this._pendingPopInRollback = undefined;
-        this._closeRequested = false;
+        this._closeEventScheduled = false;
+        this.reportAsynchronousError(error);
+        return;
+      }
+    }
+    this._closeEventScheduled = false;
+    if (windowClosed) {
+      this.finishClosedWindow();
+    } else {
+      this.resumeOpenWindow();
+    }
+  }
+
+  private resumeOpenWindow(): void {
+    try {
+      this.rollbackPendingPopIn();
+    } catch {
+      // Keep the rollback handle for the readiness interval to retry.
+    }
+    // beforeunload also fires for reloads and navigation. Resume detection
+    // when reconciliation confirms that the window is still open.
+    this._isClosingOrPoppingIn = false;
+    if (!this._layoutManager.isDestroyed) {
+      this._checkReadyInterval = setInterval(() => this.checkReady(), 10);
+    }
+  }
+
+  private finishClosedWindow(): void {
+    this._pendingPopInRollback = undefined;
+    this._closeRequested = false;
+    try {
+      this.unbindPopInListener();
+    } catch (error) {
+      this.reportAsynchronousError(error);
+    }
+    let closeError: unknown;
+    let hasCloseError = false;
+    try {
+      if (!this._layoutManager.isDestroyed) {
+        this.emit('closed');
+      }
+    } catch (error) {
+      closeError = error;
+      hasCloseError = true;
+    } finally {
+      if (this._storageKey !== undefined) {
         try {
-          this.unbindPopInListener();
+          localStorage.removeItem(this._storageKey);
+          this._storageKey = undefined;
         } catch (error) {
-          this.reportAsynchronousError(error);
-        }
-        let closeError: unknown;
-        let hasCloseError = false;
-        try {
-          if (!this._layoutManager.isDestroyed) {
-            this.emit('closed');
-          }
-        } catch (error) {
-          closeError = error;
+          if (!hasCloseError) closeError = error;
           hasCloseError = true;
-        } finally {
-          if (this._storageKey !== undefined) {
-            try {
-              localStorage.removeItem(this._storageKey);
-              this._storageKey = undefined;
-            } catch (error) {
-              if (!hasCloseError) closeError = error;
-              hasCloseError = true;
-            }
-          }
-        }
-        if (hasCloseError) {
-          this.reportAsynchronousError(closeError);
         }
       }
-    }, 50);
+    }
+    if (hasCloseError) {
+      this.reportAsynchronousError(closeError);
+    }
   }
 
   private rollbackPendingPopIn(): void {

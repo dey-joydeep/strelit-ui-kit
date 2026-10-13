@@ -290,48 +290,9 @@ export class DragProxy extends EventEmitter {
      */
     let droppedComponentItem: ComponentItem | undefined;
     try {
-      if (firstError !== undefined) {
-        this.restoreComponentItem();
-      } else if (!cancelled && this._area !== null) {
-        this._area.contentItem.onDrop(this._componentItem, this._area);
-        droppedComponentItem = this._componentItem;
-        if (
-          this._originalParent &&
-          (this._originalParent.isRow || this._originalParent.isColumn)
-        ) {
-          (
-            this._originalParent as unknown as { checkCollapse(): void }
-          ).checkCollapse();
-        }
-
-        /**
-         * No valid drop area available at present, but one has been found before.
-         * Use it
-         */
-      } else if (!cancelled && this._lastValidArea !== null) {
-        const newParentContentItem = this._lastValidArea.contentItem;
-        newParentContentItem.onDrop(this._componentItem, this._lastValidArea);
-        droppedComponentItem = this._componentItem;
-        if (
-          this._originalParent &&
-          (this._originalParent.isRow || this._originalParent.isColumn)
-        ) {
-          (
-            this._originalParent as unknown as { checkCollapse(): void }
-          ).checkCollapse();
-        }
-
-        /**
-         * No valid drop area found during the duration of the drag. Return
-         * content item to its original position if a original parent is provided.
-         * (Which is not the case if the drag had been initiated by createDragSource)
-         */
-      } else if (this._originalParent && !this._originalParent.isGround) {
-        this.restoreComponentItem();
-        droppedComponentItem = this._componentItem;
-      } else {
-        this._componentItem.destroy(); // contentItem children are now destroyed as well
-      }
+      this.performDrop(cancelled, firstError !== undefined, (item) => {
+        droppedComponentItem = item;
+      });
     } catch (error) {
       firstError ??= error;
       if (
@@ -363,6 +324,48 @@ export class DragProxy extends EventEmitter {
     }
     if (firstError !== undefined) {
       throw firstError;
+    }
+  }
+
+  private performDrop(
+    cancelled: boolean,
+    hasCleanupError: boolean,
+    onDropped: (item: ComponentItem) => void,
+  ): void {
+    if (hasCleanupError) {
+      this.restoreComponentItem();
+      return;
+    }
+    if (!cancelled && this._area !== null) {
+      this.dropInArea(this._area, onDropped);
+      return;
+    }
+    // A previously valid area remains usable when the pointer leaves it.
+    if (!cancelled && this._lastValidArea !== null) {
+      this.dropInArea(this._lastValidArea, onDropped);
+      return;
+    }
+    if (this._originalParent && !this._originalParent.isGround) {
+      this.restoreComponentItem();
+      onDropped(this._componentItem);
+      return;
+    }
+    this._componentItem.destroy(); // contentItem children are now destroyed as well
+  }
+
+  private dropInArea(
+    area: ContentItemArea,
+    onDropped: (item: ComponentItem) => void,
+  ): void {
+    area.contentItem.onDrop(this._componentItem, area);
+    onDropped(this._componentItem);
+    if (
+      this._originalParent &&
+      (this._originalParent.isRow || this._originalParent.isColumn)
+    ) {
+      (
+        this._originalParent as unknown as { checkCollapse(): void }
+      ).checkCollapse();
     }
   }
 
