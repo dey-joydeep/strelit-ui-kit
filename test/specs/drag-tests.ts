@@ -873,9 +873,8 @@ describe('drag source', function () {
       layout,
     ) as ComponentItem;
     expect(
-      componentItem.element.querySelectorAll(`.${createdFromDragSourceClass}`)
-        .length,
-    ).toBe(1);
+      componentItem.element.querySelectorAll(`.${createdFromDragSourceClass}`),
+    ).toHaveLength(1);
     expect(componentItem.tab.reorderEnabled).toBe(false);
   }
 
