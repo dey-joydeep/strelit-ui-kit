@@ -39,9 +39,26 @@ describe('Layout configuration resolution and defaults', function () {
       resolved.root.content.slice(0, 1),
     );
     const emptyCopy = createResolvedStackItemConfigCopy(resolved.root, []);
+    const unchangedCopy = createResolvedStackItemConfigCopy(resolved.root);
+    const sameLengthCopy = createResolvedStackItemConfigCopy(
+      resolved.root,
+      resolved.root.content,
+    );
+    const missingIndexCopy = createResolvedStackItemConfigCopy(
+      { ...resolved.root, activeItemIndex: undefined },
+      resolved.root.content,
+    );
+    const negativeIndexCopy = createResolvedStackItemConfigCopy(
+      { ...resolved.root, activeItemIndex: -1 },
+      resolved.root.content,
+    );
 
     expect(oneItemCopy.activeItemIndex).toBe(0);
     expect(emptyCopy.activeItemIndex).toBeUndefined();
+    expect(unchangedCopy.activeItemIndex).toBe(1);
+    expect(sameLengthCopy.activeItemIndex).toBe(1);
+    expect(missingIndexCopy.activeItemIndex).toBe(0);
+    expect(negativeIndexCopy.activeItemIndex).toBe(0);
   });
 
   it('uses undefined activeItemIndex for empty resolved stacks', function () {

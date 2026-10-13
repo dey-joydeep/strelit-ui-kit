@@ -183,12 +183,14 @@ function translateContainerEntry(
   if (index + 1 < frame.valueCount) {
     state.stack.push({ ...frame, index: index + 1 });
   }
-  const translatedValue =
-    typeof value === 'object' && value !== null
-      ? enterTranslationChild(frame, key, value, state)
-      : state.minify
-        ? minifyValue(value)
-        : unminifyValue(value);
+  let translatedValue: unknown;
+  if (typeof value === 'object' && value !== null) {
+    translatedValue = enterTranslationChild(frame, key, value, state);
+  } else if (state.minify) {
+    translatedValue = minifyValue(value);
+  } else {
+    translatedValue = unminifyValue(value);
+  }
   if (Array.isArray(frame.to)) {
     frame.to[index] = translatedValue;
   } else {
@@ -211,22 +213,27 @@ function enterTranslationChild(
   state: TranslationState,
 ): TranslationContainer {
   const childRepresentationDepth = frame.representationDepth + 1;
-  const semanticKey =
-    frame.array === undefined
-      ? state.minify
-        ? (key as string)
-        : unminifyKey(key as string)
-      : undefined;
+  let semanticKey: string | undefined;
+  if (frame.array !== undefined) {
+    semanticKey = undefined;
+  } else if (state.minify) {
+    semanticKey = key as string;
+  } else {
+    semanticKey = unminifyKey(key as string);
+  }
   const startsIndependentSemanticDomain =
     semanticKey === 'root' ||
     semanticKey === 'componentType' ||
     semanticKey === 'componentState' ||
     semanticKey === 'openPopouts';
-  const childDepth = startsIndependentSemanticDomain
-    ? 0
-    : Array.isArray(value)
-      ? frame.depth
-      : frame.depth + 1;
+  let childDepth: number;
+  if (startsIndependentSemanticDomain) {
+    childDepth = 0;
+  } else if (Array.isArray(value)) {
+    childDepth = frame.depth;
+  } else {
+    childDepth = frame.depth + 1;
+  }
   if (
     childDepth > maximumConfigDepth ||
     childRepresentationDepth > maximumTranslationDepth ||

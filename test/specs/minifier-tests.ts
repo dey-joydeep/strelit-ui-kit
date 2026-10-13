@@ -152,6 +152,24 @@ describe('resolved layout config minifier', function () {
     expect(translateObject({ value: 'z' }, false)).toEqual({ value: 'z' });
   });
 
+  it('preserves nested arrays, scalar values, and missing values in both translation directions', function () {
+    const source = {
+      content: [
+        {
+          type: 'component',
+          componentState: {
+            custom: [null, undefined, false, 0, 'close', { nested: true }],
+          },
+        },
+      ],
+    };
+
+    const minified = translateObject(source, true);
+
+    expect(translateObject(minified, false)).toEqual(source);
+    expect(minified).not.toBe(source);
+  });
+
   it('round-trips the maximum supported semantic layout depth', function () {
     let componentState: SerializableObject = { leaf: true };
     for (let depth = 0; depth < 128; depth++) {
