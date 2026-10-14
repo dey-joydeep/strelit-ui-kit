@@ -139,6 +139,35 @@ describe('the EventEmitter', function () {
     expect(laterListener).toHaveBeenCalledOnce();
   });
 
+  it.each(['emit', 'emitUnknown'] as const)(
+    '%s continues all dispatch stages and preserves the first listener error',
+    (method) => {
+      const calls: string[] = [];
+      const firstError = new Error('first listener failed');
+      class BubblingEmitter extends EventEmitter {
+        override tryBubbleEvent(): void {
+          calls.push('bubble');
+          throw new Error('bubble failed');
+        }
+      }
+      const emitter = new BubblingEmitter();
+      emitter.on('titleChanged', () => {
+        calls.push('first');
+        throw firstError;
+      });
+      emitter.on('titleChanged', () => calls.push('second'));
+      emitter.on(eventEmitterAllEventName, () => {
+        calls.push('all');
+        throw new Error('all failed');
+      });
+
+      expect(() => emitter[method]('titleChanged', 'title')).toThrow(
+        firstError,
+      );
+      expect(calls).toEqual(['first', 'second', 'all', 'bubble']);
+    },
+  );
+
   it('unbinds events', function () {
     const myObject = new EmitterImplementor();
     const myListener: { titleCallback: () => void } = {
