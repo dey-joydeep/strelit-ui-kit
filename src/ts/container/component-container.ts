@@ -104,6 +104,17 @@ interface ComponentContainerEvents {
   blur: ComponentContainerBlurEventHandler;
 }
 
+interface ComponentReplacementSnapshot {
+  readonly initialState: SerializableValue | undefined;
+  readonly liveState: SerializableValue | undefined;
+  readonly componentType: ComponentType;
+  readonly isClosable: boolean;
+  readonly stateRequestEvent:
+    ComponentContainerStateRequestEventHandler | undefined;
+  readonly config: ResolvedComponentItemConfig;
+  readonly wasStackMaximised: boolean;
+}
+
 /**
  * Provides component container behavior.
  * @public
@@ -520,6 +531,15 @@ export class ComponentContainer extends EventEmitter {
       } finally {
         this.stateRequestEvent = previousStateRequestEvent;
       }
+      const snapshot: ComponentReplacementSnapshot = {
+        initialState: previousInitialState,
+        liveState: previousLiveState,
+        componentType: previousComponentType,
+        isClosable: previousIsClosable,
+        stateRequestEvent: previousStateRequestEvent,
+        config: previousConfig,
+        wasStackMaximised,
+      };
 
       this.releaseComponent();
       this.stateRequestEvent = undefined;
@@ -531,29 +551,7 @@ export class ComponentContainer extends EventEmitter {
       try {
         nextBoundComponent = this.layoutManager.bindComponent(this, config);
       } catch (error) {
-        this.stateRequestEvent = previousStateRequestEvent;
-        this._initialState = previousInitialState;
-        this._state = previousLiveState;
-        this._componentType = previousComponentType;
-        try {
-          this._boundComponent = this.layoutManager.bindComponent(
-            this,
-            previousConfig,
-          );
-        } catch (rollbackError) {
-          this._boundComponent = { component: undefined, virtual: false };
-          throw rollbackError;
-        }
-        this.updateElementPositionPropertyFromBoundComponent();
-        if (wasStackMaximised) {
-          try {
-            this.enterStackMaximised();
-          } catch {
-            // The restored binding remains owned and the replacement bind
-            // failure remains the authoritative error.
-          }
-        }
-        throw error;
+        this.rollbackFailedReplacementBinding(snapshot, error);
       }
 
       this._boundComponent = nextBoundComponent;
@@ -562,58 +560,15 @@ export class ComponentContainer extends EventEmitter {
       try {
         this._updateItemConfigEvent(config);
       } catch (error) {
-        this.releaseComponent();
-        this.stateRequestEvent = previousStateRequestEvent;
-        this._initialState = previousInitialState;
-        this._state = previousLiveState;
-        this._componentType = previousComponentType;
-        this._isClosable = previousIsClosable;
-        try {
-          this._boundComponent = this.layoutManager.bindComponent(
-            this,
-            previousConfig,
-          );
-          this.updateElementPositionPropertyFromBoundComponent();
-          this._updateItemConfigEvent(previousConfig);
-        } catch (rollbackError) {
-          if (
-            this._boundComponent.component === nextBoundComponent.component &&
-            this._boundComponent.virtual === nextBoundComponent.virtual
-          ) {
-            this._boundComponent = { component: undefined, virtual: false };
-            throw rollbackError;
-          }
-          // The previous binding is live; preserve the original observer error.
-        } finally {
-          if (
-            wasStackMaximised &&
-            (this._boundComponent.component !== nextBoundComponent.component ||
-              this._boundComponent.virtual !== nextBoundComponent.virtual)
-          ) {
-            try {
-              this.enterStackMaximised();
-            } catch {
-              // Preserve the live rollback binding and original observer error.
-            }
-          }
-        }
-        throw error;
+        this.rollbackFailedReplacementObserver(
+          snapshot,
+          nextBoundComponent,
+          error,
+        );
       }
 
       try {
-        if (this._boundComponent.virtual) {
-          if (this.virtualVisibilityChangeRequiredEvent !== undefined) {
-            this.virtualVisibilityChangeRequiredEvent(this, this._visible);
-          }
-          if (this.virtualRectingRequiredEvent !== undefined) {
-            this._layoutManager.fireBeforeVirtualRectingEvent(1, [this]);
-            try {
-              this.virtualRectingRequiredEvent(this, this._width, this._height);
-            } finally {
-              this._layoutManager.fireAfterVirtualRectingEvent();
-            }
-          }
-        }
+        this.notifyReplacementVirtualPresentation();
       } finally {
         if (wasStackMaximised) {
           this.enterStackMaximised();
@@ -623,6 +578,94 @@ export class ComponentContainer extends EventEmitter {
       }
 
       this.emit('stateChanged');
+    }
+  }
+
+  private rollbackFailedReplacementBinding(
+    snapshot: ComponentReplacementSnapshot,
+    error: unknown,
+  ): never {
+    this.stateRequestEvent = snapshot.stateRequestEvent;
+    this._initialState = snapshot.initialState;
+    this._state = snapshot.liveState;
+    this._componentType = snapshot.componentType;
+    try {
+      this._boundComponent = this.layoutManager.bindComponent(
+        this,
+        snapshot.config,
+      );
+    } catch (rollbackError) {
+      this._boundComponent = { component: undefined, virtual: false };
+      throw rollbackError;
+    }
+    this.updateElementPositionPropertyFromBoundComponent();
+    if (snapshot.wasStackMaximised) {
+      try {
+        this.enterStackMaximised();
+      } catch {
+        // The restored binding remains owned and the replacement bind
+        // failure remains the authoritative error.
+      }
+    }
+    throw error;
+  }
+
+  private rollbackFailedReplacementObserver(
+    snapshot: ComponentReplacementSnapshot,
+    nextBoundComponent: ComponentContainerBindableComponent,
+    error: unknown,
+  ): never {
+    this.releaseComponent();
+    this.stateRequestEvent = snapshot.stateRequestEvent;
+    this._initialState = snapshot.initialState;
+    this._state = snapshot.liveState;
+    this._componentType = snapshot.componentType;
+    this._isClosable = snapshot.isClosable;
+    try {
+      this._boundComponent = this.layoutManager.bindComponent(
+        this,
+        snapshot.config,
+      );
+      this.updateElementPositionPropertyFromBoundComponent();
+      this._updateItemConfigEvent(snapshot.config);
+    } catch (rollbackError) {
+      if (
+        this._boundComponent.component === nextBoundComponent.component &&
+        this._boundComponent.virtual === nextBoundComponent.virtual
+      ) {
+        this._boundComponent = { component: undefined, virtual: false };
+        throw rollbackError;
+      }
+      // The previous binding is live; preserve the original observer error.
+    } finally {
+      if (
+        snapshot.wasStackMaximised &&
+        (this._boundComponent.component !== nextBoundComponent.component ||
+          this._boundComponent.virtual !== nextBoundComponent.virtual)
+      ) {
+        try {
+          this.enterStackMaximised();
+        } catch {
+          // Preserve the live rollback binding and original observer error.
+        }
+      }
+    }
+    throw error;
+  }
+
+  private notifyReplacementVirtualPresentation(): void {
+    if (this._boundComponent.virtual) {
+      if (this.virtualVisibilityChangeRequiredEvent !== undefined) {
+        this.virtualVisibilityChangeRequiredEvent(this, this._visible);
+      }
+      if (this.virtualRectingRequiredEvent !== undefined) {
+        this._layoutManager.fireBeforeVirtualRectingEvent(1, [this]);
+        try {
+          this.virtualRectingRequiredEvent(this, this._width, this._height);
+        } finally {
+          this._layoutManager.fireAfterVirtualRectingEvent();
+        }
+      }
     }
   }
 

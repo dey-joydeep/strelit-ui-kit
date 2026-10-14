@@ -131,6 +131,24 @@ const bodyContainerStyleOwnership = new WeakMap<
   BodyContainerStyleOwnership
 >();
 
+function assertResolvedItemConfigContentCapacity(
+  config: ResolvedItemConfig,
+  nodes: number,
+): void {
+  if (
+    typeof config === 'object' &&
+    config !== null &&
+    !Array.isArray(config) &&
+    Array.isArray((config as { content?: unknown }).content) &&
+    (config as { content: readonly unknown[] }).content.length >=
+      maximumConfigNodes - nodes
+  ) {
+    throw new ConfigurationError(
+      'Resolved layout configuration exceeds resource limits',
+    );
+  }
+}
+
 function assertResolvedItemConfigWithinLimits(root: ResolvedItemConfig): void {
   type ValidationFrame =
     | { readonly config: ResolvedItemConfig; readonly depth: number }
@@ -141,11 +159,7 @@ function assertResolvedItemConfigWithinLimits(root: ResolvedItemConfig): void {
   const cloneBudget = { nodes: 0 };
   let nodes = 0;
 
-  while (stack.length > 0) {
-    const frame = stack.pop();
-    if (frame === undefined) {
-      break;
-    }
+  for (let frame = stack.pop(); frame !== undefined; frame = stack.pop()) {
     if ('completed' in frame) {
       active.delete(frame.completed);
       continue;
@@ -157,18 +171,7 @@ function assertResolvedItemConfigWithinLimits(root: ResolvedItemConfig): void {
         'Resolved layout configuration exceeds resource limits',
       );
     }
-    if (
-      typeof config === 'object' &&
-      config !== null &&
-      !Array.isArray(config) &&
-      Array.isArray((config as { content?: unknown }).content) &&
-      (config as { content: readonly unknown[] }).content.length >=
-        maximumConfigNodes - nodes
-    ) {
-      throw new ConfigurationError(
-        'Resolved layout configuration exceeds resource limits',
-      );
-    }
+    assertResolvedItemConfigContentCapacity(config, nodes);
     _assertResolvedItemConfigStructure(config);
     if (active.has(config)) {
       throw new ConfigurationError(
@@ -549,26 +552,7 @@ export abstract class LayoutManager extends EventEmitter {
       }
     }
 
-    if (this.layoutConfig !== undefined) {
-      if (this.layoutConfig.settings.closePopoutsOnUnload) {
-        attempt(() => this.closeAllOpenPopouts());
-      }
-    }
-    const openPopouts = [...this._openPopouts];
-    const remainingOpenPopouts: BrowserPopout[] = [];
-    for (const popout of openPopouts) {
-      let destroyed = false;
-      attempt(() => {
-        if (typeof popout.destroy === 'function') {
-          popout.destroy();
-        }
-        destroyed = true;
-      });
-      if (!destroyed) {
-        remainingOpenPopouts.push(popout);
-      }
-    }
-    this._openPopouts = remainingOpenPopouts;
+    this.destroyOwnedPopouts(attempt);
 
     attempt(() => this.checkClearResizeTimeout());
 
@@ -589,17 +573,7 @@ export abstract class LayoutManager extends EventEmitter {
       }
     }
     attempt(() => this._tabDropPlaceholder.remove());
-    if (this._dropTargetIndicator !== null) {
-      const dropTargetIndicator = this._dropTargetIndicator;
-      let destroyed = false;
-      attempt(() => {
-        dropTargetIndicator.destroy();
-        destroyed = true;
-      });
-      if (destroyed) {
-        this._dropTargetIndicator = null;
-      }
-    }
+    this.destroyDropTargetIndicator(attempt);
     if (this._transitionIndicator !== null) {
       const transitionIndicator = this._transitionIndicator;
       let destroyed = false;
@@ -611,19 +585,7 @@ export abstract class LayoutManager extends EventEmitter {
         this._transitionIndicator = null;
       }
     }
-    const dragSources = this._dragSources;
-    const remainingDragSources: DragSource[] = [];
-    for (const dragSource of dragSources) {
-      let destroyed = false;
-      attempt(() => {
-        dragSource.destroy();
-        destroyed = true;
-      });
-      if (!destroyed) {
-        remainingDragSources.push(dragSource);
-      }
-    }
-    this._dragSources = remainingDragSources;
+    this.destroyOwnedDragSources(attempt);
 
     this._isInitialised = false;
     attempt(() => this._maximisePlaceholder.remove());
@@ -637,6 +599,63 @@ export abstract class LayoutManager extends EventEmitter {
       throw firstError;
     }
     this._destroyCleanupFailed = false;
+  }
+
+  private destroyDropTargetIndicator(
+    attempt: (operation: () => void) => void,
+  ): void {
+    if (this._dropTargetIndicator !== null) {
+      const dropTargetIndicator = this._dropTargetIndicator;
+      let destroyed = false;
+      attempt(() => {
+        dropTargetIndicator.destroy();
+        destroyed = true;
+      });
+      if (destroyed) {
+        this._dropTargetIndicator = null;
+      }
+    }
+  }
+
+  private destroyOwnedPopouts(attempt: (operation: () => void) => void): void {
+    if (this.layoutConfig !== undefined) {
+      if (this.layoutConfig.settings.closePopoutsOnUnload) {
+        attempt(() => this.closeAllOpenPopouts());
+      }
+    }
+    const openPopouts = [...this._openPopouts];
+    const remainingOpenPopouts: BrowserPopout[] = [];
+    for (const popout of openPopouts) {
+      let destroyed = false;
+      attempt(() => {
+        if (typeof popout.destroy === 'function') {
+          popout.destroy();
+        }
+        destroyed = true;
+      });
+      if (!destroyed) {
+        remainingOpenPopouts.push(popout);
+      }
+    }
+    this._openPopouts = remainingOpenPopouts;
+  }
+
+  private destroyOwnedDragSources(
+    attempt: (operation: () => void) => void,
+  ): void {
+    const dragSources = this._dragSources;
+    const remainingDragSources: DragSource[] = [];
+    for (const dragSource of dragSources) {
+      let destroyed = false;
+      attempt(() => {
+        dragSource.destroy();
+        destroyed = true;
+      });
+      if (!destroyed) {
+        remainingDragSources.push(dragSource);
+      }
+    }
+    this._dragSources = remainingDragSources;
   }
 
   /** @internal */
@@ -746,118 +765,152 @@ export abstract class LayoutManager extends EventEmitter {
           this.adjustColumnsResponsive();
         });
       } catch (error) {
-        const reportRollbackError = (rollbackError: unknown) => {
-          try {
-            if (typeof globalThis.reportError === 'function') {
-              globalThis.reportError(rollbackError);
-            } else {
-              console.error(
-                'Layout replacement rollback failed',
-                rollbackError,
-              );
-            }
-          } catch {
-            // Host diagnostics must not replace the original load failure.
-          }
-        };
-        const attemptRollback = (operation: () => void) => {
-          try {
-            operation();
-          } catch (rollbackError) {
-            reportRollbackError(rollbackError);
-          }
-        };
-        incomingOpenPopouts = this._openPopouts.slice(
-          previousOpenPopouts.length,
-        );
-        const failedIncomingPopouts: BrowserPopout[] = [];
-        for (const popout of incomingOpenPopouts) {
-          try {
-            popout.close();
-          } catch {
-            // Popout cleanup must not interrupt root and configuration rollback.
-            failedIncomingPopouts.push(popout);
-          }
-        }
-        this._openPopouts = [...previousOpenPopouts, ...failedIncomingPopouts];
-        this.layoutConfig = previousLayoutConfig;
-        if (
-          this._windowBeforeUnloadListening !==
-          previousWindowBeforeUnloadListening
-        ) {
-          if (previousWindowBeforeUnloadListening) {
-            attemptRollback(() => {
-              globalThis.addEventListener(
-                'beforeunload',
-                this._windowBeforeUnloadListener,
-                { passive: true },
-              );
-              this._windowBeforeUnloadListening = true;
-            });
-          } else {
-            attemptRollback(() => {
-              globalThis.removeEventListener(
-                'beforeunload',
-                this._windowBeforeUnloadListener,
-              );
-              this._windowBeforeUnloadListening = false;
-            });
-          }
-        }
-        if (previousMaximisedStack === undefined) {
-          attemptRollback(() => this.setMaximisedStack(undefined));
-        } else if (this._maximisedStack !== previousMaximisedStack) {
-          attemptRollback(() => previousMaximisedStack.maximise());
-        }
-        attemptRollback(() =>
-          this.setFocusedComponentItem(previousFocusedComponentItem, true),
+        this.rollbackFailedLayoutLoad(
+          previousLayoutConfig,
+          previousOpenPopouts,
+          previousMaximisedStack,
+          previousFocusedComponentItem,
+          previousWindowBeforeUnloadListening,
         );
         throw error;
       }
 
-      const failedPreviousPopouts: BrowserPopout[] = [];
-      const reportCleanupError = (error: unknown) => {
-        try {
-          if (typeof globalThis.reportError === 'function') {
-            globalThis.reportError(error);
-          } else {
-            console.error('Failed to close a previous layout popout', error);
-          }
-        } catch {
-          // Host diagnostics must not invalidate the committed replacement.
+      this.releasePreviousLayoutPopouts(
+        previousOpenPopouts,
+        incomingOpenPopouts,
+      );
+    }
+  }
+
+  private releasePreviousLayoutPopouts(
+    previousOpenPopouts: BrowserPopout[],
+    incomingOpenPopouts: BrowserPopout[],
+  ): void {
+    const failedPreviousPopouts: BrowserPopout[] = [];
+    const reportCleanupError = (error: unknown) => {
+      try {
+        if (typeof globalThis.reportError === 'function') {
+          globalThis.reportError(error);
+        } else {
+          console.error('Failed to close a previous layout popout', error);
         }
-      };
-      for (const popout of previousOpenPopouts) {
-        try {
-          popout.close();
-          try {
-            if (!popout.getWindow().closed) {
-              failedPreviousPopouts.push(popout);
-            }
-          } catch (error) {
-            if (!(error instanceof UnexpectedNullError)) {
-              failedPreviousPopouts.push(popout);
-              reportCleanupError(error);
-            }
-          }
-        } catch (error) {
+      } catch {
+        // Host diagnostics must not invalidate the committed replacement.
+      }
+    };
+    for (const popout of previousOpenPopouts) {
+      this.closePreviousLayoutPopout(
+        popout,
+        failedPreviousPopouts,
+        reportCleanupError,
+      );
+    }
+    this._openPopouts = [...failedPreviousPopouts, ...incomingOpenPopouts];
+    if (this._openPopouts.length === 0 && this._windowBeforeUnloadListening) {
+      try {
+        globalThis.removeEventListener(
+          'beforeunload',
+          this._windowBeforeUnloadListener,
+        );
+        this._windowBeforeUnloadListening = false;
+      } catch (error) {
+        reportCleanupError(error);
+      }
+    }
+  }
+
+  private closePreviousLayoutPopout(
+    popout: BrowserPopout,
+    failedPreviousPopouts: BrowserPopout[],
+    reportCleanupError: (error: unknown) => void,
+  ): void {
+    try {
+      popout.close();
+      try {
+        if (!popout.getWindow().closed) {
+          failedPreviousPopouts.push(popout);
+        }
+      } catch (error) {
+        if (!(error instanceof UnexpectedNullError)) {
           failedPreviousPopouts.push(popout);
           reportCleanupError(error);
         }
       }
-      this._openPopouts = [...failedPreviousPopouts, ...incomingOpenPopouts];
-      if (this._openPopouts.length === 0 && this._windowBeforeUnloadListening) {
-        try {
+    } catch (error) {
+      failedPreviousPopouts.push(popout);
+      reportCleanupError(error);
+    }
+  }
+
+  private rollbackFailedLayoutLoad(
+    previousLayoutConfig: ResolvedLayoutConfig,
+    previousOpenPopouts: BrowserPopout[],
+    previousMaximisedStack: Stack | undefined,
+    previousFocusedComponentItem: ComponentItem | undefined,
+    previousWindowBeforeUnloadListening: boolean,
+  ): void {
+    const reportRollbackError = (rollbackError: unknown) => {
+      try {
+        if (typeof globalThis.reportError === 'function') {
+          globalThis.reportError(rollbackError);
+        } else {
+          console.error('Layout replacement rollback failed', rollbackError);
+        }
+      } catch {
+        // Host diagnostics must not replace the original load failure.
+      }
+    };
+    const attemptRollback = (operation: () => void) => {
+      try {
+        operation();
+      } catch (rollbackError) {
+        reportRollbackError(rollbackError);
+      }
+    };
+    const incomingOpenPopouts = this._openPopouts.slice(
+      previousOpenPopouts.length,
+    );
+    const failedIncomingPopouts: BrowserPopout[] = [];
+    for (const popout of incomingOpenPopouts) {
+      try {
+        popout.close();
+      } catch {
+        // Popout cleanup must not interrupt root and configuration rollback.
+        failedIncomingPopouts.push(popout);
+      }
+    }
+    this._openPopouts = [...previousOpenPopouts, ...failedIncomingPopouts];
+    this.layoutConfig = previousLayoutConfig;
+    if (
+      this._windowBeforeUnloadListening !== previousWindowBeforeUnloadListening
+    ) {
+      if (previousWindowBeforeUnloadListening) {
+        attemptRollback(() => {
+          globalThis.addEventListener(
+            'beforeunload',
+            this._windowBeforeUnloadListener,
+            { passive: true },
+          );
+          this._windowBeforeUnloadListening = true;
+        });
+      } else {
+        attemptRollback(() => {
           globalThis.removeEventListener(
             'beforeunload',
             this._windowBeforeUnloadListener,
           );
           this._windowBeforeUnloadListening = false;
-        } catch (error) {
-          reportCleanupError(error);
-        }
+        });
       }
     }
+    if (previousMaximisedStack === undefined) {
+      attemptRollback(() => this.setMaximisedStack(undefined));
+    } else if (this._maximisedStack !== previousMaximisedStack) {
+      attemptRollback(() => previousMaximisedStack.maximise());
+    }
+    attemptRollback(() =>
+      this.setFocusedComponentItem(previousFocusedComponentItem, true),
+    );
   }
 
   /**
@@ -895,24 +948,7 @@ export abstract class LayoutManager extends EventEmitter {
        * Retrieve config for subwindows
        */
       this.reconcilePopoutWindows();
-      const openPopouts: ResolvedPopoutLayoutConfig[] = [];
-      for (const element of this._openPopouts) {
-        let initialised = false;
-        try {
-          initialised = element.getStrelitInstance().isInitialised;
-        } catch {
-          // A child instance is unavailable while its window is starting.
-        }
-        const popoutConfig = element.toConfig();
-        const parentId = popoutConfig.parentId;
-        const sourceAttached =
-          typeof parentId === 'string' &&
-          (this._groundItem.popInParentIds.includes(parentId) ||
-            this._groundItem.getItemsByPopInParentId(parentId).length > 0);
-        if (initialised || !sourceAttached) {
-          openPopouts.push(popoutConfig);
-        }
-      }
+      const openPopouts = this.getSavablePopoutConfigs(this._groundItem);
 
       const config: ResolvedLayoutConfig = {
         root: rootItemConfig,
@@ -929,6 +965,30 @@ export abstract class LayoutManager extends EventEmitter {
 
       return config;
     }
+  }
+
+  private getSavablePopoutConfigs(
+    groundItem: GroundItem,
+  ): ResolvedPopoutLayoutConfig[] {
+    const openPopouts: ResolvedPopoutLayoutConfig[] = [];
+    for (const element of this._openPopouts) {
+      let initialised = false;
+      try {
+        initialised = element.getStrelitInstance().isInitialised;
+      } catch {
+        // A child instance is unavailable while its window is starting.
+      }
+      const popoutConfig = element.toConfig();
+      const parentId = popoutConfig.parentId;
+      const sourceAttached =
+        typeof parentId === 'string' &&
+        (groundItem.popInParentIds.includes(parentId) ||
+          groundItem.getItemsByPopInParentId(parentId).length > 0);
+      if (initialised || !sourceAttached) {
+        openPopouts.push(popoutConfig);
+      }
+    }
+    return openPopouts;
   }
 
   private checkNoInternalComponentDrag(): void {
@@ -1660,25 +1720,10 @@ export abstract class LayoutManager extends EventEmitter {
     let firstError: unknown;
     let hasError = false;
     for (const element of openPopouts) {
-      try {
-        element.close();
-      } catch (error) {
-        failedPopouts.push(element);
-        if (!hasError) {
-          firstError = error;
-          hasError = true;
-        }
-        continue;
-      }
-      try {
-        if (!element.getWindow().closed) {
-          failedPopouts.push(element);
-        }
-      } catch (error) {
-        if (!(error instanceof UnexpectedNullError)) {
-          // Keep inaccessible live windows owned until closure is known.
-          failedPopouts.push(element);
-        }
+      const result = this.closePopoutAndCheckOwnership(element, failedPopouts);
+      if (result.failed && !hasError) {
+        firstError = result.error;
+        hasError = true;
       }
     }
     this._openPopouts = failedPopouts;
@@ -1701,6 +1746,29 @@ export abstract class LayoutManager extends EventEmitter {
     if (hasError) {
       throw firstError;
     }
+  }
+
+  private closePopoutAndCheckOwnership(
+    element: BrowserPopout,
+    failedPopouts: BrowserPopout[],
+  ): { failed: boolean; error?: unknown } {
+    try {
+      element.close();
+    } catch (error) {
+      failedPopouts.push(element);
+      return { failed: true, error };
+    }
+    try {
+      if (!element.getWindow().closed) {
+        failedPopouts.push(element);
+      }
+    } catch (error) {
+      if (!(error instanceof UnexpectedNullError)) {
+        // Keep inaccessible live windows owned until closure is known.
+        failedPopouts.push(element);
+      }
+    }
+    return { failed: false };
   }
 
   /**
@@ -2593,26 +2661,15 @@ export abstract class LayoutManager extends EventEmitter {
     const count = selectors.length;
     for (let i = 0; i < count; i++) {
       const selector = selectors[i];
-      if (
-        itemConfig !== undefined &&
-        !isComponentItemConfig(itemConfig) &&
-        selector.typeId === LayoutManagerLocationSelectorTypeId.Root &&
-        this._groundItem !== undefined
-      ) {
-        const rootItem = this._groundItem.contentItems[0];
-        if (rootItem?.isStack || rootItem?.isComponent) {
-          if (
-            selector.index === undefined ||
-            selector.index === 0 ||
-            selector.index === 1
-          ) {
-            return {
-              parentItem: this._groundItem,
-              index: selector.index ?? 1,
-            };
-          }
-          continue;
-        }
+      const structuralRootLocation = this.findStructuralRootLocation(
+        selector,
+        itemConfig,
+      );
+      if (structuralRootLocation === null) {
+        continue;
+      }
+      if (structuralRootLocation !== undefined) {
+        return structuralRootLocation;
       }
       const location = this.findLocation(selector);
       if (location !== undefined) {
@@ -2627,6 +2684,35 @@ export abstract class LayoutManager extends EventEmitter {
       }
     }
     return undefined;
+  }
+
+  private findStructuralRootLocation(
+    selector: LayoutManagerLocationSelector,
+    itemConfig?: RowOrColumnItemConfig | StackItemConfig | ComponentItemConfig,
+  ): LayoutManagerLocation | null | undefined {
+    if (
+      itemConfig === undefined ||
+      isComponentItemConfig(itemConfig) ||
+      selector.typeId !== LayoutManagerLocationSelectorTypeId.Root ||
+      this._groundItem === undefined
+    ) {
+      return undefined;
+    }
+    const rootItem = this._groundItem.contentItems[0];
+    if (!rootItem?.isStack && !rootItem?.isComponent) {
+      return undefined;
+    }
+    if (
+      selector.index !== undefined &&
+      selector.index !== 0 &&
+      selector.index !== 1
+    ) {
+      return null;
+    }
+    return {
+      parentItem: this._groundItem,
+      index: selector.index ?? 1,
+    };
   }
 
   /** @internal */
