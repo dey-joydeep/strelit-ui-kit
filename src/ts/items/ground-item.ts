@@ -148,21 +148,7 @@ export class GroundItem extends ComponentParentableItem {
       }
       postProcess?.();
     } catch (error) {
-      if (
-        rootContentItem !== undefined &&
-        this.contentItems.includes(rootContentItem)
-      ) {
-        super.removeChild(rootContentItem, true);
-      }
-      if (previousRoot !== undefined) {
-        // Restore structure without re-entering the failure-prone sizing path.
-        super.addChild(previousRoot, 0, true);
-      }
-      try {
-        rootContentItem?.destroy();
-      } catch {
-        // Preserve the transaction failure after restoring the live root.
-      }
+      this.rollbackRootReplacement(rootContentItem, previousRoot);
       throw error;
     }
     try {
@@ -179,6 +165,27 @@ export class GroundItem extends ComponentParentableItem {
       } catch {
         // A failing host diagnostic hook must not corrupt the committed root.
       }
+    }
+  }
+
+  private rollbackRootReplacement(
+    rootContentItem: ContentItem | undefined,
+    previousRoot: ContentItem | undefined,
+  ): void {
+    if (
+      rootContentItem !== undefined &&
+      this.contentItems.includes(rootContentItem)
+    ) {
+      super.removeChild(rootContentItem, true);
+    }
+    if (previousRoot !== undefined) {
+      // Restore structure without re-entering the failure-prone sizing path.
+      super.addChild(previousRoot, 0, true);
+    }
+    try {
+      rootContentItem?.destroy();
+    } catch {
+      // Preserve the transaction failure after restoring the live root.
     }
   }
 
@@ -290,50 +297,70 @@ export class GroundItem extends ComponentParentableItem {
       wrapper.updateSize(false);
       return index;
     } catch (error) {
-      const rollbackErrors: unknown[] = [];
-      if (wrapper.contentItems.includes(existingRoot)) {
-        try {
-          wrapper.removeChild(existingRoot, true);
-        } catch (rollbackError) {
-          rollbackErrors.push(rollbackError);
-        }
+      this.rollbackStructuralRootInsertion(existingRoot, wrapper, error);
+    }
+  }
+
+  private rollbackStructuralRootInsertion(
+    existingRoot: ContentItem,
+    wrapper: ContentItem,
+    error: unknown,
+  ): never {
+    const rollbackErrors: unknown[] = [];
+    if (wrapper.contentItems.includes(existingRoot)) {
+      try {
+        wrapper.removeChild(existingRoot, true);
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
       }
-      if (this.contentItems.includes(wrapper)) {
-        try {
-          super.removeChild(wrapper, true);
-        } catch (rollbackError) {
-          rollbackErrors.push(rollbackError);
-        }
+    }
+    if (this.contentItems.includes(wrapper)) {
+      try {
+        super.removeChild(wrapper, true);
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
       }
-      if (
-        !this.contentItems.includes(existingRoot) &&
-        !wrapper.contentItems.includes(existingRoot)
-      ) {
-        try {
-          this.restoreRootWithoutResize(existingRoot);
-        } catch (rollbackError) {
-          rollbackErrors.push(rollbackError);
-        }
+    }
+    this.restoreStructuralRootAndDestroyWrapper(
+      existingRoot,
+      wrapper,
+      rollbackErrors,
+    );
+    if (rollbackErrors.length > 0) {
+      throw Object.assign(
+        new Error(
+          'Structural root insertion failed and rollback was incomplete',
+        ),
+        { errors: [error, ...rollbackErrors] },
+      );
+    }
+    throw error;
+  }
+
+  private restoreStructuralRootAndDestroyWrapper(
+    existingRoot: ContentItem,
+    wrapper: ContentItem,
+    rollbackErrors: unknown[],
+  ): void {
+    if (
+      !this.contentItems.includes(existingRoot) &&
+      !wrapper.contentItems.includes(existingRoot)
+    ) {
+      try {
+        this.restoreRootWithoutResize(existingRoot);
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
       }
-      if (
-        !this.contentItems.includes(wrapper) &&
-        !wrapper.contentItems.includes(existingRoot)
-      ) {
-        try {
-          wrapper.destroy();
-        } catch (rollbackError) {
-          rollbackErrors.push(rollbackError);
-        }
+    }
+    if (
+      !this.contentItems.includes(wrapper) &&
+      !wrapper.contentItems.includes(existingRoot)
+    ) {
+      try {
+        wrapper.destroy();
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
       }
-      if (rollbackErrors.length > 0) {
-        throw Object.assign(
-          new Error(
-            'Structural root insertion failed and rollback was incomplete',
-          ),
-          { errors: [error, ...rollbackErrors] },
-        );
-      }
-      throw error;
     }
   }
 

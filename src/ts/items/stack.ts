@@ -301,49 +301,52 @@ export class Stack extends ComponentParentableItem {
 
     super.init();
 
-    const contentItems = this.contentItems;
-    const contentItemCount = contentItems.length;
-    const createdTabs: Tab[] = [];
-    if (contentItemCount > 0) {
-      // contentItemCount will be 0 on drag drop
-      if (
-        this._initialActiveItemIndex < 0 ||
-        this._initialActiveItemIndex >= contentItemCount
-      ) {
-        throw new Error(
-          `ActiveItemIndex out of range: ${this._initialActiveItemIndex} id: ${this.id}`,
-        );
-      } else {
-        for (let i = 0; i < contentItemCount; i++) {
-          const contentItem = contentItems[i];
-          if (!(contentItem instanceof ComponentItem)) {
-            throw new TypeError(
-              `Stack Content Item is not of type ComponentItem: ${i} id: ${this.id}`,
-            );
-          } else {
-            const tab = this._header.createTab(contentItem, i);
-            if (tab !== undefined) {
-              createdTabs.push(tab);
-            }
-            contentItem.hide();
-            contentItem.container.setBaseLogicalZIndex();
-          }
-        }
-
-        this.setActiveComponentItem(
-          contentItems[this._initialActiveItemIndex] as ComponentItem,
-          false,
-        );
-
-        this._header.updateTabSizes();
-      }
-    }
-
+    const createdTabs = this.createInitialTabs();
     this._header.updateClosability();
     this.initContentItems();
     for (const tab of createdTabs) {
       this.layoutManager.emit('tabCreated', tab);
     }
+  }
+
+  private createInitialTabs(): Tab[] {
+    const contentItems = this.contentItems;
+    const contentItemCount = contentItems.length;
+    const createdTabs: Tab[] = [];
+    // contentItemCount will be 0 on drag drop
+    if (contentItemCount === 0) {
+      return createdTabs;
+    }
+    if (
+      this._initialActiveItemIndex < 0 ||
+      this._initialActiveItemIndex >= contentItemCount
+    ) {
+      throw new Error(
+        `ActiveItemIndex out of range: ${this._initialActiveItemIndex} id: ${this.id}`,
+      );
+    }
+    for (let i = 0; i < contentItemCount; i++) {
+      const contentItem = contentItems[i];
+      if (!(contentItem instanceof ComponentItem)) {
+        throw new TypeError(
+          `Stack Content Item is not of type ComponentItem: ${i} id: ${this.id}`,
+        );
+      }
+      const tab = this._header.createTab(contentItem, i);
+      if (tab !== undefined) {
+        createdTabs.push(tab);
+      }
+      contentItem.hide();
+      contentItem.container.setBaseLogicalZIndex();
+    }
+
+    this.setActiveComponentItem(
+      contentItems[this._initialActiveItemIndex] as ComponentItem,
+      false,
+    );
+    this._header.updateTabSizes();
+
+    return createdTabs;
   }
 
   /** Sets active component item. */

@@ -55,22 +55,7 @@ function areValidatedComponentTypesEqual(
   }
 
   if (Array.isArray(left)) {
-    if (!Array.isArray(right) || left.length !== right.length) {
-      return false;
-    }
-
-    for (let i = 0; i < left.length; i++) {
-      if (
-        !areValidatedComponentTypesEqual(
-          left[i] as ComponentType,
-          right[i] as ComponentType,
-        )
-      ) {
-        return false;
-      }
-    }
-
-    return true;
+    return areComponentTypeArraysEqual(left, right);
   }
 
   if (Array.isArray(right)) {
@@ -78,34 +63,59 @@ function areValidatedComponentTypesEqual(
   }
 
   if (typeof left === 'object' && typeof right === 'object') {
-    const leftJson = left as SerializableObject;
-    const rightJson = right as SerializableObject;
-    const leftKeys = Object.keys(leftJson);
-    const rightKeys = Object.keys(rightJson);
-    if (leftKeys.length !== rightKeys.length) {
-      return false;
-    }
-
-    for (let i = 0; i < leftKeys.length; i++) {
-      const key = leftKeys[i];
-      if (!Object.prototype.hasOwnProperty.call(rightJson, key)) {
-        return false;
-      }
-
-      if (
-        !areValidatedComponentTypesEqual(
-          leftJson[key] as ComponentType,
-          rightJson[key] as ComponentType,
-        )
-      ) {
-        return false;
-      }
-    }
-
-    return true;
+    return areComponentTypeObjectsEqual(
+      left as SerializableObject,
+      right as SerializableObject,
+    );
   }
 
   return false;
+}
+
+function areComponentTypeArraysEqual(
+  left: readonly unknown[],
+  right: ComponentType,
+): boolean {
+  if (!Array.isArray(right) || left.length !== right.length) {
+    return false;
+  }
+  for (let i = 0; i < left.length; i++) {
+    if (
+      !areValidatedComponentTypesEqual(
+        left[i] as ComponentType,
+        right[i] as ComponentType,
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function areComponentTypeObjectsEqual(
+  left: SerializableObject,
+  right: SerializableObject,
+): boolean {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  for (let i = 0; i < leftKeys.length; i++) {
+    const key = leftKeys[i];
+    if (!Object.prototype.hasOwnProperty.call(right, key)) {
+      return false;
+    }
+    if (
+      !areValidatedComponentTypesEqual(
+        left[key] as ComponentType,
+        right[key] as ComponentType,
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -369,45 +379,7 @@ export abstract class ContentItem extends EventEmitter {
        * Optionally destroy the old content item
        */
       if (destroyOldChild) {
-        const newChildParentNode = newChild._element.parentNode;
-        const newChildNextSibling = newChild._element.nextSibling;
-        const insertionAnchor = document.createComment(
-          'strelit-replace-child-anchor',
-        );
-        parentNode.insertBefore(insertionAnchor, oldChild._element);
-        try {
-          parentNode.replaceChild(newChild._element, oldChild._element);
-        } catch (error) {
-          insertionAnchor.remove();
-          throw error;
-        }
-        try {
-          oldChild.destroy(); // will now also destroy all children of oldChild
-        } catch (error) {
-          try {
-            parentNode.insertBefore(oldChild._element, insertionAnchor);
-            newChild._element.remove();
-            if (newChildParentNode !== null) {
-              const insertionPoint =
-                newChildNextSibling?.parentNode === newChildParentNode
-                  ? newChildNextSibling
-                  : null;
-              newChildParentNode.insertBefore(
-                newChild._element,
-                insertionPoint,
-              );
-            }
-            insertionAnchor.remove();
-          } catch (rollbackError) {
-            reportSecondaryCleanupError(
-              'content-item replacement rollback',
-              rollbackError,
-            );
-          }
-          throw error;
-        }
-        oldChild._parent = null;
-        insertionAnchor.remove();
+        this.replaceAndDestroyChildElement(oldChild, newChild, parentNode);
       } else {
         parentNode.replaceChild(newChild._element, oldChild._element);
       }
@@ -435,6 +407,49 @@ export abstract class ContentItem extends EventEmitter {
         this.updateSize(false);
       }
     }
+  }
+
+  private replaceAndDestroyChildElement(
+    oldChild: ContentItem,
+    newChild: ContentItem,
+    parentNode: Node,
+  ): void {
+    const newChildParentNode = newChild._element.parentNode;
+    const newChildNextSibling = newChild._element.nextSibling;
+    const insertionAnchor = document.createComment(
+      'strelit-replace-child-anchor',
+    );
+    parentNode.insertBefore(insertionAnchor, oldChild._element);
+    try {
+      parentNode.replaceChild(newChild._element, oldChild._element);
+    } catch (error) {
+      insertionAnchor.remove();
+      throw error;
+    }
+    try {
+      oldChild.destroy(); // will now also destroy all children of oldChild
+    } catch (error) {
+      try {
+        parentNode.insertBefore(oldChild._element, insertionAnchor);
+        newChild._element.remove();
+        if (newChildParentNode !== null) {
+          const insertionPoint =
+            newChildNextSibling?.parentNode === newChildParentNode
+              ? newChildNextSibling
+              : null;
+          newChildParentNode.insertBefore(newChild._element, insertionPoint);
+        }
+        insertionAnchor.remove();
+      } catch (rollbackError) {
+        reportSecondaryCleanupError(
+          'content-item replacement rollback',
+          rollbackError,
+        );
+      }
+      throw error;
+    }
+    oldChild._parent = null;
+    insertionAnchor.remove();
   }
 
   /**
