@@ -369,9 +369,31 @@ export class BrowserPopout extends EventEmitter {
     index = destination.index;
     const { rootItemToWrap, wrapperItem } = destination;
 
-    let newContentItem: ContentItem;
+    const newContentItem = this.createPopInContentItem(
+      copiedRoot,
+      parentItem,
+      wrapperItem,
+    );
+
+    if (rootItemToWrap !== undefined && wrapperItem !== undefined) {
+      return this.insertWrappedPopInItem(
+        groundItem,
+        rootItemToWrap,
+        wrapperItem,
+        newContentItem,
+      );
+    }
+
+    return this.insertDirectPopInItem(parentItem, newContentItem, index);
+  }
+
+  private createPopInContentItem(
+    copiedRoot: ResolvedRootItemConfig,
+    parentItem: ContentItem,
+    wrapperItem: ContentItem | undefined,
+  ): ContentItem {
     try {
-      newContentItem = this._layoutManager.createAndInitContentItem(
+      return this._layoutManager.createAndInitContentItem(
         copiedRoot,
         parentItem,
       );
@@ -386,17 +408,6 @@ export class BrowserPopout extends EventEmitter {
       }
       throwWithPopInCleanupErrors(error, cleanupErrors);
     }
-
-    if (rootItemToWrap !== undefined && wrapperItem !== undefined) {
-      return this.insertWrappedPopInItem(
-        groundItem,
-        rootItemToWrap,
-        wrapperItem,
-        newContentItem,
-      );
-    }
-
-    return this.insertDirectPopInItem(parentItem, newContentItem, index);
   }
 
   private findPopInDestination(
