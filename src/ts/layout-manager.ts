@@ -159,11 +159,7 @@ function assertResolvedItemConfigWithinLimits(root: ResolvedItemConfig): void {
   const cloneBudget = { nodes: 0 };
   let nodes = 0;
 
-  while (stack.length > 0) {
-    const frame = stack.pop();
-    if (frame === undefined) {
-      break;
-    }
+  for (let frame = stack.pop(); frame !== undefined; frame = stack.pop()) {
     if ('completed' in frame) {
       active.delete(frame.completed);
       continue;
@@ -577,17 +573,7 @@ export abstract class LayoutManager extends EventEmitter {
       }
     }
     attempt(() => this._tabDropPlaceholder.remove());
-    if (this._dropTargetIndicator !== null) {
-      const dropTargetIndicator = this._dropTargetIndicator;
-      let destroyed = false;
-      attempt(() => {
-        dropTargetIndicator.destroy();
-        destroyed = true;
-      });
-      if (destroyed) {
-        this._dropTargetIndicator = null;
-      }
-    }
+    this.destroyDropTargetIndicator(attempt);
     if (this._transitionIndicator !== null) {
       const transitionIndicator = this._transitionIndicator;
       let destroyed = false;
@@ -613,6 +599,22 @@ export abstract class LayoutManager extends EventEmitter {
       throw firstError;
     }
     this._destroyCleanupFailed = false;
+  }
+
+  private destroyDropTargetIndicator(
+    attempt: (operation: () => void) => void,
+  ): void {
+    if (this._dropTargetIndicator !== null) {
+      const dropTargetIndicator = this._dropTargetIndicator;
+      let destroyed = false;
+      attempt(() => {
+        dropTargetIndicator.destroy();
+        destroyed = true;
+      });
+      if (destroyed) {
+        this._dropTargetIndicator = null;
+      }
+    }
   }
 
   private destroyOwnedPopouts(attempt: (operation: () => void) => void): void {
