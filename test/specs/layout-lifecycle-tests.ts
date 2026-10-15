@@ -106,6 +106,28 @@ describe('layout lifecycle', () => {
     expect(layout.saveLayoutDuringBindSucceeded).toBe(true);
   });
 
+  it('maximises the parent stack of a configured component', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        id: 'parent-stack',
+        content: [
+          {
+            type: 'component',
+            componentType: 'panel',
+            maximised: true,
+          },
+        ],
+      },
+    });
+
+    expect(layout.maximisedStack?.id).toBe('parent-stack');
+  });
+
   it('focuses a component installed directly as the root', () => {
     const layout = new StrelitLayout();
     layouts.push(layout);
