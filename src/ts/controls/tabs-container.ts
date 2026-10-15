@@ -144,22 +144,22 @@ export class TabsContainer {
 
     if (activeIndex < 0) {
       throw new AssertError('HSACI56632');
-    } else {
-      if (this._layoutManager.layoutConfig.settings.reorderOnTabMenuClick) {
-        /**
-         * If the tab selected was in the dropdown, move everything down one to make way for this one to be the first.
-         * This will make sure the most used tabs stay visible.
-         */
-        const activeTab = this._tabs[activeIndex];
-        if (activeTab.element.parentElement === this._dropdownElement) {
-          for (let j = activeIndex; j > 0; j--) {
-            this._tabs[j] = this._tabs[j - 1];
-          }
-          this._tabs[0] = activeTab;
-          this._element.prepend(activeTab.element);
-
-          // updateTabSizes will move overflowed tabs between their containers.
+    } else if (
+      this._layoutManager.layoutConfig.settings.reorderOnTabMenuClick
+    ) {
+      /**
+       * If the tab selected was in the dropdown, move everything down one to make way for this one to be the first.
+       * This will make sure the most used tabs stay visible.
+       */
+      const activeTab = this._tabs[activeIndex];
+      if (activeTab.element.parentElement === this._dropdownElement) {
+        for (let j = activeIndex; j > 0; j--) {
+          this._tabs[j] = this._tabs[j - 1];
         }
+        this._tabs[0] = activeTab;
+        this._element.prepend(activeTab.element);
+
+        // updateTabSizes will move overflowed tabs between their containers.
       }
     }
   }

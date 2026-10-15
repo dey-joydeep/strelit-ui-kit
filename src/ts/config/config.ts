@@ -2089,14 +2089,12 @@ export function parseSize(
       throw new ConfigurationError(
         `${i18nStrings[I18nStringId.UnknownUnitInSizeString]}: ${sizeString}`,
       );
+    } else if (!allowableSizeUnits.includes(sizeUnit)) {
+      throw new ConfigurationError(
+        `${i18nStrings[I18nStringId.UnsupportedUnitInSizeString]}: ${sizeString}`,
+      );
     } else {
-      if (!allowableSizeUnits.includes(sizeUnit)) {
-        throw new ConfigurationError(
-          `${i18nStrings[I18nStringId.UnsupportedUnitInSizeString]}: ${sizeString}`,
-        );
-      } else {
-        return { size, sizeUnit };
-      }
+      return { size, sizeUnit };
     }
   }
 }

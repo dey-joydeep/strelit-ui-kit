@@ -448,19 +448,17 @@ export class Header extends EventEmitter {
     let isClosable: boolean;
     if (!this._configClosable) {
       isClosable = false;
+    } else if (!this._rowColumnClosable) {
+      isClosable = false;
     } else {
-      if (!this._rowColumnClosable) {
-        isClosable = false;
-      } else {
-        isClosable = true;
-        const len = this.tabs.length;
-        for (let i = 0; i < len; i++) {
-          const tab = this._tabsContainer.tabs[i];
-          const item = tab.componentItem;
-          if (!item.isClosable) {
-            isClosable = false;
-            break;
-          }
+      isClosable = true;
+      const len = this.tabs.length;
+      for (let i = 0; i < len; i++) {
+        const tab = this._tabsContainer.tabs[i];
+        const item = tab.componentItem;
+        if (!item.isClosable) {
+          isClosable = false;
+          break;
         }
       }
     }
@@ -564,12 +562,10 @@ export class Header extends EventEmitter {
   ) {
     if (!this._canRemoveComponent) {
       dragListener.cancelDrag();
+    } else if (this._componentDragStartEvent === undefined) {
+      throw new UnexpectedUndefinedError('HHTDSE22294');
     } else {
-      if (this._componentDragStartEvent === undefined) {
-        throw new UnexpectedUndefinedError('HHTDSE22294');
-      } else {
-        this._componentDragStartEvent(x, y, dragListener, componentItem);
-      }
+      this._componentDragStartEvent(x, y, dragListener, componentItem);
     }
   }
 

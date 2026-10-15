@@ -604,12 +604,13 @@ export class GroundItem extends ComponentParentableItem {
     this.deepFilterContentItems(this.contentItems, result, (item) => {
       if (ContentItem.isStack(item) && item.initialWantMaximise) {
         return true;
+      } else if (
+        ContentItem.isComponentItem(item) &&
+        item.initialWantMaximise
+      ) {
+        return true;
       } else {
-        if (ContentItem.isComponentItem(item) && item.initialWantMaximise) {
-          return true;
-        } else {
-          return false;
-        }
+        return false;
       }
     });
 

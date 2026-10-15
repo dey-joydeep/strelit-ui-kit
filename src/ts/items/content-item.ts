@@ -308,20 +308,16 @@ export abstract class ContentItem extends EventEmitter {
      */
     if (this._contentItems.length > 0) {
       this.updateSize(false);
-    } else {
-      /**
-       * If this was the last content item, remove this node as well
-       */
-      if (
-        !this.isGround &&
-        this._isClosable &&
-        this._popInParentIds.length === 0
-      ) {
-        if (this._parent === null) {
-          throw new UnexpectedNullError('CIUC00874');
-        } else {
-          this._parent.removeChild(this);
-        }
+    } else if (
+      !this.isGround &&
+      this._isClosable &&
+      this._popInParentIds.length === 0
+    ) {
+      /** If this was the last content item, remove this node as well. */
+      if (this._parent === null) {
+        throw new UnexpectedNullError('CIUC00874');
+      } else {
+        this._parent.removeChild(this);
       }
     }
   }
@@ -799,14 +795,12 @@ export abstract class ContentItem extends EventEmitter {
   ) {
     if (this._throttledEvents.indexOf(name) === -1) {
       this.layoutManager.emitUnknown(name, event);
-    } else {
-      if (this._pendingEventPropagations[name] !== true) {
-        this._pendingEventPropagations[name] = true;
-        this._pendingEventPropagationFrames[name] =
-          globalThis.requestAnimationFrame(() =>
-            this.propagateEventToLayoutManager(name, event),
-          );
-      }
+    } else if (this._pendingEventPropagations[name] !== true) {
+      this._pendingEventPropagations[name] = true;
+      this._pendingEventPropagationFrames[name] =
+        globalThis.requestAnimationFrame(() =>
+          this.propagateEventToLayoutManager(name, event),
+        );
     }
   }
 
