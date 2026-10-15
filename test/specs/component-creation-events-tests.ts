@@ -5,6 +5,7 @@ import {
   LayoutConfig,
   resolveComponentItemConfig,
 } from '../../src';
+import type { SerializableValue } from '../../src/ts/utils/types';
 
 describe('component creation events', function () {
   let layout: StrelitLayout;
@@ -117,6 +118,76 @@ describe('component creation events', function () {
       }),
     ).toThrow('Component state rejected by validator: validatedComponent');
     expect(factory).not.toHaveBeenCalled();
+  });
+
+  it('copies valid state before passing it to the validator and factory', function () {
+    const state = { label: 'ready', nested: { count: 1 } };
+    const validatedStates: (SerializableValue | undefined)[] = [];
+    const validator = (
+      value: SerializableValue | undefined,
+    ): value is typeof state | undefined => {
+      validatedStates.push(value);
+      return (
+        value === undefined || (typeof value === 'object' && value !== null)
+      );
+    };
+    const factory = vi.fn(
+      (_container: ComponentContainer, _state: typeof state | undefined) =>
+        undefined,
+    );
+    layout.registerComponentFactoryFunction('copiedState', factory, validator);
+
+    layout.loadLayout({
+      root: {
+        type: 'component',
+        componentType: 'copiedState',
+        componentState: state,
+      },
+    });
+
+    const validated = validatedStates[0];
+    const supplied = factory.mock.calls[0][1];
+    expect(validated).toEqual(state);
+    expect(validated).not.toBe(state);
+    expect(supplied).toBe(validated);
+    expect((supplied as typeof state).nested).not.toBe(state.nested);
+  });
+
+  it('mounts and releases a registered virtual component root', function () {
+    const rootHtmlElement = document.createElement('div');
+    layout.registerComponentFactoryFunction(
+      'mountedVirtual',
+      () => ({ rootHtmlElement }),
+      true,
+    );
+    layout.loadLayout({
+      root: { type: 'component', componentType: 'mountedVirtual' },
+    });
+    const item = layout.getComponentItemsByType('mountedVirtual')[0];
+
+    expect(rootHtmlElement.parentElement).toBe(layout.container);
+    expect(rootHtmlElement.style.position).toBe('absolute');
+    expect(item.container.virtualRectingRequiredEvent).toBeDefined();
+    expect(item.container.virtualVisibilityChangeRequiredEvent).toBeDefined();
+    expect(item.container.virtualZIndexChangeRequiredEvent).toBeDefined();
+
+    item.remove();
+    expect(rootHtmlElement.isConnected).toBe(false);
+    expect(item.container.virtualRectingRequiredEvent).toBeUndefined();
+  });
+
+  it('rejects a registered virtual component without a root element', function () {
+    layout.registerComponentFactoryFunction(
+      'missingVirtualRoot',
+      () => ({}),
+      true,
+    );
+
+    expect(() =>
+      layout.loadLayout({
+        root: { type: 'component', componentType: 'missingVirtualRoot' },
+      }),
+    ).toThrow('Virtual component does not have getter "rootHtmlElement"');
   });
 
   it('exposes replacement metadata while binding the replacement component', function () {

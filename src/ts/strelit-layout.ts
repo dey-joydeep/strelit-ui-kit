@@ -359,83 +359,93 @@ export class StrelitLayout extends VirtualLayout {
       typeName === undefined
         ? undefined
         : this._componentTypesMap.get(typeName);
-
-    let result: ComponentContainerBindableComponent;
-    if (instantiator !== undefined) {
-      const virtual = instantiator.virtual;
-      let componentState: SerializableValue | undefined;
-      if (itemConfig.componentState === undefined) {
-        componentState = undefined;
-      } else {
-        // make copy
-        componentState = deepCloneValue(
-          itemConfig.componentState,
-        ) as SerializableValue;
-      }
-
-      if (
-        instantiator.stateValidator !== undefined &&
-        !instantiator.stateValidator(componentState)
-      ) {
-        throw new BindError(
-          `Component state rejected by validator: ${String(typeName)}`,
-        );
-      }
-
-      let component: ComponentContainerComponent | undefined;
-      const componentConstructor = instantiator.constructor;
-      if (componentConstructor !== undefined) {
-        component = new componentConstructor(
-          container,
-          componentState,
-          virtual,
-        );
-      } else {
-        const factoryFunction = instantiator.factoryFunction;
-        if (factoryFunction !== undefined) {
-          component = factoryFunction(container, componentState, virtual) as
-            ComponentContainerComponent | undefined;
-        } else {
-          throw new AssertError('LMBCFFU10008');
-        }
-      }
-
-      if (virtual) {
-        if (component === undefined) {
-          throw new UnexpectedUndefinedError('SLBCVCU988774');
-        } else {
-          const virtualComponent = component as StrelitLayoutVirtualComponent;
-          const componentRootElement = virtualComponent.rootHtmlElement;
-          if (componentRootElement === undefined) {
-            throw new BindError(
-              `${i18nStrings[I18nStringId.VirtualComponentDoesNotHaveRootHtmlElement]}: ${JSON.stringify(itemConfig.componentType)}`,
-            );
-          } else {
-            ensureElementPositionAbsolute(componentRootElement);
-            this.container.appendChild(componentRootElement);
-            this._virtualComponentMap.set(container, virtualComponent);
-            container.virtualRectingRequiredEvent =
-              this._containerVirtualRectingRequiredEventListener;
-            container.virtualVisibilityChangeRequiredEvent =
-              this._containerVirtualVisibilityChangeRequiredEventListener;
-            container.virtualZIndexChangeRequiredEvent =
-              this._containerVirtualZIndexChangeRequiredEventListener;
-          }
-        }
-      }
-
-      this._registeredComponentMap.set(container, component);
-
-      result = {
-        virtual: instantiator.virtual,
-        component,
-      };
-    } else {
+    if (instantiator === undefined) {
       // Delegate application-managed component binding to VirtualLayout.
-      result = super.bindComponent(container, itemConfig);
+      return super.bindComponent(container, itemConfig);
     }
 
-    return result;
+    const componentState = this.copyAndValidateComponentState(
+      itemConfig,
+      instantiator,
+      typeName,
+    );
+    const component = this.createRegisteredComponent(
+      container,
+      componentState,
+      instantiator,
+    );
+    if (instantiator.virtual) {
+      this.mountVirtualComponent(container, component, itemConfig);
+    }
+    this._registeredComponentMap.set(container, component);
+    return { virtual: instantiator.virtual, component };
+  }
+
+  private copyAndValidateComponentState(
+    itemConfig: ResolvedComponentItemConfig,
+    instantiator: RegisteredStrelitLayoutComponentInstantiator,
+    typeName: string | undefined,
+  ): SerializableValue | undefined {
+    const componentState =
+      itemConfig.componentState === undefined
+        ? undefined
+        : (deepCloneValue(itemConfig.componentState) as SerializableValue);
+    if (
+      instantiator.stateValidator !== undefined &&
+      !instantiator.stateValidator(componentState)
+    ) {
+      throw new BindError(
+        `Component state rejected by validator: ${String(typeName)}`,
+      );
+    }
+    return componentState;
+  }
+
+  private createRegisteredComponent(
+    container: ComponentContainer,
+    componentState: SerializableValue | undefined,
+    instantiator: RegisteredStrelitLayoutComponentInstantiator,
+  ): ComponentContainerComponent | undefined {
+    const componentConstructor = instantiator.constructor;
+    if (componentConstructor !== undefined) {
+      return new componentConstructor(
+        container,
+        componentState,
+        instantiator.virtual,
+      );
+    }
+    const factoryFunction = instantiator.factoryFunction;
+    if (factoryFunction === undefined) {
+      throw new AssertError('LMBCFFU10008');
+    }
+    return factoryFunction(container, componentState, instantiator.virtual) as
+      ComponentContainerComponent | undefined;
+  }
+
+  private mountVirtualComponent(
+    container: ComponentContainer,
+    component: ComponentContainerComponent | undefined,
+    itemConfig: ResolvedComponentItemConfig,
+  ): void {
+    if (component === undefined) {
+      throw new UnexpectedUndefinedError('SLBCVCU988774');
+    }
+    const virtualComponent = component as StrelitLayoutVirtualComponent;
+    const componentRootElement = virtualComponent.rootHtmlElement;
+    if (componentRootElement === undefined) {
+      throw new BindError(
+        `${i18nStrings[I18nStringId.VirtualComponentDoesNotHaveRootHtmlElement]}: ${JSON.stringify(itemConfig.componentType)}`,
+      );
+    }
+    ensureElementPositionAbsolute(componentRootElement);
+    this.container.appendChild(componentRootElement);
+    this._virtualComponentMap.set(container, virtualComponent);
+    container.virtualRectingRequiredEvent =
+      this._containerVirtualRectingRequiredEventListener;
+    container.virtualVisibilityChangeRequiredEvent =
+      this._containerVirtualVisibilityChangeRequiredEventListener;
+    container.virtualZIndexChangeRequiredEvent =
+      this._containerVirtualZIndexChangeRequiredEventListener;
   }
 
   /** @internal */
