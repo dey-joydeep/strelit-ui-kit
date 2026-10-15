@@ -1191,65 +1191,60 @@ export abstract class LayoutManager extends EventEmitter {
   ): LayoutManagerLocation | undefined {
     if (this._groundItem === undefined) {
       throw new Error('Cannot add component before init');
-    } else {
-      // defaultLocationSelectors should always find a location
-      locationSelectors ??= layoutManagerDefaultLocationSelectors;
-
-      const location = this.findFirstLocation(locationSelectors, itemConfig);
-      if (location === undefined) {
-        return undefined;
-      } else {
-        let parentItem = location.parentItem;
-        let addIdx: number;
-        switch (parentItem.type) {
-          case ItemType.ground: {
-            const groundItem = parentItem as GroundItem;
-            addIdx = groundItem.addItem(itemConfig, location.index);
-            if (addIdx >= 0) {
-              parentItem = this._groundItem.contentItems[0]; // was added to rootItem
-            } else {
-              addIdx = 0; // was added as rootItem (which is the first and only ContentItem in GroundItem)
-            }
-            break;
-          }
-          case ItemType.row:
-          case ItemType.column: {
-            const rowOrColumn = parentItem as RowOrColumn;
-            addIdx = rowOrColumn.addItem(itemConfig, location.index);
-            break;
-          }
-          case ItemType.stack: {
-            if (!isComponentItemConfig(itemConfig)) {
-              throw Error(
-                i18nStrings[I18nStringId.ItemConfigIsNotTypeComponent],
-              );
-            } else {
-              const stack = parentItem as Stack;
-              addIdx = stack.addItem(itemConfig, location.index);
-              break;
-            }
-          }
-          case ItemType.component: {
-            throw new AssertError('LMAIALC87444602');
-          }
-          default:
-            throw new UnreachableCaseError('LMAIALU98881733', parentItem.type);
-        }
-
-        if (isComponentItemConfig(itemConfig)) {
-          // see if stack was inserted
-          const item = parentItem.contentItems[addIdx];
-          if (ContentItem.isStack(item)) {
-            parentItem = item;
-            addIdx = 0;
-          }
-        }
-
-        location.parentItem = parentItem;
-        location.index = addIdx;
-
-        return location;
+    }
+    // defaultLocationSelectors should always find a location
+    locationSelectors ??= layoutManagerDefaultLocationSelectors;
+    const location = this.findFirstLocation(locationSelectors, itemConfig);
+    if (location === undefined) {
+      return undefined;
+    }
+    let { parentItem, index } = this.addItemToParent(
+      location.parentItem,
+      itemConfig,
+      location.index,
+    );
+    if (isComponentItemConfig(itemConfig)) {
+      // see if stack was inserted
+      const item = parentItem.contentItems[index];
+      if (ContentItem.isStack(item)) {
+        parentItem = item;
+        index = 0;
       }
+    }
+    location.parentItem = parentItem;
+    location.index = index;
+    return location;
+  }
+
+  private addItemToParent(
+    parentItem: ContentItem,
+    itemConfig: RowOrColumnItemConfig | StackItemConfig | ComponentItemConfig,
+    index: number,
+  ): LayoutManagerLocation {
+    switch (parentItem.type) {
+      case ItemType.ground: {
+        const groundItem = parentItem as GroundItem;
+        const addIdx = groundItem.addItem(itemConfig, index);
+        return addIdx >= 0
+          ? { parentItem: groundItem.contentItems[0], index: addIdx }
+          : { parentItem: groundItem, index: 0 };
+      }
+      case ItemType.row:
+      case ItemType.column: {
+        const rowOrColumn = parentItem as RowOrColumn;
+        return { parentItem, index: rowOrColumn.addItem(itemConfig, index) };
+      }
+      case ItemType.stack: {
+        if (!isComponentItemConfig(itemConfig)) {
+          throw Error(i18nStrings[I18nStringId.ItemConfigIsNotTypeComponent]);
+        }
+        const stack = parentItem as Stack;
+        return { parentItem, index: stack.addItem(itemConfig, index) };
+      }
+      case ItemType.component:
+        throw new AssertError('LMAIALC87444602');
+      default:
+        throw new UnreachableCaseError('LMAIALU98881733', parentItem.type);
     }
   }
 
@@ -2721,123 +2716,90 @@ export abstract class LayoutManager extends EventEmitter {
   ): LayoutManagerLocation | undefined {
     const selectorIndex = selector.index;
     switch (selector.typeId) {
-      case LayoutManagerLocationSelectorTypeId.FocusedItem: {
-        if (this._focusedComponentItem === undefined) {
-          return undefined;
-        } else {
-          const parentItem = this._focusedComponentItem.parentItem;
-          const parentContentItems = parentItem.contentItems;
-          const parentContentItemCount = parentContentItems.length;
-          if (selectorIndex === undefined) {
-            return { parentItem, index: parentContentItemCount };
-          } else {
-            const focusedIndex = parentContentItems.indexOf(
-              this._focusedComponentItem,
-            );
-            const index = focusedIndex + selectorIndex;
-            if (index < 0 || index > parentContentItemCount) {
-              return undefined;
-            } else {
-              return { parentItem, index };
-            }
-          }
-        }
-      }
+      case LayoutManagerLocationSelectorTypeId.FocusedItem:
+        return this.findFocusedItemLocation(selectorIndex);
       case LayoutManagerLocationSelectorTypeId.FocusedStack: {
-        if (this._focusedComponentItem === undefined) {
-          return undefined;
-        } else {
-          const parentItem = this._focusedComponentItem.parentItem;
-          return this.tryCreateLocationFromParentItem(
-            parentItem,
-            selectorIndex,
-          );
-        }
+        const parentItem = this._focusedComponentItem?.parentItem;
+        return parentItem === undefined
+          ? undefined
+          : this.tryCreateLocationFromParentItem(parentItem, selectorIndex);
       }
-      case LayoutManagerLocationSelectorTypeId.FirstStack: {
-        const parentItem = this.findFirstContentItemType(ItemType.stack);
-        if (parentItem === undefined) {
-          return undefined;
-        } else {
-          return this.tryCreateLocationFromParentItem(
-            parentItem,
-            selectorIndex,
-          );
-        }
-      }
+      case LayoutManagerLocationSelectorTypeId.FirstStack:
+        return this.findFirstItemLocation(ItemType.stack, selectorIndex);
       case LayoutManagerLocationSelectorTypeId.FirstRowOrColumn: {
-        let parentItem = this.findFirstContentItemType(ItemType.row);
-        if (parentItem !== undefined) {
-          return this.tryCreateLocationFromParentItem(
-            parentItem,
-            selectorIndex,
-          );
-        } else {
-          parentItem = this.findFirstContentItemType(ItemType.column);
-          if (parentItem !== undefined) {
-            return this.tryCreateLocationFromParentItem(
-              parentItem,
-              selectorIndex,
-            );
-          } else {
-            return undefined;
-          }
-        }
+        const parentItem =
+          this.findFirstContentItemType(ItemType.row) ??
+          this.findFirstContentItemType(ItemType.column);
+        return parentItem === undefined
+          ? undefined
+          : this.tryCreateLocationFromParentItem(parentItem, selectorIndex);
       }
-      case LayoutManagerLocationSelectorTypeId.FirstRow: {
-        const parentItem = this.findFirstContentItemType(ItemType.row);
-        if (parentItem === undefined) {
-          return undefined;
-        } else {
-          return this.tryCreateLocationFromParentItem(
-            parentItem,
-            selectorIndex,
-          );
-        }
-      }
-      case LayoutManagerLocationSelectorTypeId.FirstColumn: {
-        const parentItem = this.findFirstContentItemType(ItemType.column);
-        if (parentItem === undefined) {
-          return undefined;
-        } else {
-          return this.tryCreateLocationFromParentItem(
-            parentItem,
-            selectorIndex,
-          );
-        }
-      }
-      case LayoutManagerLocationSelectorTypeId.Empty: {
-        if (this._groundItem === undefined) {
-          throw new UnexpectedUndefinedError('LMFLRIF18244');
-        }
-        if (this.rootItem !== undefined) {
-          return undefined;
-        }
-        if (selectorIndex === undefined || selectorIndex === 0)
-          return { parentItem: this._groundItem, index: 0 };
-        return undefined;
-      }
-      case LayoutManagerLocationSelectorTypeId.Root: {
-        if (this._groundItem === undefined) {
-          throw new UnexpectedUndefinedError('LMFLF18244');
-        } else {
-          const groundContentItems = this._groundItem.contentItems;
-          if (groundContentItems.length === 0) {
-            if (selectorIndex === undefined || selectorIndex === 0)
-              return { parentItem: this._groundItem, index: 0 };
-            else {
-              return undefined;
-            }
-          } else {
-            const parentItem = groundContentItems[0];
-            return this.tryCreateLocationFromParentItem(
-              parentItem,
-              selectorIndex,
-            );
-          }
-        }
-      }
+      case LayoutManagerLocationSelectorTypeId.FirstRow:
+        return this.findFirstItemLocation(ItemType.row, selectorIndex);
+      case LayoutManagerLocationSelectorTypeId.FirstColumn:
+        return this.findFirstItemLocation(ItemType.column, selectorIndex);
+      case LayoutManagerLocationSelectorTypeId.Empty:
+        return this.findEmptyLocation(selectorIndex);
+      case LayoutManagerLocationSelectorTypeId.Root:
+        return this.findRootLocation(selectorIndex);
     }
+  }
+
+  private findFocusedItemLocation(
+    selectorIndex: number | undefined,
+  ): LayoutManagerLocation | undefined {
+    if (this._focusedComponentItem === undefined) {
+      return undefined;
+    }
+    const parentItem = this._focusedComponentItem.parentItem;
+    const parentContentItems = parentItem.contentItems;
+    if (selectorIndex === undefined) {
+      return { parentItem, index: parentContentItems.length };
+    }
+    const focusedIndex = parentContentItems.indexOf(this._focusedComponentItem);
+    const index = focusedIndex + selectorIndex;
+    return index < 0 || index > parentContentItems.length
+      ? undefined
+      : { parentItem, index };
+  }
+
+  private findFirstItemLocation(
+    type: ItemType,
+    selectorIndex: number | undefined,
+  ): LayoutManagerLocation | undefined {
+    const parentItem = this.findFirstContentItemType(type);
+    return parentItem === undefined
+      ? undefined
+      : this.tryCreateLocationFromParentItem(parentItem, selectorIndex);
+  }
+
+  private findEmptyLocation(
+    selectorIndex: number | undefined,
+  ): LayoutManagerLocation | undefined {
+    if (this._groundItem === undefined) {
+      throw new UnexpectedUndefinedError('LMFLRIF18244');
+    }
+    if (this.rootItem !== undefined) {
+      return undefined;
+    }
+    return selectorIndex === undefined || selectorIndex === 0
+      ? { parentItem: this._groundItem, index: 0 }
+      : undefined;
+  }
+
+  private findRootLocation(
+    selectorIndex: number | undefined,
+  ): LayoutManagerLocation | undefined {
+    if (this._groundItem === undefined) {
+      throw new UnexpectedUndefinedError('LMFLF18244');
+    }
+    const rootItem = this._groundItem.contentItems[0];
+    if (rootItem === undefined) {
+      return selectorIndex === undefined || selectorIndex === 0
+        ? { parentItem: this._groundItem, index: 0 }
+        : undefined;
+    }
+    return this.tryCreateLocationFromParentItem(rootItem, selectorIndex);
   }
 
   /** @internal */
