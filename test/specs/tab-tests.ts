@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ComponentContainer,
   ComponentItem,
@@ -162,6 +162,78 @@ describe('Tabs configuration and behavior', function () {
         expect(Number.isInteger(Number(zIndex))).toBe(true);
       }
     }
+  });
+
+  it('keeps the active tab visible while moving an earlier overflowing tab to the dropdown', function () {
+    layout.loadLayout({
+      settings: { tabOverlapAllowance: 0 },
+      root: {
+        type: 'stack',
+        content: ['First', 'Second', 'Third'].map((title) => ({
+          type: 'component' as const,
+          componentType: 'testComponent',
+          title,
+        })),
+      },
+    });
+    const stack = layout.rootItem as Stack;
+    const tabs = stack.header.tabs;
+    for (const tab of tabs) {
+      tab.element.style.marginRight = '0px';
+      vi.spyOn(tab.element, 'offsetWidth', 'get').mockReturnValue(60);
+    }
+    const active = stack.contentItems[2] as ComponentItem;
+    const tabsContainer = (
+      stack.header as unknown as {
+        _tabsContainer: TabsContainer;
+      }
+    )._tabsContainer;
+
+    expect(tabsContainer.tryUpdateTabSizes(false, 130, active)).toBe(false);
+    expect(tabsContainer.tryUpdateTabSizes(true, 130, active)).toBe(true);
+
+    expect(tabsContainer.lastVisibleTabIndex).toBe(0);
+    expect(tabs[0].element.parentElement).toBe(tabsContainer.element);
+    expect(tabs[1].element.parentElement).toBe(tabsContainer.dropdownElement);
+    expect(tabs[2].element.parentElement).toBe(tabsContainer.element);
+  });
+
+  it('uses allowed overlap before activating the dropdown', function () {
+    layout.loadLayout({
+      settings: { tabOverlapAllowance: 70 },
+      root: {
+        type: 'stack',
+        content: ['First', 'Second', 'Third'].map((title) => ({
+          type: 'component' as const,
+          componentType: 'testComponent',
+          title,
+        })),
+      },
+    });
+    const stack = layout.rootItem as Stack;
+    const tabs = stack.header.tabs;
+    for (const tab of tabs) {
+      tab.element.style.marginRight = '0px';
+      vi.spyOn(tab.element, 'offsetWidth', 'get').mockReturnValue(80);
+    }
+    const active = stack.contentItems[2] as ComponentItem;
+    const tabsContainer = (
+      stack.header as unknown as {
+        _tabsContainer: TabsContainer;
+      }
+    )._tabsContainer;
+
+    tabsContainer.updateTabSizes(180, active);
+
+    expect(tabsContainer.dropdownActive).toBe(false);
+    expect(tabsContainer.lastVisibleTabIndex).toBe(2);
+    expect(tabs[1].element.style.marginLeft).toBe('-60px');
+    expect(tabs.map((tab) => tab.element.style.zIndex)).toEqual([
+      '2',
+      '1',
+      '0',
+    ]);
+    expect(tabsContainer.dropdownElement.children).toHaveLength(0);
   });
 
   it('moves a promoted overflow tab to the front of the DOM', function () {
