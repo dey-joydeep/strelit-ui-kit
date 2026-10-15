@@ -329,15 +329,13 @@ export abstract class ContentItem extends EventEmitter {
    *
    * @param contentItem -
    * @param index - If omitted item will be appended
-   * @param suspendResize - Used by descendent implementations
+   * @param _suspendResize - Used by descendant implementations
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   addChild(
     contentItem: ContentItem,
     index?: number | null,
-    suspendResize?: boolean,
+    _suspendResize?: boolean,
   ): number {
-    void suspendResize;
     index ??= this._contentItems.length;
 
     this._contentItems.splice(index, 0, contentItem);
