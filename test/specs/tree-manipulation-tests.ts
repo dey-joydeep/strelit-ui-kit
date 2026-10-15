@@ -234,6 +234,119 @@ describe('Runtime layout tree manipulation', function () {
     expect(layout.rootItem).toBe(originalRoot);
   });
 
+  it.each([
+    { offset: 0, expectedIndex: 0 },
+    { offset: 1, expectedIndex: 1 },
+  ])(
+    'places a component at focused-item relative offset $offset',
+    ({ offset, expectedIndex }) => {
+      layout.loadLayout({
+        root: {
+          type: 'stack',
+          content: [
+            {
+              type: 'component',
+              id: 'focused',
+              componentType: 'testComponent',
+            },
+            { type: 'component', componentType: 'testComponent' },
+          ],
+        },
+      });
+      const focused = layout.findFirstComponentItemById(
+        'focused',
+      ) as ComponentItem;
+      focused.focus();
+      const stack = focused.parentItem;
+
+      const location = layout.addItemAtLocation(
+        { type: 'component', id: 'added', componentType: 'testComponent' },
+        [
+          {
+            typeId: LayoutManagerLocationSelectorTypeId.FocusedItem,
+            index: offset,
+          },
+        ],
+      );
+
+      expect(location).toEqual({ parentItem: stack, index: expectedIndex });
+      expect(stack.contentItems[expectedIndex]).toBe(
+        layout.findFirstComponentItemById('added'),
+      );
+    },
+  );
+
+  it('tries the next selector when a focused-item offset is out of bounds', function () {
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: [
+          { type: 'component', id: 'focused', componentType: 'testComponent' },
+        ],
+      },
+    });
+    const focused = layout.findFirstComponentItemById(
+      'focused',
+    ) as ComponentItem;
+    focused.focus();
+    const stack = focused.parentItem;
+
+    const location = layout.addItemAtLocation(
+      { type: 'component', id: 'added', componentType: 'testComponent' },
+      [
+        { typeId: LayoutManagerLocationSelectorTypeId.FocusedItem, index: -1 },
+        { typeId: LayoutManagerLocationSelectorTypeId.FirstStack },
+      ],
+    );
+
+    expect(location).toEqual({ parentItem: stack, index: 1 });
+    expect(stack.contentItems[1]).toBe(
+      layout.findFirstComponentItemById('added'),
+    );
+  });
+
+  it('prefers the first row over a column for the combined selector', function () {
+    layout.loadLayout({
+      root: {
+        type: 'column',
+        content: [
+          {
+            type: 'row',
+            content: [
+              { type: 'stack', content: [] },
+              { type: 'stack', content: [] },
+            ],
+          },
+          { type: 'stack', content: [] },
+        ],
+      },
+    });
+    const row = layout.rootItem?.contentItems[0] as RowOrColumn;
+
+    const location = layout.addItemAtLocation({ type: 'stack', content: [] }, [
+      { typeId: LayoutManagerLocationSelectorTypeId.FirstRowOrColumn },
+    ]);
+
+    expect(location).toEqual({ parentItem: row, index: 2 });
+    expect(row.contentItems).toHaveLength(3);
+  });
+
+  it('accepts an empty selector only when the ground has no root', function () {
+    layout.loadLayout({});
+    const location = layout.addItemAtLocation(
+      { type: 'component', componentType: 'testComponent' },
+      [{ typeId: LayoutManagerLocationSelectorTypeId.Empty, index: 0 }],
+    );
+    expect(location?.parentItem).toBe(layout.rootItem);
+    expect(location?.index).toBe(0);
+
+    const secondLocation = layout.addItemAtLocation(
+      { type: 'component', componentType: 'testComponent' },
+      [{ typeId: LayoutManagerLocationSelectorTypeId.Empty, index: 0 }],
+    );
+    expect(secondLocation).toBeUndefined();
+  });
+
   it('wraps a direct component root before adding structural content', function () {
     layout.loadComponentAsRoot({
       type: 'component',
