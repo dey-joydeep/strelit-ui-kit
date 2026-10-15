@@ -22,9 +22,9 @@ export class DragSource {
   /** @internal */
   private _dragListener: DragListener | null;
   /** @internal */
-  private _dummyGroundContainer: HTMLElement;
+  private readonly _dummyGroundContainer: HTMLElement;
   /** @internal */
-  private _dummyGroundContentItem: GroundItem;
+  private readonly _dummyGroundContentItem: GroundItem;
   /** @internal */
   private _isDestroying = false;
 
@@ -40,7 +40,7 @@ export class DragSource {
   /** @internal */
   constructor(
     /** @internal */
-    private _layoutManager: LayoutManager,
+    private readonly _layoutManager: LayoutManager,
     /** @internal */
     private readonly _element: HTMLElement,
     /** @internal */

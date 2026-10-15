@@ -105,7 +105,7 @@ export class Tab {
     /** @internal */
     private readonly _layoutManager: LayoutManager,
     /** @internal */
-    private _componentItem: ComponentItem,
+    private readonly _componentItem: ComponentItem,
     /** @internal */
     private _closeEvent: TabCloseEvent | undefined,
     /** @internal */

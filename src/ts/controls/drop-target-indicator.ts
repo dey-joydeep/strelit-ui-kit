@@ -4,7 +4,7 @@ import { numberToPixels, setElementDisplayVisibility } from '../utils/utils';
 
 /** @internal */
 export class DropTargetIndicator {
-  private _element: HTMLElement;
+  private readonly _element: HTMLElement;
 
   constructor() {
     // Maybe use container instead of Document Body?
