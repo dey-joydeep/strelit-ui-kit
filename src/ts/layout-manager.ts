@@ -2393,95 +2393,69 @@ export abstract class LayoutManager extends EventEmitter {
    * @internal
    */
   private adjustColumnsResponsive() {
-    if (this._groundItem === undefined) {
+    const groundItem = this._groundItem;
+    if (groundItem === undefined) {
       throw new UnexpectedUndefinedError('LMACR20883');
-    } else {
-      const useResponsive = this.useResponsiveLayout();
-      // If there is no min width set, or not content items, do nothing.
-      if (
-        useResponsive &&
-        !this._updatingColumnsResponsive &&
-        this._groundItem.contentItems.length > 0 &&
-        this._groundItem.contentItems[0].isRow
-      ) {
-        if (this._groundItem === undefined || this._width === null) {
-          throw new UnexpectedUndefinedError('LMACR77412');
-        } else {
-          // If there is only one column, do nothing.
-          const columnCount =
-            this._groundItem.contentItems[0].contentItems.length;
-          if (columnCount <= 1) {
-            if (this._groundItem.contentItems.length > 0) {
-              this._firstLoad = false;
-            }
-            return;
-          } else {
-            // If they all still fit, do nothing.
-            const minItemWidth =
-              this.layoutConfig.dimensions.defaultMinItemWidth;
-            const totalMinWidth = columnCount * minItemWidth;
-            if (totalMinWidth <= this._width) {
-              if (this._groundItem.contentItems.length > 0) {
-                this._firstLoad = false;
-              }
-              return;
-            } else {
-              // Prevent updates while it is already happening.
-              this._updatingColumnsResponsive = true;
+    }
+    const root = groundItem.contentItems[0];
+    if (
+      this.useResponsiveLayout() &&
+      !this._updatingColumnsResponsive &&
+      root?.isRow
+    ) {
+      this.collapseResponsiveColumns(root);
+    }
+    if (groundItem.contentItems.length > 0) {
+      this._firstLoad = false;
+    }
+  }
 
-              // Figure out how many columns to stack, and put them all in the first stack container.
-              const finalColumnCount = Math.max(
-                Math.floor(this._width / minItemWidth),
-                1,
-              );
-              const stackColumnCount = columnCount - finalColumnCount;
+  private collapseResponsiveColumns(root: ContentItem): void {
+    const width = this._width;
+    if (width === null) {
+      throw new UnexpectedUndefinedError('LMACR77412');
+    }
+    const columnCount = root.contentItems.length;
+    if (columnCount <= 1) {
+      return;
+    }
+    const minItemWidth = this.layoutConfig.dimensions.defaultMinItemWidth;
+    if (columnCount * minItemWidth <= width) {
+      return;
+    }
 
-              const rootContentItem = this._groundItem.contentItems[0];
-              const rootBranches = [...rootContentItem.contentItems];
-              let firstStackContainer: Stack | undefined;
-              let destinationBranch: ContentItem | undefined;
-              for (const branch of rootBranches) {
-                const branchStacks = branch.getItemsByType(
-                  ItemType.stack,
-                ) as Stack[];
-                if (branchStacks.length > 0) {
-                  firstStackContainer = branchStacks[0];
-                  destinationBranch = branch;
-                  break;
-                }
-              }
-              if (
-                firstStackContainer === undefined ||
-                destinationBranch === undefined
-              ) {
-                this._updatingColumnsResponsive = false;
-                throw new AssertError('LMACRS77413');
-              } else {
-                const columnsToCollapse = rootBranches
-                  .filter((branch) => branch !== destinationBranch)
-                  .slice(-stackColumnCount);
-                try {
-                  for (const column of columnsToCollapse) {
-                    this.addChildContentItemsToContainer(
-                      firstStackContainer,
-                      column,
-                    );
-                    if (rootContentItem.contentItems.includes(column)) {
-                      column.remove();
-                    }
-                  }
-                } finally {
-                  this._updatingColumnsResponsive = false;
-                }
-              }
-            }
-          }
+    this._updatingColumnsResponsive = true;
+    try {
+      const finalColumnCount = Math.max(Math.floor(width / minItemWidth), 1);
+      const stackColumnCount = columnCount - finalColumnCount;
+      const rootBranches = [...root.contentItems];
+      const destination = this.findResponsiveDestination(rootBranches);
+      const columnsToCollapse = rootBranches
+        .filter((branch) => branch !== destination.branch)
+        .slice(-stackColumnCount);
+      for (const column of columnsToCollapse) {
+        this.addChildContentItemsToContainer(destination.stack, column);
+        if (root.contentItems.includes(column)) {
+          column.remove();
         }
       }
-      if (this._groundItem.contentItems.length > 0) {
-        this._firstLoad = false;
+    } finally {
+      this._updatingColumnsResponsive = false;
+    }
+  }
+
+  private findResponsiveDestination(branches: ContentItem[]): {
+    branch: ContentItem;
+    stack: Stack;
+  } {
+    for (const branch of branches) {
+      const stack = branch.getItemsByType(ItemType.stack)[0] as
+        Stack | undefined;
+      if (stack !== undefined) {
+        return { branch, stack };
       }
     }
+    throw new AssertError('LMACRS77413');
   }
 
   /**
