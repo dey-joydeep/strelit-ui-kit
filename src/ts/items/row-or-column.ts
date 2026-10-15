@@ -635,62 +635,55 @@ export class RowOrColumn extends ContentItem {
     if (Math.round(total) === 100 && itemsWithFractionalSize.length === 0) {
       this.respectMinItemSize();
       return;
-    } else {
-      /**
-       * Allocate the remaining size to the items with a fractional size
-       */
-      if (Math.round(total) < 100 && itemsWithFractionalSize.length > 0) {
-        const fractionalAllocatedSize = 100 - total;
-        for (let i = 0; i < itemsWithFractionalSize.length; i++) {
-          const contentItem = itemsWithFractionalSize[i];
-          const fractionalShare =
-            totalFractionalSize > 0
-              ? contentItem.size / totalFractionalSize
-              : 1 / itemsWithFractionalSize.length;
-          contentItem.size = fractionalAllocatedSize * fractionalShare;
-          contentItem.sizeUnit = SizeUnit.Percent;
-        }
-        this.respectMinItemSize();
-        return;
-      } else {
-        /**
-         * If the total is > 100, but there are also items with a fractional size, assign another 50%
-         * to the fractional items
-         *
-         * This will be reset in the next step
-         */
-        if (Math.round(total) >= 100 && itemsWithFractionalSize.length > 0) {
-          for (let i = 0; i < itemsWithFractionalSize.length; i++) {
-            const contentItem = itemsWithFractionalSize[i];
-            const fractionalShare =
-              totalFractionalSize > 0
-                ? contentItem.size / totalFractionalSize
-                : 1 / itemsWithFractionalSize.length;
-            contentItem.size = 50 * fractionalShare;
-            contentItem.sizeUnit = SizeUnit.Percent;
-          }
-          total += 50;
-        }
+    }
 
-        if (total === 0) {
-          const equalShare = 100 / this.contentItems.length;
-          for (let i = 0; i < this.contentItems.length; i++) {
-            const contentItem = this.contentItems[i];
-            contentItem.size = equalShare;
-            contentItem.sizeUnit = SizeUnit.Percent;
-          }
-        } else {
-          /**
-           * Set every items size relative to 100 relative to its size to total
-           */
-          for (let i = 0; i < this.contentItems.length; i++) {
-            const contentItem = this.contentItems[i];
-            contentItem.size = (contentItem.size / total) * 100;
-          }
-        }
+    if (Math.round(total) < 100 && itemsWithFractionalSize.length > 0) {
+      this.allocateFractionalSizes(
+        itemsWithFractionalSize,
+        totalFractionalSize,
+        100 - total,
+      );
+      this.respectMinItemSize();
+      return;
+    }
 
-        this.respectMinItemSize();
+    // Reserve another 50% for fractional items before normalizing an oversubscribed row.
+    if (Math.round(total) >= 100 && itemsWithFractionalSize.length > 0) {
+      this.allocateFractionalSizes(
+        itemsWithFractionalSize,
+        totalFractionalSize,
+        50,
+      );
+      total += 50;
+    }
+
+    if (total === 0) {
+      const equalShare = 100 / this.contentItems.length;
+      for (const contentItem of this.contentItems) {
+        contentItem.size = equalShare;
+        contentItem.sizeUnit = SizeUnit.Percent;
       }
+    } else {
+      for (const contentItem of this.contentItems) {
+        contentItem.size = (contentItem.size / total) * 100;
+      }
+    }
+
+    this.respectMinItemSize();
+  }
+
+  private allocateFractionalSizes(
+    items: ContentItem[],
+    totalFractionalSize: number,
+    allocatedSize: number,
+  ): void {
+    for (const contentItem of items) {
+      const fractionalShare =
+        totalFractionalSize > 0
+          ? contentItem.size / totalFractionalSize
+          : 1 / items.length;
+      contentItem.size = allocatedSize * fractionalShare;
+      contentItem.sizeUnit = SizeUnit.Percent;
     }
   }
 
@@ -706,81 +699,69 @@ export class RowOrColumn extends ContentItem {
 
     if (this.contentItems.length <= 1) {
       return;
-    } else {
-      let totalOverMin = 0;
-      let totalUnderMin = 0;
-      const entriesOverMin: Entry[] = [];
-      const allEntries: Entry[] = [];
+    }
 
-      const absoluteSizes = this.calculateAbsoluteSizes();
+    let totalOverMin = 0;
+    let totalUnderMin = 0;
+    const entriesOverMin: Entry[] = [];
+    const allEntries: Entry[] = [];
+    const absoluteSizes = this.calculateAbsoluteSizes();
 
-      /**
-       * Figure out how much we are under the min item size total and how much room we have to use.
-       */
-      for (let i = 0; i < absoluteSizes.itemSizes.length; i++) {
-        const itemSize = absoluteSizes.itemSizes[i];
-        const childMinSize = this.calculateContentItemMinSize(
-          this.contentItems[i],
-        );
-
-        let entry: Entry;
-        if (itemSize < childMinSize) {
-          totalUnderMin += childMinSize - itemSize;
-          entry = {
-            size: childMinSize,
-            minSize: childMinSize,
-          };
-        } else {
-          totalOverMin += itemSize - childMinSize;
-          entry = {
-            size: itemSize,
-            minSize: childMinSize,
-          };
-          entriesOverMin.push(entry);
-        }
-
-        allEntries.push(entry);
-      }
-
-      /**
-       * If there is nothing under min, or there is not enough over to make up the difference, do nothing.
-       */
-      if (totalUnderMin === 0 || totalUnderMin > totalOverMin) {
-        return;
+    for (let i = 0; i < absoluteSizes.itemSizes.length; i++) {
+      const itemSize = absoluteSizes.itemSizes[i];
+      const childMinSize = this.calculateContentItemMinSize(
+        this.contentItems[i],
+      );
+      let entry: Entry;
+      if (itemSize < childMinSize) {
+        totalUnderMin += childMinSize - itemSize;
+        entry = { size: childMinSize, minSize: childMinSize };
       } else {
-        /**
-         * Evenly reduce all columns that are over the min item width to make up the difference.
-         */
-        const reducePercent = totalUnderMin / totalOverMin;
-        let remainingSize = totalUnderMin;
-        for (let i = 0; i < entriesOverMin.length; i++) {
-          const entry = entriesOverMin[i];
-          const reducedSize = Math.round(
-            (entry.size - entry.minSize) * reducePercent,
-          );
-          remainingSize -= reducedSize;
-          entry.size -= reducedSize;
-        }
+        totalOverMin += itemSize - childMinSize;
+        entry = { size: itemSize, minSize: childMinSize };
+        entriesOverMin.push(entry);
+      }
+      allEntries.push(entry);
+    }
 
-        /**
-         * Take anything remaining from the last item over min size, falling back to all entries if needed.
-         */
-        if (remainingSize !== 0) {
-          if (entriesOverMin.length > 0) {
-            entriesOverMin[entriesOverMin.length - 1].size -= remainingSize;
-          } else if (allEntries.length > 0) {
-            allEntries[allEntries.length - 1].size -= remainingSize;
-          }
-        }
+    if (totalUnderMin === 0 || totalUnderMin > totalOverMin) {
+      return;
+    }
 
-        /**
-         * Set every items size relative to 100 relative to its size to total
-         */
-        for (let i = 0; i < this.contentItems.length; i++) {
-          const contentItem = this.contentItems[i];
-          contentItem.size =
-            (allEntries[i].size / absoluteSizes.totalSize) * 100;
-        }
+    this.reduceEntriesOverMin(
+      entriesOverMin,
+      allEntries,
+      totalUnderMin,
+      totalOverMin,
+    );
+    for (let i = 0; i < this.contentItems.length; i++) {
+      this.contentItems[i].size =
+        (allEntries[i].size / absoluteSizes.totalSize) * 100;
+    }
+  }
+
+  private reduceEntriesOverMin(
+    entriesOverMin: { size: number; minSize: number }[],
+    allEntries: { size: number; minSize: number }[],
+    totalUnderMin: number,
+    totalOverMin: number,
+  ): void {
+    const reducePercent = totalUnderMin / totalOverMin;
+    let remainingSize = totalUnderMin;
+    for (const entry of entriesOverMin) {
+      const reducedSize = Math.round(
+        (entry.size - entry.minSize) * reducePercent,
+      );
+      remainingSize -= reducedSize;
+      entry.size -= reducedSize;
+    }
+
+    // Apply rounding remainder to the last over-min item, as before.
+    if (remainingSize !== 0) {
+      if (entriesOverMin.length > 0) {
+        entriesOverMin[entriesOverMin.length - 1].size -= remainingSize;
+      } else if (allEntries.length > 0) {
+        allEntries[allEntries.length - 1].size -= remainingSize;
       }
     }
   }

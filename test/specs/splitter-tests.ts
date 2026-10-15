@@ -190,4 +190,78 @@ describe('splitter limits', () => {
       row.contentItems.reduce((total, item) => total + item.size, 0),
     ).toBeCloseTo(100);
   });
+
+  it.each([
+    { sizes: ['20%', '1fr', '3fr'], expected: [20, 20, 60] },
+    { sizes: ['100%', '1fr'], expected: [100 / 1.5, 50 / 1.5] },
+    { sizes: ['20%', '0fr', '0fr'], expected: [20, 40, 40] },
+    { sizes: ['25%', '25%'], expected: [50, 50] },
+  ])(
+    'preserves configured size allocation for $sizes',
+    ({ sizes, expected }) => {
+      const layout = new StrelitLayout();
+      layouts.push(layout);
+      layout.registerComponentFactoryFunction('component', () => undefined);
+      layout.loadLayout({
+        root: {
+          type: 'row',
+          content: sizes.map((size) => ({
+            type: 'component' as const,
+            componentType: 'component',
+            size,
+          })),
+        },
+      });
+
+      const row = layout.rootItem as RowOrColumn;
+      row.contentItems.forEach((item, index) => {
+        expect(item.size).toBeCloseTo(expected[index]);
+      });
+      expect(row.contentItems.every((item) => item.sizeUnit === '%')).toBe(
+        true,
+      );
+    },
+  );
+
+  it('uses the last over-min child for the rounding remainder', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('component', () => undefined);
+    layout.loadLayout({
+      root: {
+        type: 'row',
+        content: [
+          { type: 'component', componentType: 'component', minSize: '30px' },
+          { type: 'component', componentType: 'component', minSize: '10px' },
+          { type: 'component', componentType: 'component', minSize: '10px' },
+          { type: 'component', componentType: 'component', minSize: '10px' },
+        ],
+      },
+    });
+    const row = layout.rootItem as RowOrColumn;
+    const internals = row as unknown as {
+      calculateAbsoluteSizes(): {
+        itemSizes: number[];
+        additionalPixel: number;
+        totalSize: number;
+        crossAxisSize: number;
+      };
+      respectMinItemSize(): void;
+    };
+    vi.spyOn(internals, 'calculateAbsoluteSizes').mockReturnValue({
+      itemSizes: [20, 40, 40, 40],
+      additionalPixel: 0,
+      totalSize: 140,
+      crossAxisSize: 100,
+    });
+
+    internals.respectMinItemSize();
+
+    expect(row.contentItems.map((item) => item.size)).toEqual([
+      (30 / 140) * 100,
+      (37 / 140) * 100,
+      (37 / 140) * 100,
+      (36 / 140) * 100,
+    ]);
+  });
 });
