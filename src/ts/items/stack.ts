@@ -698,46 +698,50 @@ export class Stack extends ComponentParentableItem {
    */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   override onDrop(contentItem: ContentItem, area: ContentItemArea): void {
-    /*
-     * The item was dropped on the header area. Just add it as a child of this stack and
-     * get the hell out of this logic
-     */
     if (this._dropSegment === StackSegment.Header) {
-      this.resetHeaderDropZone();
-      if (this._dropIndex === undefined) {
-        throw new UnexpectedUndefinedError('SODDI68990');
-      } else {
-        if (contentItem instanceof ComponentItem) {
-          this.addChild(contentItem, this._dropIndex);
-        } else {
-          const components = this.extractComponentItems(contentItem);
-          for (let i = 0; i < components.length; i++) {
-            this.detachExtractedComponentItem(components[i]);
-            this.addChild(components[i], this._dropIndex + i);
-          }
-          this.removeEmptiedExtractedContainer(contentItem);
-        }
-        return;
-      }
-    }
-
-    /*
-     * The stack is empty. Let's just add the element.
-     */
-    if (this._dropSegment === StackSegment.Body) {
-      if (contentItem instanceof ComponentItem) {
-        this.addChild(contentItem, 0, false, true);
-      } else {
-        const components = this.extractComponentItems(contentItem);
-        for (let i = 0; i < components.length; i++) {
-          this.detachExtractedComponentItem(components[i]);
-          this.addChild(components[i], i, false, true);
-        }
-        this.removeEmptiedExtractedContainer(contentItem);
-      }
+      this.dropOnHeader(contentItem);
       return;
     }
 
+    if (this._dropSegment === StackSegment.Body) {
+      this.dropOnBody(contentItem);
+      return;
+    }
+
+    this.dropOnEdge(contentItem);
+  }
+
+  private dropOnHeader(contentItem: ContentItem): void {
+    this.resetHeaderDropZone();
+    if (this._dropIndex === undefined) {
+      throw new UnexpectedUndefinedError('SODDI68990');
+    }
+    if (contentItem instanceof ComponentItem) {
+      this.addChild(contentItem, this._dropIndex);
+    } else {
+      const components = this.extractComponentItems(contentItem);
+      for (let i = 0; i < components.length; i++) {
+        this.detachExtractedComponentItem(components[i]);
+        this.addChild(components[i], this._dropIndex + i);
+      }
+      this.removeEmptiedExtractedContainer(contentItem);
+    }
+  }
+
+  private dropOnBody(contentItem: ContentItem): void {
+    if (contentItem instanceof ComponentItem) {
+      this.addChild(contentItem, 0, false, true);
+    } else {
+      const components = this.extractComponentItems(contentItem);
+      for (let i = 0; i < components.length; i++) {
+        this.detachExtractedComponentItem(components[i]);
+        this.addChild(components[i], i, false, true);
+      }
+      this.removeEmptiedExtractedContainer(contentItem);
+    }
+  }
+
+  private dropOnEdge(contentItem: ContentItem): void {
     /*
      * The item was dropped on the top-, left-, bottom- or right- part of the content. Let's
      * aggregate some conditions to make the if statements later on more readable
@@ -1026,124 +1030,128 @@ export class Stack extends ComponentParentableItem {
   /** @internal */
   private highlightHeaderDropZone(x: number): void {
     const visibleTabsLength = this._header.lastVisibleTabIndex + 1;
-    const tabsContainerElement = this._header.tabsContainerElement;
-    const tabsContainerElementChildNodes = tabsContainerElement.childNodes;
-
-    // Create shallow copy of childNodes list, excluding DropPlaceHolder, as we will be modifying the childNodes list
-    const visibleTabElements = Array<HTMLElement>(visibleTabsLength);
-    let tabIndex = 0;
-    let tabCount = 0;
-    while (tabCount < visibleTabsLength) {
-      const visibleTabElement = tabsContainerElementChildNodes[
-        tabIndex++
-      ] as HTMLElement;
-      if (visibleTabElement !== this.layoutManager.tabDropPlaceholder) {
-        visibleTabElements[tabCount++] = visibleTabElement;
-      }
-    }
-
+    const visibleTabElements = this.getVisibleTabElements(visibleTabsLength);
     const dropTargetIndicator = this.layoutManager.dropTargetIndicator;
     if (dropTargetIndicator === null) {
       throw new UnexpectedNullError('SHHDZDTI97110');
     }
+    const area =
+      visibleTabsLength === 0
+        ? this.getEmptyHeaderDropArea()
+        : this.getTabDropArea(x, visibleTabElements);
+    if (area !== undefined) {
+      dropTargetIndicator.highlightArea(area, 0);
+    }
+  }
 
-    let area: AreaLinkedRect;
-
-    // Empty stack
-    if (visibleTabsLength === 0) {
-      const headerRect = this._header.element.getBoundingClientRect();
-      const headerTop = headerRect.top + document.body.scrollTop;
-      const headerLeft = headerRect.left + document.body.scrollLeft;
-
-      area = {
-        x1: headerLeft,
-        x2: headerLeft + 100,
-        y1: headerTop + headerRect.height - 20,
-        y2: headerTop + headerRect.height,
-      };
-
-      this._dropIndex = 0;
-    } else {
-      let tabIndex = 0;
-      // This indicates whether our cursor is exactly over a tab
-      let isAboveTab = false;
-      let tabTop: number;
-      let tabLeft: number;
-      let tabWidth: number;
-      let tabElement: HTMLElement;
-      do {
-        tabElement = visibleTabElements[tabIndex] as HTMLElement;
-        const tabRect = tabElement.getBoundingClientRect();
-        const tabRectTop = tabRect.top + document.body.scrollTop;
-        const tabRectLeft = tabRect.left + document.body.scrollLeft;
-
-        if (this._header.leftRightSided) {
-          tabLeft = tabRectTop;
-          tabTop = tabRectLeft;
-          tabWidth = tabRect.height;
-        } else {
-          tabLeft = tabRectLeft;
-          tabTop = tabRectTop;
-          tabWidth = tabRect.width;
-        }
-
-        if (x >= tabLeft && x < tabLeft + tabWidth) {
-          isAboveTab = true;
-        } else {
-          tabIndex++;
-        }
-      } while (tabIndex < visibleTabsLength && !isAboveTab);
-
-      // If we're not above any tabs, or to the right of any tab, we are out of the area, so give up
-      if (!isAboveTab && x < tabLeft) {
-        return;
-      }
-
-      const halfX = tabLeft + tabWidth / 2;
-
-      if (x < halfX) {
-        this._dropIndex = tabIndex;
-        tabElement.insertAdjacentElement(
-          'beforebegin',
-          this.layoutManager.tabDropPlaceholder,
-        );
-      } else {
-        this._dropIndex = Math.min(tabIndex + 1, visibleTabsLength);
-        tabElement.insertAdjacentElement(
-          'afterend',
-          this.layoutManager.tabDropPlaceholder,
-        );
-      }
-
-      const tabDropPlaceholderRect =
-        this.layoutManager.tabDropPlaceholder.getBoundingClientRect();
-      const tabDropPlaceholderRectTop =
-        tabDropPlaceholderRect.top + document.body.scrollTop;
-      const tabDropPlaceholderRectLeft =
-        tabDropPlaceholderRect.left + document.body.scrollLeft;
-      const tabDropPlaceholderRectWidth = tabDropPlaceholderRect.width;
-
-      if (this._header.leftRightSided) {
-        const placeHolderTop = tabDropPlaceholderRectTop;
-        area = {
-          x1: tabTop,
-          x2: tabTop + tabElement.clientHeight,
-          y1: placeHolderTop,
-          y2: placeHolderTop + tabDropPlaceholderRectWidth,
-        };
-      } else {
-        const placeHolderLeft = tabDropPlaceholderRectLeft;
-
-        area = {
-          x1: placeHolderLeft,
-          x2: placeHolderLeft + tabDropPlaceholderRectWidth,
-          y1: tabTop,
-          y2: tabTop + tabElement.clientHeight,
-        };
+  private getVisibleTabElements(visibleTabsLength: number): HTMLElement[] {
+    const childNodes = this._header.tabsContainerElement.childNodes;
+    const visibleTabElements = Array<HTMLElement>(visibleTabsLength);
+    let tabIndex = 0;
+    let tabCount = 0;
+    while (tabCount < visibleTabsLength) {
+      const tab = childNodes[tabIndex++] as HTMLElement;
+      if (tab !== this.layoutManager.tabDropPlaceholder) {
+        visibleTabElements[tabCount++] = tab;
       }
     }
+    return visibleTabElements;
+  }
 
-    dropTargetIndicator.highlightArea(area, 0);
+  private getEmptyHeaderDropArea(): AreaLinkedRect {
+    const headerRect = this._header.element.getBoundingClientRect();
+    const headerTop = headerRect.top + document.body.scrollTop;
+    const headerLeft = headerRect.left + document.body.scrollLeft;
+    this._dropIndex = 0;
+    return {
+      x1: headerLeft,
+      x2: headerLeft + 100,
+      y1: headerTop + headerRect.height - 20,
+      y2: headerTop + headerRect.height,
+    };
+  }
+
+  private getTabDropArea(
+    x: number,
+    visibleTabElements: HTMLElement[],
+  ): AreaLinkedRect | undefined {
+    const visibleTabsLength = visibleTabElements.length;
+    let tabIndex = 0;
+    // This indicates whether our cursor is exactly over a tab
+    let isAboveTab = false;
+    let tabTop: number;
+    let tabLeft: number;
+    let tabWidth: number;
+    let tabElement: HTMLElement;
+    do {
+      tabElement = visibleTabElements[tabIndex] as HTMLElement;
+      const tabRect = tabElement.getBoundingClientRect();
+      const tabRectTop = tabRect.top + document.body.scrollTop;
+      const tabRectLeft = tabRect.left + document.body.scrollLeft;
+
+      if (this._header.leftRightSided) {
+        tabLeft = tabRectTop;
+        tabTop = tabRectLeft;
+        tabWidth = tabRect.height;
+      } else {
+        tabLeft = tabRectLeft;
+        tabTop = tabRectTop;
+        tabWidth = tabRect.width;
+      }
+
+      if (x >= tabLeft && x < tabLeft + tabWidth) {
+        isAboveTab = true;
+      } else {
+        tabIndex++;
+      }
+    } while (tabIndex < visibleTabsLength && !isAboveTab);
+
+    // If we're not above any tabs, or to the right of any tab, we are out of the area, so give up
+    if (!isAboveTab && x < tabLeft) {
+      return undefined;
+    }
+
+    const halfX = tabLeft + tabWidth / 2;
+
+    if (x < halfX) {
+      this._dropIndex = tabIndex;
+      tabElement.insertAdjacentElement(
+        'beforebegin',
+        this.layoutManager.tabDropPlaceholder,
+      );
+    } else {
+      this._dropIndex = Math.min(tabIndex + 1, visibleTabsLength);
+      tabElement.insertAdjacentElement(
+        'afterend',
+        this.layoutManager.tabDropPlaceholder,
+      );
+    }
+
+    const tabDropPlaceholderRect =
+      this.layoutManager.tabDropPlaceholder.getBoundingClientRect();
+    const tabDropPlaceholderRectTop =
+      tabDropPlaceholderRect.top + document.body.scrollTop;
+    const tabDropPlaceholderRectLeft =
+      tabDropPlaceholderRect.left + document.body.scrollLeft;
+    const tabDropPlaceholderRectWidth = tabDropPlaceholderRect.width;
+
+    if (this._header.leftRightSided) {
+      const placeHolderTop = tabDropPlaceholderRectTop;
+      return {
+        x1: tabTop,
+        x2: tabTop + tabElement.clientHeight,
+        y1: placeHolderTop,
+        y2: placeHolderTop + tabDropPlaceholderRectWidth,
+      };
+    } else {
+      const placeHolderLeft = tabDropPlaceholderRectLeft;
+      return {
+        x1: placeHolderLeft,
+        x2: placeHolderLeft + tabDropPlaceholderRectWidth,
+        y1: tabTop,
+        y2: tabTop + tabElement.clientHeight,
+      };
+    }
   }
 
   /** @internal */

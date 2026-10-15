@@ -8,6 +8,7 @@ import {
   RowOrColumn,
   Stack,
   Tab,
+  createResolvedStackItemConfigDefault,
 } from '../../src';
 
 describe('Runtime layout tree manipulation', function () {
@@ -524,5 +525,148 @@ describe('Runtime layout tree manipulation', function () {
       'comp1',
       'comp2',
     ]);
+  });
+
+  it('moves nested components into an empty stack body in source order', function () {
+    layout.loadLayout({
+      root: {
+        type: 'row',
+        content: [
+          { type: 'stack', id: 'target', content: [] },
+          {
+            type: 'column',
+            content: [
+              {
+                type: 'component',
+                componentType: 'testComponent',
+                id: 'first',
+              },
+              {
+                type: 'component',
+                componentType: 'testComponent',
+                id: 'second',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const row = layout.rootItem as RowOrColumn;
+    const target = row.contentItems[0] as Stack;
+    const dropped = row.contentItems[1];
+    (target as unknown as { _dropSegment: string })._dropSegment = 'body';
+
+    target.onDrop(dropped, {} as any);
+
+    expect(target.contentItems.map((item) => item.id)).toEqual([
+      'first',
+      'second',
+    ]);
+    expect(layout.saveLayout().root?.content?.map((item) => item.id)).toEqual([
+      'first',
+      'second',
+    ]);
+  });
+
+  it('places a top edge drop before the target in a new column', function () {
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: [{ type: 'component', componentType: 'testComponent' }],
+      },
+    });
+    const target = layout.rootItem as Stack;
+    const dropped = layout.createAndInitContentItem(
+      createResolvedStackItemConfigDefault(),
+      target,
+    );
+    (target as unknown as { _dropSegment: string })._dropSegment = 'top';
+
+    target.onDrop(dropped, {} as any);
+
+    const column = layout.rootItem as RowOrColumn;
+    expect(column.isColumn).toBe(true);
+    expect(column.contentItems).toEqual([dropped, target]);
+    expect(column.contentItems.map((item) => item.size)).toEqual([50, 50]);
+  });
+
+  it('highlights the empty header at insertion index zero', function () {
+    layout.loadLayout({ root: { type: 'stack', content: [] } });
+    const stack = layout.rootItem as Stack;
+    const indicator = layout.dropTargetIndicator;
+    expect(indicator).not.toBeNull();
+    const highlightArea = vi.spyOn(indicator!, 'highlightArea');
+    const internals = stack as unknown as {
+      _header: { element: HTMLElement };
+      _dropIndex: number | undefined;
+      highlightHeaderDropZone(x: number): void;
+    };
+    vi.spyOn(
+      internals._header.element,
+      'getBoundingClientRect',
+    ).mockReturnValue({
+      left: 10,
+      top: 20,
+      height: 30,
+    } as DOMRect);
+
+    internals.highlightHeaderDropZone(12);
+
+    expect(internals._dropIndex).toBe(0);
+    expect(highlightArea).toHaveBeenCalledWith(
+      { x1: 10, x2: 110, y1: 30, y2: 50 },
+      0,
+    );
+  });
+
+  it('moves the tab placeholder to the selected side and ignores positions before the header tabs', function () {
+    layout.loadLayout({
+      root: {
+        type: 'stack',
+        content: [
+          { type: 'component', componentType: 'testComponent' },
+          { type: 'component', componentType: 'testComponent' },
+        ],
+      },
+    });
+    const stack = layout.rootItem as Stack;
+    const [first, second] = stack.header.tabs;
+    vi.spyOn(first.element, 'getBoundingClientRect').mockReturnValue({
+      left: 10,
+      top: 20,
+      width: 100,
+    } as DOMRect);
+    vi.spyOn(second.element, 'getBoundingClientRect').mockReturnValue({
+      left: 110,
+      top: 20,
+      width: 100,
+    } as DOMRect);
+    vi.spyOn(
+      layout.tabDropPlaceholder,
+      'getBoundingClientRect',
+    ).mockReturnValue({
+      left: 60,
+      top: 20,
+      width: 5,
+    } as DOMRect);
+    const indicator = layout.dropTargetIndicator;
+    expect(indicator).not.toBeNull();
+    const highlightArea = vi.spyOn(indicator!, 'highlightArea');
+    const internals = stack as unknown as {
+      _dropIndex: number | undefined;
+      highlightHeaderDropZone(x: number): void;
+    };
+
+    internals.highlightHeaderDropZone(20);
+    expect(internals._dropIndex).toBe(0);
+    expect(first.element.previousSibling).toBe(layout.tabDropPlaceholder);
+
+    internals.highlightHeaderDropZone(180);
+    expect(internals._dropIndex).toBe(2);
+    expect(second.element.nextSibling).toBe(layout.tabDropPlaceholder);
+    expect(highlightArea).toHaveBeenCalledTimes(2);
+
+    internals.highlightHeaderDropZone(0);
+    expect(highlightArea).toHaveBeenCalledTimes(2);
   });
 });
