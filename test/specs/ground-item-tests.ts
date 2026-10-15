@@ -7,7 +7,10 @@ import {
   type ComponentItemConfig,
   type StackItemConfig,
 } from '../../src';
-import type { GroundItem } from '../../src/ts/items/ground-item';
+import type {
+  GroundItem,
+  GroundItemArea,
+} from '../../src/ts/items/ground-item';
 import TestTools from './test-tools';
 
 describe('ground item', function () {
@@ -79,4 +82,92 @@ describe('ground item', function () {
     expect(stack.size).toBe(100);
     emptyLayout.destroy();
   });
+
+  it.each(['x1', 'x2', 'y1', 'y2'] as const)(
+    'creates the correct orientation and order for a %s ground drop',
+    function (side) {
+      const dropLayout = TestTools.createLayout({
+        root: {
+          type: 'component',
+          componentType: TestTools.TEST_COMPONENT_NAME,
+        },
+      });
+      try {
+        const ground = dropLayout.groundItem as GroundItem;
+        const original = dropLayout.rootItem as ContentItem;
+        const dropped = dropLayout.createAndInitContentItem(
+          resolveStackItemConfig({ type: 'stack', content: [] }),
+          ground,
+        );
+        ground.onDrop(dropped, {
+          side,
+          contentItem: ground as unknown as ContentItem,
+          x1: 0,
+          x2: 100,
+          y1: 0,
+          y2: 100,
+          surface: 10_000,
+        } as GroundItemArea);
+
+        const root = dropLayout.rootItem as ContentItem;
+        expect(root.type).toBe(side[0] === 'x' ? 'row' : 'column');
+        expect(root.contentItems).toEqual(
+          side[1] === '2' ? [dropped, original] : [original, dropped],
+        );
+        expect(original.size).toBe(50);
+        expect(dropped.size).toBe(50);
+        expect(dropped.parent).toBe(root);
+        expect(original.parent).toBe(root);
+      } finally {
+        dropLayout.destroy();
+      }
+    },
+  );
+
+  it.each(['x1', 'x2'] as const)(
+    'splits the edge sibling in an existing row for a %s ground drop',
+    function (side) {
+      const dropLayout = TestTools.createLayout({
+        root: {
+          type: 'row',
+          content: [
+            { type: 'component', componentType: TestTools.TEST_COMPONENT_NAME },
+            { type: 'component', componentType: TestTools.TEST_COMPONENT_NAME },
+          ],
+        },
+      });
+      try {
+        const ground = dropLayout.groundItem as GroundItem;
+        const root = dropLayout.rootItem as ContentItem;
+        const originalChildren = [...root.contentItems];
+        const edge = side === 'x2' ? originalChildren[0] : originalChildren[1];
+        const priorSize = edge.size;
+        const dropped = dropLayout.createAndInitContentItem(
+          resolveStackItemConfig({ type: 'stack', content: [] }),
+          ground,
+        );
+        ground.onDrop(dropped, {
+          side,
+          contentItem: ground as unknown as ContentItem,
+          x1: 0,
+          x2: 100,
+          y1: 0,
+          y2: 100,
+          surface: 10_000,
+        } as GroundItemArea);
+
+        expect(dropLayout.rootItem).toBe(root);
+        expect(root.contentItems).toEqual(
+          side === 'x2'
+            ? [dropped, ...originalChildren]
+            : [...originalChildren, dropped],
+        );
+        expect(edge.size).toBeCloseTo(priorSize / 2);
+        expect(dropped.size).toBeCloseTo(priorSize / 2);
+        expect(dropped.parent).toBe(root);
+      } finally {
+        dropLayout.destroy();
+      }
+    },
+  );
 });

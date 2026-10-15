@@ -504,6 +504,24 @@ export class GroundItem extends ComponentParentableItem {
   }
 
   override onDrop(contentItem: ContentItem, area: GroundItemArea): void {
+    contentItem = this.wrapDroppedComponent(contentItem);
+
+    if (this.contentItems.length === 0) {
+      this.addChild(contentItem);
+      return;
+    }
+
+    const type = area.side[0] == 'x' ? ItemType.row : ItemType.column;
+    const insertBefore = area.side[1] == '2';
+    const rootItem = this.contentItems[0];
+    if (!(rootItem instanceof RowOrColumn) || rootItem.type !== type) {
+      this.insertIntoNewRowOrColumn(rootItem, contentItem, type, insertBefore);
+    } else {
+      this.insertIntoExistingRowOrColumn(rootItem, contentItem, insertBefore);
+    }
+  }
+
+  private wrapDroppedComponent(contentItem: ContentItem): ContentItem {
     if (contentItem.isComponent) {
       const itemConfig = createResolvedStackItemConfigDefault();
       // since ResolvedItemConfig.contentItems not set up, we need to add header from Component
@@ -518,45 +536,47 @@ export class GroundItem extends ComponentParentableItem {
       stack.addChild(contentItem);
       contentItem = stack;
     }
+    return contentItem;
+  }
 
-    if (this.contentItems.length === 0) {
-      this.addChild(contentItem);
-    } else {
-      const type = area.side[0] == 'x' ? ItemType.row : ItemType.column;
-      const insertBefore = area.side[1] == '2';
-      const column = this.contentItems[0];
-      if (!(column instanceof RowOrColumn) || column.type !== type) {
-        const itemConfig = createResolvedItemConfigDefault(type);
-        const rowOrColumn = this.layoutManager.createContentItem(
-          itemConfig,
-          this,
-        );
-        this.replaceChild(column, rowOrColumn);
-        rowOrColumn.addChild(contentItem, insertBefore ? 0 : undefined, true);
-        rowOrColumn.addChild(column, insertBefore ? undefined : 0, true);
-        column.size = 50;
-        contentItem.size = 50;
-        contentItem.sizeUnit = SizeUnit.Percent;
-        rowOrColumn.updateSize(false);
-      } else {
-        if (column.contentItems.length === 0) {
-          column.addChild(contentItem, undefined, true);
-          contentItem.size = 100;
-          contentItem.sizeUnit = SizeUnit.Percent;
-          column.updateSize(false);
-          return;
-        }
-        const sibling =
-          column.contentItems[
-            insertBefore ? 0 : column.contentItems.length - 1
-          ];
-        column.addChild(contentItem, insertBefore ? 0 : undefined, true);
-        sibling.size *= 0.5;
-        contentItem.size = sibling.size;
-        contentItem.sizeUnit = SizeUnit.Percent;
-        column.updateSize(false);
-      }
+  private insertIntoNewRowOrColumn(
+    rootItem: ContentItem,
+    contentItem: ContentItem,
+    type: ItemType,
+    insertBefore: boolean,
+  ): void {
+    const itemConfig = createResolvedItemConfigDefault(type);
+    const rowOrColumn = this.layoutManager.createContentItem(itemConfig, this);
+    this.replaceChild(rootItem, rowOrColumn);
+    rowOrColumn.addChild(contentItem, insertBefore ? 0 : undefined, true);
+    rowOrColumn.addChild(rootItem, insertBefore ? undefined : 0, true);
+    rootItem.size = 50;
+    contentItem.size = 50;
+    contentItem.sizeUnit = SizeUnit.Percent;
+    rowOrColumn.updateSize(false);
+  }
+
+  private insertIntoExistingRowOrColumn(
+    rootItem: RowOrColumn,
+    contentItem: ContentItem,
+    insertBefore: boolean,
+  ): void {
+    if (rootItem.contentItems.length === 0) {
+      rootItem.addChild(contentItem, undefined, true);
+      contentItem.size = 100;
+      contentItem.sizeUnit = SizeUnit.Percent;
+      rootItem.updateSize(false);
+      return;
     }
+    const sibling =
+      rootItem.contentItems[
+        insertBefore ? 0 : rootItem.contentItems.length - 1
+      ];
+    rootItem.addChild(contentItem, insertBefore ? 0 : undefined, true);
+    sibling.size *= 0.5;
+    contentItem.size = sibling.size;
+    contentItem.sizeUnit = SizeUnit.Percent;
+    rootItem.updateSize(false);
   }
 
   // No ContentItem can dock with groundItem.  However Stack can have a GroundItem parent and Stack requires that
