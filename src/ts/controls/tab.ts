@@ -232,12 +232,10 @@ export class Tab {
   private onDragStart(x: number, y: number): void {
     if (this._dragListener === undefined) {
       throw new UnexpectedUndefinedError('TODSDLU10093');
+    } else if (this._dragStartEvent === undefined) {
+      throw new UnexpectedUndefinedError('TODS23309');
     } else {
-      if (this._dragStartEvent === undefined) {
-        throw new UnexpectedUndefinedError('TODS23309');
-      } else {
-        this._dragStartEvent(x, y, this._dragListener, this.componentItem);
-      }
+      this._dragStartEvent(x, y, this._dragListener, this.componentItem);
     }
   }
 
