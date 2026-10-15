@@ -28,33 +28,27 @@ export function splitStringAtFirstNonNumericChar(
   const length = value.length;
   if (length === 0) {
     return { numericPart: '', firstNonNumericCharPart: '' };
-  } else {
-    let firstNonDigitPartIndex = length;
-    let gotDecimalPoint = false;
-    for (let i = 0; i < length; i++) {
-      const char = value[i];
-      if (!isDigit(char)) {
-        if (char !== '.') {
-          firstNonDigitPartIndex = i;
-          break;
-        } else {
-          if (gotDecimalPoint) {
-            firstNonDigitPartIndex = i;
-            break;
-          } else {
-            gotDecimalPoint = true;
-          }
-        }
-      }
-    }
-    const digitsPart = value.substring(0, firstNonDigitPartIndex);
-    const firstNonDigitPart = value.substring(firstNonDigitPartIndex).trim();
-
-    return {
-      numericPart: digitsPart,
-      firstNonNumericCharPart: firstNonDigitPart,
-    };
   }
+
+  let firstNonDigitPartIndex = length;
+  let gotDecimalPoint = false;
+  for (let i = 0; i < length; i++) {
+    const char = value[i];
+    if (isDigit(char)) {
+      continue;
+    }
+    if (char === '.' && !gotDecimalPoint) {
+      gotDecimalPoint = true;
+      continue;
+    }
+    firstNonDigitPartIndex = i;
+    break;
+  }
+
+  return {
+    numericPart: value.substring(0, firstNonDigitPartIndex),
+    firstNonNumericCharPart: value.substring(firstNonDigitPartIndex).trim(),
+  };
 }
 
 /** @internal */

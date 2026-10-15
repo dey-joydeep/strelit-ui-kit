@@ -59,4 +59,16 @@ describe('serializable value guards', () => {
     expect(isSerializableValue(deep)).toBe(false);
     expect(isSerializableValue(broad)).toBe(false);
   });
+
+  it('preserves the depth and node limits at their boundaries', () => {
+    let atDepthLimit: Record<string, unknown> = { leaf: true };
+    for (let index = 0; index < 127; index++) {
+      atDepthLimit = { next: atDepthLimit };
+    }
+
+    expect(isSerializableValue(atDepthLimit)).toBe(true);
+    expect(isSerializableValue({ next: atDepthLimit })).toBe(false);
+    expect(isSerializableValue(Array(9_999).fill(null))).toBe(true);
+    expect(isSerializableValue(Array(10_000).fill(null))).toBe(false);
+  });
 });
