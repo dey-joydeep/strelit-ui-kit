@@ -2084,59 +2084,50 @@ export abstract class LayoutManager extends EventEmitter {
     const groundItem = this._groundItem;
     if (groundItem === undefined) {
       throw new UnexpectedUndefinedError('LMCIAR44365');
-    } else {
-      if (allContentItems.length === 1) {
-        // No root ContentItem (just Ground ContentItem)
-        const groundArea = groundItem.getElementArea();
-        if (groundArea === null) {
-          throw new UnexpectedNullError('LMCIARA44365');
-        } else {
-          this._itemAreas = [groundArea];
-        }
-        return;
-      } else {
-        if (groundItem.contentItems[0].isStack) {
-          // if root is Stack, then split stack and sides of Layout are same, so skip sides
-          this._itemAreas = [];
-        } else {
-          // sides of layout
-          this._itemAreas = groundItem.createSideAreas();
-        }
+    }
+    if (allContentItems.length === 1) {
+      // No root ContentItem (just Ground ContentItem)
+      const groundArea = groundItem.getElementArea();
+      if (groundArea === null) {
+        throw new UnexpectedNullError('LMCIARA44365');
+      }
+      this._itemAreas = [groundArea];
+      return;
+    }
 
-        for (let i = 0; i < allContentItems.length; i++) {
-          const stack = allContentItems[i];
-          if (ContentItem.isStack(stack)) {
-            const area = stack.getArea();
-
-            if (area === null) {
-              continue;
-            } else {
-              this._itemAreas.push(area);
-              const stackContentAreaDimensions = stack.contentAreaDimensions;
-              if (stackContentAreaDimensions === undefined) {
-                throw new UnexpectedUndefinedError('LMCIASC45599');
-              } else {
-                const highlightArea =
-                  stackContentAreaDimensions.header.highlightArea;
-                const surface =
-                  (highlightArea.x2 - highlightArea.x1) *
-                  (highlightArea.y2 - highlightArea.y1);
-
-                const header: ContentItemArea = {
-                  x1: highlightArea.x1,
-                  x2: highlightArea.x2,
-                  y1: highlightArea.y1,
-                  y2: highlightArea.y2,
-                  contentItem: stack,
-                  surface,
-                };
-                this._itemAreas.push(header);
-              }
-            }
-          }
-        }
+    // A root stack already covers the layout sides.
+    this._itemAreas = groundItem.contentItems[0].isStack
+      ? []
+      : groundItem.createSideAreas();
+    for (const item of allContentItems) {
+      if (ContentItem.isStack(item)) {
+        this.addStackItemAreas(item);
       }
     }
+  }
+
+  private addStackItemAreas(stack: Stack): void {
+    const area = stack.getArea();
+    if (area === null) {
+      return;
+    }
+    this._itemAreas.push(area);
+
+    const dimensions = stack.contentAreaDimensions;
+    if (dimensions === undefined) {
+      throw new UnexpectedUndefinedError('LMCIASC45599');
+    }
+    const highlightArea = dimensions.header.highlightArea;
+    this._itemAreas.push({
+      x1: highlightArea.x1,
+      x2: highlightArea.x2,
+      y1: highlightArea.y1,
+      y2: highlightArea.y2,
+      contentItem: stack,
+      surface:
+        (highlightArea.x2 - highlightArea.x1) *
+        (highlightArea.y2 - highlightArea.y1),
+    });
   }
 
   /**
@@ -2145,28 +2136,24 @@ export abstract class LayoutManager extends EventEmitter {
    * @internal
    */
   private checkLoadedLayoutMaximiseItem() {
-    if (this._groundItem === undefined) {
+    const groundItem = this._groundItem;
+    if (groundItem === undefined) {
       throw new UnexpectedUndefinedError('LMCLLMI43432');
-    } else {
-      const configMaximisedItems = this._groundItem.getConfigMaximisedItems();
-
-      if (configMaximisedItems.length > 0) {
-        let item = configMaximisedItems[0];
-        if (ContentItem.isComponentItem(item)) {
-          const stack = item.parent;
-          if (stack === null) {
-            throw new UnexpectedNullError('LMXLLMI69999');
-          } else {
-            item = stack;
-          }
-        }
-        if (!ContentItem.isStack(item)) {
-          throw new AssertError('LMCLLMI19993');
-        } else {
-          item.maximise();
-        }
-      }
     }
+    const [configuredItem] = groundItem.getConfigMaximisedItems();
+    if (configuredItem === undefined) {
+      return;
+    }
+    const item = ContentItem.isComponentItem(configuredItem)
+      ? configuredItem.parent
+      : configuredItem;
+    if (item === null) {
+      throw new UnexpectedNullError('LMXLLMI69999');
+    }
+    if (!ContentItem.isStack(item)) {
+      throw new AssertError('LMCLLMI19993');
+    }
+    item.maximise();
   }
 
   /** @internal */

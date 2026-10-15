@@ -37,6 +37,53 @@ describe('drag source', function () {
     layout.destroy();
   });
 
+  it('uses the ground as the only drop area when the layout is empty', () => {
+    layout.clear();
+    layout.calculateItemAreas();
+
+    const areas = (
+      layout as unknown as { _itemAreas: Array<{ contentItem: unknown }> }
+    )._itemAreas;
+    expect(areas).toHaveLength(1);
+    expect(areas[0].contentItem).toBe(layout.groundItem);
+  });
+
+  it('omits ground sides when the root is a stack', () => {
+    layout.calculateItemAreas();
+
+    const areas = (
+      layout as unknown as { _itemAreas: Array<{ contentItem: unknown }> }
+    )._itemAreas;
+    expect(areas).toHaveLength(2);
+    expect(areas.every((area) => area.contentItem === layout.rootItem)).toBe(
+      true,
+    );
+  });
+
+  it('keeps ground sides before stack areas for a row root', () => {
+    layout.loadLayout({
+      root: {
+        type: 'row',
+        content: [
+          { type: 'component', componentType: TestTools.TEST_COMPONENT_NAME },
+          { type: 'component', componentType: TestTools.TEST_COMPONENT_NAME },
+        ],
+      },
+    });
+    layout.calculateItemAreas();
+
+    const areas = (
+      layout as unknown as { _itemAreas: Array<{ contentItem: unknown }> }
+    )._itemAreas;
+    expect(areas).toHaveLength(8);
+    expect(
+      areas.slice(0, 4).every((area) => area.contentItem === layout.groundItem),
+    ).toBe(true);
+    expect(
+      areas.slice(4).every((area) => area.contentItem !== layout.groundItem),
+    ).toBe(true);
+  });
+
   it('creates a new component from a deferred Strelit component config', function () {
     dragSourceElement = document.createElement('div');
     dragSourceElement.id = 'dragSrc';
