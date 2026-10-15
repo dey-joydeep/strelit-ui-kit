@@ -24,11 +24,9 @@ export class TransitionIndicator {
     this._element.remove();
   }
 
-  transitionElements(fromElement: HTMLElement, toElement: HTMLElement): void {
+  transitionElements(_fromElement: HTMLElement, _toElement: HTMLElement): void {
     // Transitions are deliberately disabled until an accessible motion design
     // is specified. Keep the hook because BrowserPopout owns this lifecycle.
-    void fromElement;
-    void toElement;
   }
 
   private nextAnimationFrame(): void {

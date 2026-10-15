@@ -228,7 +228,7 @@ export abstract class ContentItem extends EventEmitter {
     layoutManager: LayoutManager, config: ResolvedItemConfig,
     _parent: ContentItem | null,
     _element: HTMLElement);
-    addChild(contentItem: ContentItem, index?: number | null, suspendResize?: boolean): number;
+    addChild(contentItem: ContentItem, index?: number | null, _suspendResize?: boolean): number;
     // @internal (undocumented)
     addPopInParentId(id: string): void;
     // @internal (undocumented)
