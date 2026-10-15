@@ -159,19 +159,20 @@ export function isSerializableValue(
   return isSerializableValueInternal(value);
 }
 
+type SerializableFrame =
+  | {
+      readonly kind: 'value';
+      readonly value: unknown;
+      readonly depth: number;
+    }
+  | { readonly kind: 'exit'; readonly value: object };
+
 function isSerializableValueInternal(
   value: unknown,
 ): value is SerializableValue {
-  type Frame =
-    | {
-        readonly kind: 'value';
-        readonly value: unknown;
-        readonly depth: number;
-      }
-    | { readonly kind: 'exit'; readonly value: object };
   const active = new WeakSet<object>();
   const verified = new WeakSet<object>();
-  const stack: Frame[] = [{ kind: 'value', value, depth: 0 }];
+  const stack: SerializableFrame[] = [{ kind: 'value', value, depth: 0 }];
   let visitedNodes = 0;
 
   while (stack.length > 0) {
@@ -187,45 +188,68 @@ function isSerializableValueInternal(
     ) {
       return false;
     }
-    const current = frame.value;
-    if (
-      current === null ||
-      typeof current === 'boolean' ||
-      typeof current === 'string'
-    ) {
-      continue;
-    }
-    if (typeof current === 'number') {
-      if (!Number.isFinite(current)) {
+    const scalarResult = validateSerializableScalar(frame.value);
+    if (scalarResult !== undefined) {
+      if (!scalarResult) {
         return false;
       }
       continue;
     }
-    if (typeof current !== 'object') {
+    if (
+      !enqueueSerializableObject(
+        frame.value as object,
+        frame.depth,
+        visitedNodes,
+        active,
+        verified,
+        stack,
+      )
+    ) {
       return false;
     }
-    if (!Array.isArray(current) && !hasPlainObjectPrototype(current)) {
-      return false;
-    }
-    if (verified.has(current)) {
-      continue;
-    }
-    if (active.has(current)) {
-      return false;
-    }
-    active.add(current);
-    stack.push({ kind: 'exit', value: current });
-    const entries = Array.isArray(current) ? current : Object.values(current);
-    if (entries.length > maximumConfigNodes - visitedNodes) {
-      return false;
-    }
-    for (let index = entries.length - 1; index >= 0; index--) {
-      stack.push({
-        kind: 'value',
-        value: entries[index],
-        depth: frame.depth + 1,
-      });
-    }
+  }
+  return true;
+}
+
+function validateSerializableScalar(value: unknown): boolean | undefined {
+  if (
+    value === null ||
+    typeof value === 'boolean' ||
+    typeof value === 'string'
+  ) {
+    return true;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value);
+  }
+  return typeof value === 'object' ? undefined : false;
+}
+
+function enqueueSerializableObject(
+  current: object,
+  depth: number,
+  visitedNodes: number,
+  active: WeakSet<object>,
+  verified: WeakSet<object>,
+  stack: SerializableFrame[],
+): boolean {
+  if (!Array.isArray(current) && !hasPlainObjectPrototype(current)) {
+    return false;
+  }
+  if (verified.has(current)) {
+    return true;
+  }
+  if (active.has(current)) {
+    return false;
+  }
+  active.add(current);
+  stack.push({ kind: 'exit', value: current });
+  const entries = Array.isArray(current) ? current : Object.values(current);
+  if (entries.length > maximumConfigNodes - visitedNodes) {
+    return false;
+  }
+  for (let index = entries.length - 1; index >= 0; index--) {
+    stack.push({ kind: 'value', value: entries[index], depth: depth + 1 });
   }
   return true;
 }
