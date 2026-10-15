@@ -2,6 +2,82 @@ import { describe, expect, it } from 'vitest';
 import { ComponentContainer, ComponentItem, StrelitLayout } from '../../src';
 
 describe('ComponentContainer sizing', () => {
+  it('leaves sizes unchanged for invalid requested dimensions', () => {
+    const layout = new StrelitLayout();
+    try {
+      layout.registerComponentFactoryFunction('panel', () => undefined);
+      layout.loadLayout({
+        root: {
+          type: 'row',
+          content: [
+            { type: 'component', id: 'target', componentType: 'panel' },
+            { type: 'component', componentType: 'panel' },
+          ],
+        },
+      });
+      const item = layout.findFirstComponentItemById('target') as ComponentItem;
+      const row = item.parentItem.parent;
+      const before = row?.contentItems.map((child) => child.size);
+      for (const invalidWidth of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+        expect(item.container.setSize(invalidWidth, 100)).toBe(false);
+        expect(row?.contentItems.map((child) => child.size)).toEqual(before);
+      }
+    } finally {
+      layout.destroy();
+    }
+  });
+
+  it('returns false when no row or column ancestor can be resized', () => {
+    const layout = new StrelitLayout();
+    try {
+      layout.registerComponentFactoryFunction('panel', () => undefined);
+      layout.loadLayout({
+        root: { type: 'component', componentType: 'panel' },
+      });
+      const item = layout.rootItem?.contentItems[0] as ComponentItem;
+      expect(item.container.setSize(100, 100)).toBe(false);
+    } finally {
+      layout.destroy();
+    }
+  });
+
+  it('redistributes released size in proportion to sibling sizes', () => {
+    const layout = new StrelitLayout();
+    try {
+      layout.registerComponentFactoryFunction('panel', () => undefined);
+      layout.loadLayout({
+        root: {
+          type: 'row',
+          content: [
+            {
+              type: 'component',
+              id: 'target',
+              componentType: 'panel',
+              size: '50%',
+            },
+            { type: 'component', componentType: 'panel', size: '25%' },
+            { type: 'component', componentType: 'panel', size: '25%' },
+          ],
+        },
+      });
+      const item = layout.findFirstComponentItemById('target') as ComponentItem;
+      const row = item.parentItem.parent;
+      (item.container as unknown as { _width: number })._width = 100;
+      Object.defineProperty(item.parentItem.element, 'offsetWidth', {
+        configurable: true,
+        value: 100,
+      });
+
+      expect(item.container.setSize(50, 100)).toBe(true);
+      const sizes = row?.contentItems.map((child) => child.size) ?? [];
+      expect(sizes[0]).toBeCloseTo(25);
+      expect(sizes[1]).toBeCloseTo(37.5);
+      expect(sizes[2]).toBeCloseTo(37.5);
+    } finally {
+      layout.destroy();
+    }
+  });
+
   it('does not corrupt sibling sizes when the current dimension is zero', () => {
     const layout = new StrelitLayout();
     try {

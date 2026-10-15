@@ -370,6 +370,14 @@ export class ComponentContainer extends EventEmitter {
    * @internal
    */
   setSize(width: number, height: number): boolean {
+    const target = this.findResizeTarget();
+    return target === undefined
+      ? false
+      : this.resizeAtAncestor(target.parent, target.child, width, height);
+  }
+
+  private findResizeTarget():
+    { parent: ContentItem; child: ContentItem } | undefined {
     let ancestorItem: ContentItem | null = this._parent;
     if (
       ancestorItem.isColumn ||
@@ -380,109 +388,122 @@ export class ComponentContainer extends EventEmitter {
         'ICSSPRC',
         'ComponentContainer cannot have RowColumn Parent',
       );
-    } else {
-      let ancestorChildItem: ContentItem;
-      do {
-        ancestorChildItem = ancestorItem;
-        ancestorItem = ancestorItem.parent;
-      } while (
-        ancestorItem !== null &&
-        !ancestorItem.isColumn &&
-        !ancestorItem.isRow
-      );
+    }
 
-      if (ancestorItem === null) {
-        // no Row or Column found
-        return false;
-      } else {
-        // ancestorItem is Row or Column
-        const direction = ancestorItem.isColumn ? 'height' : 'width';
-        const currentSize = this[direction];
-        if (currentSize === null) {
-          throw new UnexpectedNullError('ICSSCS11194');
-        } else {
-          const newSize = direction === 'height' ? height : width;
-          const siblingCount = ancestorItem.contentItems.length - 1;
-          if (
-            currentSize <= 0 ||
-            ancestorChildItem.size <= 0 ||
-            siblingCount <= 0 ||
-            newSize < 0 ||
-            !Number.isFinite(newSize)
-          ) {
-            return false;
-          }
+    let ancestorChildItem: ContentItem;
+    do {
+      ancestorChildItem = ancestorItem;
+      ancestorItem = ancestorItem.parent;
+    } while (
+      ancestorItem !== null &&
+      !ancestorItem.isColumn &&
+      !ancestorItem.isRow
+    );
+    return ancestorItem === null
+      ? undefined
+      : { parent: ancestorItem, child: ancestorChildItem };
+  }
 
-          const measuredOuterSize = ancestorItem.isColumn
-            ? getElementHeight(ancestorChildItem.element)
-            : getElementWidth(ancestorChildItem.element);
-          const outerSize =
-            measuredOuterSize > 0 ? measuredOuterSize : currentSize;
-          const fixedOuterOffset = Math.max(0, outerSize - currentSize);
-          const totalPixel = outerSize * (100 / ancestorChildItem.size);
-          const percentage = ((newSize + fixedOuterOffset) / totalPixel) * 100;
-          if (!Number.isFinite(percentage)) {
-            return false;
-          }
-          const siblings = ancestorItem.contentItems.filter(
-            (item) => item !== ancestorChildItem,
-          );
-          const dimensions = this.layoutManager.layoutConfig.dimensions;
-          const defaultMinSize = ancestorItem.isColumn
-            ? dimensions.defaultMinItemHeight
-            : dimensions.defaultMinItemWidth;
-          const getMinPercentage = (item: ContentItem) => {
-            if (
-              item.minSize !== undefined &&
-              item.minSizeUnit !== SizeUnit.Pixel
-            ) {
-              return Number.POSITIVE_INFINITY;
-            }
-            return ((item.minSize ?? defaultMinSize) / totalPixel) * 100;
-          };
-          const targetMinPercentage = getMinPercentage(ancestorChildItem);
-          if (percentage < targetMinPercentage) {
-            return false;
-          }
-          const sizeIncrease = percentage - ancestorChildItem.size;
-          if (sizeIncrease > 0) {
-            const availableBySibling = siblings.map((item) =>
-              Math.max(0, item.size - getMinPercentage(item)),
-            );
-            const totalAvailable = availableBySibling.reduce(
-              (total, available) => total + available,
-              0,
-            );
-            if (sizeIncrease > totalAvailable + 1e-10) {
-              return false;
-            }
-            for (let i = 0; i < siblings.length; i++) {
-              const reduction =
-                totalAvailable === 0
-                  ? 0
-                  : sizeIncrease * (availableBySibling[i] / totalAvailable);
-              siblings[i].size -= reduction;
-            }
-          } else {
-            const releasedSize = -sizeIncrease;
-            const siblingTotal = siblings.reduce(
-              (total, item) => total + item.size,
-              0,
-            );
-            for (const sibling of siblings) {
-              sibling.size +=
-                siblingTotal === 0
-                  ? releasedSize / siblingCount
-                  : releasedSize * (sibling.size / siblingTotal);
-            }
-          }
-          ancestorChildItem.size = percentage;
+  private resizeAtAncestor(
+    ancestorItem: ContentItem,
+    ancestorChildItem: ContentItem,
+    width: number,
+    height: number,
+  ): boolean {
+    const direction = ancestorItem.isColumn ? 'height' : 'width';
+    const currentSize = this[direction];
+    if (currentSize === null) {
+      throw new UnexpectedNullError('ICSSCS11194');
+    }
+    const newSize = direction === 'height' ? height : width;
+    const siblingCount = ancestorItem.contentItems.length - 1;
+    if (
+      currentSize <= 0 ||
+      ancestorChildItem.size <= 0 ||
+      siblingCount <= 0 ||
+      newSize < 0 ||
+      !Number.isFinite(newSize)
+    ) {
+      return false;
+    }
 
-          ancestorItem.updateSize(false);
-
-          return true;
-        }
+    const measuredOuterSize = ancestorItem.isColumn
+      ? getElementHeight(ancestorChildItem.element)
+      : getElementWidth(ancestorChildItem.element);
+    const outerSize = measuredOuterSize > 0 ? measuredOuterSize : currentSize;
+    const fixedOuterOffset = Math.max(0, outerSize - currentSize);
+    const totalPixel = outerSize * (100 / ancestorChildItem.size);
+    const percentage = ((newSize + fixedOuterOffset) / totalPixel) * 100;
+    if (!Number.isFinite(percentage)) {
+      return false;
+    }
+    const siblings = ancestorItem.contentItems.filter(
+      (item) => item !== ancestorChildItem,
+    );
+    const dimensions = this.layoutManager.layoutConfig.dimensions;
+    const defaultMinSize = ancestorItem.isColumn
+      ? dimensions.defaultMinItemHeight
+      : dimensions.defaultMinItemWidth;
+    const getMinPercentage = (item: ContentItem) => {
+      if (item.minSize !== undefined && item.minSizeUnit !== SizeUnit.Pixel) {
+        return Number.POSITIVE_INFINITY;
       }
+      return ((item.minSize ?? defaultMinSize) / totalPixel) * 100;
+    };
+    if (percentage < getMinPercentage(ancestorChildItem)) {
+      return false;
+    }
+    const sizeIncrease = percentage - ancestorChildItem.size;
+    if (sizeIncrease > 0) {
+      if (
+        !this.takeSizeFromSiblings(siblings, sizeIncrease, getMinPercentage)
+      ) {
+        return false;
+      }
+    } else {
+      this.giveSizeToSiblings(siblings, -sizeIncrease, siblingCount);
+    }
+    ancestorChildItem.size = percentage;
+    ancestorItem.updateSize(false);
+    return true;
+  }
+
+  private takeSizeFromSiblings(
+    siblings: ContentItem[],
+    sizeIncrease: number,
+    getMinPercentage: (item: ContentItem) => number,
+  ): boolean {
+    const availableBySibling = siblings.map((item) =>
+      Math.max(0, item.size - getMinPercentage(item)),
+    );
+    const totalAvailable = availableBySibling.reduce(
+      (total, available) => total + available,
+      0,
+    );
+    if (sizeIncrease > totalAvailable + 1e-10) {
+      return false;
+    }
+    for (let i = 0; i < siblings.length; i++) {
+      const reduction =
+        totalAvailable === 0
+          ? 0
+          : sizeIncrease * (availableBySibling[i] / totalAvailable);
+      siblings[i].size -= reduction;
+    }
+    return true;
+  }
+
+  private giveSizeToSiblings(
+    siblings: ContentItem[],
+    releasedSize: number,
+    siblingCount: number,
+  ): void {
+    const siblingTotal = siblings.reduce((total, item) => total + item.size, 0);
+    for (const sibling of siblings) {
+      sibling.size +=
+        siblingTotal === 0
+          ? releasedSize / siblingCount
+          : releasedSize * (sibling.size / siblingTotal);
     }
   }
 
