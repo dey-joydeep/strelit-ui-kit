@@ -40,7 +40,7 @@ export class ComponentItem extends ContentItem {
   /** @internal */
   private readonly _initialWantMaximise: boolean;
   /** @internal */
-  private _container: ComponentContainer;
+  private readonly _container: ComponentContainer;
   /** @internal */
   private _tab!: Tab;
   /** @internal */

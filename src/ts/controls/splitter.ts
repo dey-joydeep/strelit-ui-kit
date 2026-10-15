@@ -8,8 +8,8 @@ import { numberToPixels } from '../utils/utils';
 
 /** @internal */
 export class Splitter {
-  private _grabSize;
-  private _dragListener: DragListener;
+  private readonly _grabSize;
+  private readonly _dragListener: DragListener;
 
   private readonly _element: HTMLDivElement;
 
@@ -18,8 +18,8 @@ export class Splitter {
   }
 
   constructor(
-    private _isVertical: boolean,
-    private _size: number,
+    private readonly _isVertical: boolean,
+    private readonly _size: number,
     grabSize: number,
   ) {
     this._grabSize = grabSize < this._size ? this._size : grabSize;

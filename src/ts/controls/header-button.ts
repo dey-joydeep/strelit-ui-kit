@@ -5,18 +5,18 @@ export type HeaderButtonPushEvent = (this: void, ev: Event) => void;
 
 /** @internal */
 export class HeaderButton {
-  private _element: HTMLElement;
-  private _clickEventListener = (ev: MouseEvent) => this.onClick(ev);
+  private readonly _element: HTMLElement;
+  private readonly _clickEventListener = (ev: MouseEvent) => this.onClick(ev);
 
   get element(): HTMLElement {
     return this._element;
   }
 
   constructor(
-    private _header: Header,
+    private readonly _header: Header,
     label: string,
     cssClass: string,
-    private _pushEvent: HeaderButtonPushEvent,
+    private readonly _pushEvent: HeaderButtonPushEvent,
   ) {
     this._element = document.createElement('div');
     this._element.classList.add(cssClass);

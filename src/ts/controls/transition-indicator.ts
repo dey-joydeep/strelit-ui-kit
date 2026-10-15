@@ -3,11 +3,11 @@ import { Rect } from '../utils/types';
 
 /** @internal */
 export class TransitionIndicator {
-  private _element: HTMLElement;
-  private _toElement: HTMLElement | null;
-  private _fromDimensions: null;
-  private _totalAnimationDuration: number;
-  private _animationStartTime: number | null;
+  private readonly _element: HTMLElement;
+  private readonly _toElement: HTMLElement | null;
+  private readonly _fromDimensions: null;
+  private readonly _totalAnimationDuration: number;
+  private readonly _animationStartTime: number | null;
 
   constructor() {
     this._element = document.createElement('div');

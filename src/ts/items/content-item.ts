@@ -128,21 +128,21 @@ function areComponentTypeObjectsEqual(
 
 export abstract class ContentItem extends EventEmitter {
   /** @internal */
-  private _type: ItemType;
+  private readonly _type: ItemType;
   /** @internal */
   private _id: string;
   /** @internal */
-  private _popInParentIds: string[] = [];
+  private readonly _popInParentIds: string[] = [];
   /** @internal */
   private _contentItems: ContentItem[];
   /** @internal */
-  private _isClosable;
+  private readonly _isClosable;
   /** @internal */
   private _pendingEventPropagations: Record<string, unknown>;
   /** @internal */
   private _pendingEventPropagationFrames: Record<string, number | undefined>;
   /** @internal */
-  private _throttledEvents: string[];
+  private readonly _throttledEvents: string[];
   /** @internal */
   private _isInitialised;
   /** @internal */

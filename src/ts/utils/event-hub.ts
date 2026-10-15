@@ -50,7 +50,7 @@ declare global {
  */
 export class EventHub extends EventEmitter {
   /** @internal */
-  private _childEventListener = (
+  private readonly _childEventListener = (
     childEvent: CustomEvent<EventHubChildEventDetail>,
   ) => this.onEventFromChild(childEvent);
 
@@ -65,7 +65,7 @@ export class EventHub extends EventEmitter {
   constructor(layoutManager: LayoutManager);
   constructor(
     /** @internal */
-    private _layoutManager: LayoutManager,
+    private readonly _layoutManager: LayoutManager,
   ) {
     super();
     globalThis.addEventListener(
