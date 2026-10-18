@@ -281,15 +281,7 @@ export class BrowserPopout extends EventEmitter {
     if (this._closedWithFailedPopIn) {
       return createResolvedPopoutLayoutConfigCopy(this._config);
     }
-    let strelitInstance: LayoutManager | undefined;
-    try {
-      strelitInstance = this.tryGetStrelitInstance();
-    } catch (error) {
-      if (isCrossOriginAccessError(error)) {
-        return createResolvedPopoutLayoutConfigCopy(this._config);
-      }
-      throw error;
-    }
+    const strelitInstance = this.tryGetStrelitInstance();
     if (!this._isInitialised || strelitInstance === undefined) {
       return createResolvedPopoutLayoutConfigCopy(this._config);
     }
@@ -442,7 +434,7 @@ export class BrowserPopout extends EventEmitter {
 
     const strelitInstance = this._closedWithFailedPopIn
       ? undefined
-      : (this._popoutWindow?.__strelitInstance ?? undefined);
+      : this.tryGetStrelitInstance();
     const strelitInstanceLayoutConfig =
       strelitInstance !== undefined
         ? strelitInstance.saveLayout()
@@ -1247,7 +1239,14 @@ export class BrowserPopout extends EventEmitter {
   }
 
   private tryGetStrelitInstance(): LayoutManager | undefined {
-    return this._popoutWindow?.__strelitInstance ?? undefined;
+    try {
+      return this._popoutWindow?.__strelitInstance ?? undefined;
+    } catch (error) {
+      if (isCrossOriginAccessError(error)) {
+        return undefined;
+      }
+      throw error;
+    }
   }
 }
 

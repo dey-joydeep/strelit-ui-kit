@@ -217,6 +217,81 @@ describe('BrowserPopout functionality (item.popout())', function () {
     }
   });
 
+  it('restores a closed child from cached config after it becomes cross-origin', function () {
+    vi.useFakeTimers();
+    let inaccessible = false;
+    try {
+      const childLayout = {
+        isInitialised: true,
+        on: vi.fn(),
+        off: vi.fn(),
+        saveLayout: () =>
+          resolveLayoutConfig({
+            root: {
+              type: 'component',
+              id: 'cross-origin-return',
+              componentType: 'testComponent',
+            },
+          }),
+      };
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      Object.defineProperty(mockWindow, '__strelitInstance', {
+        configurable: true,
+        get: () => {
+          if (inaccessible) {
+            throw new DOMException('Blocked by origin policy', 'SecurityError');
+          }
+          return childLayout;
+        },
+      });
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        settings: { popInOnClose: true },
+        root: {
+          type: 'component',
+          id: 'cross-origin-host',
+          componentType: 'testComponent',
+        },
+        openPopouts: [
+          {
+            root: {
+              type: 'component',
+              id: 'cross-origin-return',
+              componentType: 'testComponent',
+            },
+            parentId: null,
+          },
+        ],
+      });
+      vi.advanceTimersByTime(10);
+      expect(layout.openPopouts).toHaveLength(1);
+
+      inaccessible = true;
+      (mockWindow as Window & { closed: boolean }).closed = true;
+      vi.advanceTimersByTime(300);
+
+      expect(
+        layout.findFirstComponentItemById('cross-origin-return'),
+      ).toBeDefined();
+      expect(layout.openPopouts).toHaveLength(0);
+      expect(layout.saveLayout().openPopouts).toEqual([]);
+    } finally {
+      inaccessible = false;
+      vi.useRealTimers();
+    }
+  });
+
   it('retains a real popout for retry when its child becomes inaccessible', function () {
     let childAccessThrows = false;
     const nativeClose = vi.fn(() => {
