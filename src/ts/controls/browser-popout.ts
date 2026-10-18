@@ -141,7 +141,7 @@ export class BrowserPopout extends EventEmitter {
     let item: ContentItem = returnedItem;
     while (item !== groundItem) {
       const parent: ContentItem | null = item.parent;
-      if (parent === null || !parent.contentItems.includes(item)) {
+      if (!parent?.contentItems.includes(item)) {
         return false;
       }
       item = parent;
