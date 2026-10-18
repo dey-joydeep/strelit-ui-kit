@@ -118,6 +118,20 @@ export class BrowserPopout extends EventEmitter {
   }
 
   /** @internal */
+  get isRestoringToParent(): boolean {
+    return (
+      this._isClosingOrPoppingIn &&
+      !this._closeRequested &&
+      !this._closedFinalised
+    );
+  }
+
+  /** @internal */
+  get hasReturnedToParent(): boolean {
+    return this._returnedToParent;
+  }
+
+  /** @internal */
   reconcileClosedWindowNow(): void {
     if (
       !this._closedFinalised &&
@@ -582,9 +596,11 @@ export class BrowserPopout extends EventEmitter {
           Math.min(normalizedIndex, parentItem.contentItems.length),
         );
       }
+      // addChild emits stateChanged; a synchronous save must see the inserted
+      // item in the parent rather than a second copy in openPopouts.
+      this._returnedToParent = true;
       parentItem.addChild(newContentItem, index);
       this.restoreDirectPopInSize(parentItem, newContentItem, returnSize);
-      this._returnedToParent = true;
     } catch (error) {
       const cleanupErrors: unknown[] = [];
       if (parentItem.contentItems.includes(newContentItem)) {
@@ -601,13 +617,20 @@ export class BrowserPopout extends EventEmitter {
           cleanupErrors.push(cleanupError);
         }
       }
+      this._returnedToParent = parentItem.contentItems.includes(newContentItem);
       throwWithPopInCleanupErrors(error, cleanupErrors);
     }
     return () => {
-      if (parentItem.contentItems.includes(newContentItem)) {
-        newContentItem.remove();
-      }
       this._returnedToParent = false;
+      try {
+        if (parentItem.contentItems.includes(newContentItem)) {
+          newContentItem.remove();
+        }
+      } catch (error) {
+        this._returnedToParent =
+          parentItem.contentItems.includes(newContentItem);
+        throw error;
+      }
     };
   }
 

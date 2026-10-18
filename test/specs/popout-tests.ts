@@ -750,10 +750,13 @@ describe('BrowserPopout functionality (item.popout())', function () {
     vi.useFakeTimers();
     try {
       let factoryCalls = 0;
+      let savedInFactory: ReturnType<typeof layout.saveLayout> | undefined;
+      let savedDuringInsertion:
+        ReturnType<typeof layout.saveLayout> | undefined;
       layout.registerComponentFactoryFunction('reentrant', () => {
         factoryCalls++;
         if (factoryCalls === 2) {
-          layout.saveLayout();
+          savedInFactory = layout.saveLayout();
         }
       });
       const mockWindow = {
@@ -809,11 +812,30 @@ describe('BrowserPopout functionality (item.popout())', function () {
         height: 200,
       } as never;
       vi.advanceTimersByTime(10);
+      vi.spyOn(layout.openPopouts[0], 'getStrelitInstance').mockImplementation(
+        () => {
+          throw new Error('closed child is inaccessible');
+        },
+      );
+      layout.on('stateChanged', () => {
+        if (
+          factoryCalls === 2 &&
+          savedDuringInsertion === undefined &&
+          layout.findFirstComponentItemById('reentrant-return') !== undefined
+        ) {
+          savedDuringInsertion = layout.saveLayout();
+        }
+      });
       (mockWindow as Window & { closed: boolean }).closed = true;
 
       const saved = layout.saveLayout();
 
       expect(factoryCalls).toBe(2);
+      expect(savedInFactory?.openPopouts).toHaveLength(1);
+      expect(savedDuringInsertion?.openPopouts).toHaveLength(0);
+      expect(
+        savedDuringInsertion?.root?.content.map((item) => item.id),
+      ).toEqual(['reentrant-side', 'reentrant-return']);
       expect(
         layout.findFirstComponentItemById('reentrant-return'),
       ).toBeDefined();

@@ -986,7 +986,7 @@ export abstract class LayoutManager extends EventEmitter {
   ): ResolvedPopoutLayoutConfig[] {
     const openPopouts: ResolvedPopoutLayoutConfig[] = [];
     for (const element of this._openPopouts) {
-      if (element.returnMarkerAbandoned) {
+      if (element.returnMarkerAbandoned || element.hasReturnedToParent) {
         continue;
       }
       let initialised = false;
@@ -1001,7 +1001,7 @@ export abstract class LayoutManager extends EventEmitter {
         typeof parentId === 'string' &&
         (groundItem.popInParentIds.includes(parentId) ||
           groundItem.getItemsByPopInParentId(parentId).length > 0);
-      if (initialised || !sourceAttached) {
+      if (initialised || !sourceAttached || element.isRestoringToParent) {
         openPopouts.push(popoutConfig);
       }
     }
@@ -2406,7 +2406,10 @@ export abstract class LayoutManager extends EventEmitter {
       try {
         if (!element.getWindow().closed) {
           openPopouts.push(element);
-        } else if (element.closedWithFailedPopIn) {
+        } else if (
+          element.closedWithFailedPopIn ||
+          element.isRestoringToParent
+        ) {
           openPopouts.push(element);
         } else {
           this.emit('windowClosed', element);
