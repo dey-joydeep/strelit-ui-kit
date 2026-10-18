@@ -1253,7 +1253,9 @@ export abstract class LayoutManager extends EventEmitter {
       }
       case ItemType.stack: {
         if (!isComponentItemConfig(itemConfig)) {
-          throw Error(i18nStrings[I18nStringId.ItemConfigIsNotTypeComponent]);
+          throw new Error(
+            i18nStrings[I18nStringId.ItemConfigIsNotTypeComponent],
+          );
         }
         const stack = parentItem as Stack;
         return { parentItem, index: stack.addItem(itemConfig, index) };

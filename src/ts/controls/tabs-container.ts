@@ -229,7 +229,11 @@ export class TabsContainer {
         activeTab,
       );
 
-      if (!(visibleTabWidth > availableWidth)) {
+      if (
+        Number.isNaN(visibleTabWidth) ||
+        Number.isNaN(availableWidth) ||
+        visibleTabWidth <= availableWidth
+      ) {
         this._lastVisibleTabIndex = i;
         this.resetTabStyleAndMove(tabElement, this._element);
       } else if (
@@ -311,15 +315,19 @@ export class TabsContainer {
     tabOverlapAllowance: number,
   ): boolean {
     const excessWidth = visibleTabWidth - availableWidth;
-    const overlap =
-      activeIndex > 0 && activeIndex <= index
-        ? index > 1
-          ? excessWidth / (index - 1)
-          : 0
-        : index > 0
-          ? excessWidth / index
-          : 0;
-    if (!(overlap < tabOverlapAllowance)) {
+    let overlap = 0;
+    if (activeIndex > 0 && activeIndex <= index) {
+      if (index > 1) {
+        overlap = excessWidth / (index - 1);
+      }
+    } else if (index > 0) {
+      overlap = excessWidth / index;
+    }
+    if (
+      Number.isNaN(overlap) ||
+      Number.isNaN(tabOverlapAllowance) ||
+      overlap >= tabOverlapAllowance
+    ) {
       return false;
     }
     for (let j = 0; j <= index; j++) {
