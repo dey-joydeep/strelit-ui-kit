@@ -122,6 +122,7 @@ export class BrowserPopout extends EventEmitter {
     if (
       !this._closedFinalised &&
       !this._closedWithFailedPopIn &&
+      !this._isClosingOrPoppingIn &&
       this._popoutWindow?.closed
     ) {
       this.reconcileCloseEvent();

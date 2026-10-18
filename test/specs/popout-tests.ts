@@ -746,6 +746,88 @@ describe('BrowserPopout functionality (item.popout())', function () {
     }
   });
 
+  it('keeps a closed child return intact when its component factory saves the parent layout', function () {
+    vi.useFakeTimers();
+    try {
+      let factoryCalls = 0;
+      layout.registerComponentFactoryFunction('reentrant', () => {
+        factoryCalls++;
+        if (factoryCalls === 2) {
+          layout.saveLayout();
+        }
+      });
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        settings: { popInOnClose: true },
+        root: {
+          type: 'row',
+          content: [
+            {
+              type: 'component',
+              id: 'reentrant-side',
+              componentType: 'testComponent',
+            },
+            {
+              type: 'component',
+              id: 'reentrant-return',
+              componentType: 'reentrant',
+            },
+          ],
+        },
+      });
+      const departing = layout.findFirstComponentItemById(
+        'reentrant-return',
+      ) as ComponentItem;
+      departing.popout();
+      mockWindow.__strelitInstance = {
+        closeWindow: vi.fn(),
+        isInitialised: true,
+        on: vi.fn(),
+        saveLayout: () =>
+          resolveLayoutConfig({
+            root: {
+              type: 'component',
+              id: 'reentrant-return',
+              componentType: 'reentrant',
+            },
+          }),
+        width: 320,
+        height: 200,
+      } as never;
+      vi.advanceTimersByTime(10);
+      (mockWindow as Window & { closed: boolean }).closed = true;
+
+      const saved = layout.saveLayout();
+
+      expect(factoryCalls).toBe(2);
+      expect(
+        layout.findFirstComponentItemById('reentrant-return'),
+      ).toBeDefined();
+      expect(layout.openPopouts).toHaveLength(0);
+      expect(saved.root?.type).toBe('row');
+      expect(saved.root?.content.map((item) => item.id)).toEqual([
+        'reentrant-side',
+        'reentrant-return',
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('restores a pending popout when its window closes before initialization', function () {
     let beforeUnload: (() => void) | undefined;
     const mockWindow = {
