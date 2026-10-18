@@ -2123,6 +2123,106 @@ describe('BrowserPopout functionality (item.popout())', function () {
     }
   });
 
+  it('restores sibling sizes when an attempted pop-in leaves the child open', function () {
+    vi.useFakeTimers();
+    try {
+      const childLayout = {
+        isInitialised: true,
+        on: vi.fn(),
+        saveLayout: () =>
+          resolveLayoutConfig({
+            root: {
+              type: 'component',
+              id: 'returned-size',
+              componentType: 'testComponent',
+            },
+          }),
+        closeWindow: vi.fn(),
+      };
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        __strelitInstance: childLayout,
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        root: {
+          type: 'row',
+          content: [
+            {
+              type: 'component',
+              id: 'left-size',
+              componentType: 'testComponent',
+              size: '30%',
+            },
+            {
+              type: 'component',
+              id: 'returned-size',
+              componentType: 'testComponent',
+              size: '30%',
+            },
+            {
+              type: 'component',
+              id: 'right-size',
+              componentType: 'testComponent',
+              size: '40%',
+            },
+          ],
+        },
+      });
+      const departing = layout.findFirstComponentItemById(
+        'returned-size',
+      ) as ComponentItem;
+      const popout = departing.popout();
+      vi.advanceTimersByTime(10);
+      const parent = layout.rootItem;
+      if (parent === undefined) throw new Error('Expected return row');
+      expect(parent.contentItems.map((item) => item.id)).toEqual([
+        'left-size',
+        'right-size',
+      ]);
+      const beforeSizes = parent.contentItems.map((item) => item.size);
+
+      popout.popIn();
+      expect(parent.contentItems.map((item) => item.size)).not.toEqual(
+        beforeSizes,
+      );
+      vi.advanceTimersByTime(60);
+
+      expect(parent.contentItems.map((item) => item.id)).toEqual([
+        'left-size',
+        'right-size',
+      ]);
+      expect(parent.contentItems.map((item) => item.size)).toEqual(beforeSizes);
+      expect(layout.openPopouts).toHaveLength(1);
+
+      const updateSize = parent.updateSize.bind(parent);
+      vi.spyOn(parent, 'updateSize')
+        .mockImplementationOnce((force) => updateSize(force))
+        .mockImplementationOnce(() => {
+          throw new Error('return resize failed');
+        });
+      expect(() => popout.popIn()).toThrow('return resize failed');
+      expect(parent.contentItems.map((item) => item.id)).toEqual([
+        'left-size',
+        'right-size',
+      ]);
+      expect(parent.contentItems.map((item) => item.size)).toEqual(beforeSizes);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('retries an asynchronous pop-in rollback that fails transiently', function () {
     vi.useFakeTimers();
     try {
