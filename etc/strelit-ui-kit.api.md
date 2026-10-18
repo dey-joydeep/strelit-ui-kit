@@ -44,6 +44,10 @@ export class BrowserPopout extends EventEmitter {
     getStrelitInstance(): LayoutManager;
     getWindow(): Window;
     // @internal (undocumented)
+    get hasReturnedToParent(): boolean;
+    // @internal (undocumented)
+    get isRestoringToParent(): boolean;
+    // @internal (undocumented)
     get pendingReturnIndex(): number | undefined;
     // @internal (undocumented)
     get pendingReturnPercent(): number | undefined;

@@ -1636,16 +1636,22 @@ describe('BrowserPopout functionality (item.popout())', function () {
     });
 
     let savedWhileWrapping: ReturnType<typeof layout.saveLayout> | undefined;
-    const addToRow = RowOrColumn.prototype.addChild;
-    vi.spyOn(RowOrColumn.prototype, 'addChild').mockImplementation(
-      function (this: RowOrColumn, item, index, suspendResize) {
-        const result = addToRow.call(this, item, index, suspendResize);
-        if (item.id === 'host') {
-          savedWhileWrapping = layout.saveLayout();
-        }
-        return result;
-      },
+    const addToRow: RowOrColumn['addChild'] = Reflect.get(
+      RowOrColumn.prototype,
+      'addChild',
     );
+    vi.spyOn(RowOrColumn.prototype, 'addChild').mockImplementation(function (
+      this: RowOrColumn,
+      item,
+      index,
+      suspendResize,
+    ) {
+      const result = addToRow.call(this, item, index, suspendResize);
+      if (item.id === 'host') {
+        savedWhileWrapping = layout.saveLayout();
+      }
+      return result;
+    });
     let savedDuringInsertion: ReturnType<typeof layout.saveLayout> | undefined;
     const groundItem = layout.groundItem!;
     const addChild = groundItem.addChild.bind(groundItem);
@@ -2241,15 +2247,27 @@ describe('BrowserPopout functionality (item.popout())', function () {
       popout._initialisedStrelitInstance = childLayout;
 
       popout.popIn();
-      expect(
-        layout.findFirstComponentItemById('returned-from-still-open-child'),
-      ).toBeDefined();
+      const returned = layout.findFirstComponentItemById(
+        'returned-from-still-open-child',
+      );
+      expect(returned).toBeDefined();
+      let savedDuringRollback: ReturnType<typeof layout.saveLayout> | undefined;
+      returned?.on('beforeItemDestroyed', () => {
+        savedDuringRollback = layout.saveLayout();
+      });
       vi.advanceTimersByTime(50);
 
+      expect(savedDuringRollback?.root).toBeDefined();
+      expect(savedDuringRollback?.openPopouts).toEqual([]);
       expect(
         layout.findFirstComponentItemById('returned-from-still-open-child'),
       ).toBeUndefined();
       expect(layout.openPopouts).toHaveLength(1);
+      const savedAfterRollback = layout.saveLayout();
+      expect(savedAfterRollback.root).toMatchObject({
+        id: 'host-for-still-open-child',
+      });
+      expect(savedAfterRollback.openPopouts).toHaveLength(1);
       vi.advanceTimersByTime(10);
       expect(childLayout.on).not.toHaveBeenCalled();
     } finally {

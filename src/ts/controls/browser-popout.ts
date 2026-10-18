@@ -80,6 +80,7 @@ export class BrowserPopout extends EventEmitter {
   private _returnSize: number | undefined;
   private readonly _returnSizeUnit: SizeUnit | undefined;
   private _returnedToParent = false;
+  private _returnedContentItem: ContentItem | undefined;
   private _returnMarkerAbandoned = false;
   private _closedFinalised = false;
 
@@ -90,7 +91,7 @@ export class BrowserPopout extends EventEmitter {
 
   /** @internal */
   get pendingReturnPercent(): number | undefined {
-    return !this._returnedToParent &&
+    return !this.hasReturnedToParent &&
       !this._returnMarkerAbandoned &&
       this._returnSizeUnit === SizeUnit.Percent
       ? this._returnSize
@@ -100,7 +101,7 @@ export class BrowserPopout extends EventEmitter {
   /** @internal */
   get pendingReturnIndex(): number | undefined {
     const index = this._config.indexInParent;
-    return !this._returnedToParent &&
+    return !this.hasReturnedToParent &&
       !this._returnMarkerAbandoned &&
       index !== null
       ? index
@@ -128,7 +129,24 @@ export class BrowserPopout extends EventEmitter {
 
   /** @internal */
   get hasReturnedToParent(): boolean {
-    return this._returnedToParent;
+    const groundItem = this._layoutManager.groundItem;
+    const returnedItem = this._returnedContentItem;
+    if (
+      !this._returnedToParent ||
+      groundItem === undefined ||
+      returnedItem === undefined
+    ) {
+      return false;
+    }
+    let item: ContentItem = returnedItem;
+    while (item !== groundItem) {
+      const parent: ContentItem | null = item.parent;
+      if (parent === null || !parent.contentItems.includes(item)) {
+        return false;
+      }
+      item = parent;
+    }
+    return true;
   }
 
   /** @internal */
@@ -598,6 +616,7 @@ export class BrowserPopout extends EventEmitter {
       }
       // addChild emits stateChanged; a synchronous save must see the inserted
       // item in the parent rather than a second copy in openPopouts.
+      this._returnedContentItem = newContentItem;
       this._returnedToParent = true;
       parentItem.addChild(newContentItem, index);
       this.restoreDirectPopInSize(parentItem, newContentItem, returnSize);
@@ -621,11 +640,11 @@ export class BrowserPopout extends EventEmitter {
       throwWithPopInCleanupErrors(error, cleanupErrors);
     }
     return () => {
-      this._returnedToParent = false;
       try {
         if (parentItem.contentItems.includes(newContentItem)) {
           newContentItem.remove();
         }
+        this._returnedToParent = false;
       } catch (error) {
         this._returnedToParent =
           parentItem.contentItems.includes(newContentItem);
@@ -705,6 +724,7 @@ export class BrowserPopout extends EventEmitter {
       groundItem.removeChild(rootItemToWrap, true);
       // The ground insertion emits stateChanged. Both children must already
       // be present, and a nested save must not serialize the return twice.
+      this._returnedContentItem = newContentItem;
       this._returnedToParent = true;
       groundItem.addChild(wrapperItem);
     } catch (error) {
@@ -716,7 +736,6 @@ export class BrowserPopout extends EventEmitter {
       );
     }
     return () => {
-      this._returnedToParent = false;
       try {
         if (wrapperItem.contentItems.includes(rootItemToWrap)) {
           wrapperItem.removeChild(rootItemToWrap, true);
@@ -724,6 +743,7 @@ export class BrowserPopout extends EventEmitter {
         if (groundItem.contentItems.includes(wrapperItem)) {
           groundItem.removeChild(wrapperItem, true);
         }
+        this._returnedToParent = false;
         if (!groundItem.contentItems.includes(rootItemToWrap)) {
           groundItem.restoreRootWithoutResize(rootItemToWrap);
         }
@@ -742,7 +762,6 @@ export class BrowserPopout extends EventEmitter {
     error: unknown,
   ): never {
     const rollbackErrors: unknown[] = [];
-    this._returnedToParent = false;
     if (wrapperItem.contentItems.includes(rootItemToWrap)) {
       try {
         wrapperItem.removeChild(rootItemToWrap, true);
@@ -757,13 +776,13 @@ export class BrowserPopout extends EventEmitter {
         rollbackErrors.push(rollbackError);
       }
     }
+    this._returnedToParent = groundItem.contentItems.includes(wrapperItem);
     this.restoreWrappedPopInRoot(
       groundItem,
       rootItemToWrap,
       wrapperItem,
       rollbackErrors,
     );
-    this._returnedToParent = groundItem.contentItems.includes(wrapperItem);
     if (rollbackErrors.length > 0) {
       throw Object.assign(
         new Error('Pop-in insertion failed and root rollback was incomplete'),
@@ -1166,7 +1185,10 @@ export class BrowserPopout extends EventEmitter {
     if (parentItem === undefined) {
       return;
     }
-    if (!this._returnedToParent && (parentItem.isRow || parentItem.isColumn)) {
+    if (
+      !this.hasReturnedToParent &&
+      (parentItem.isRow || parentItem.isColumn)
+    ) {
       this._layoutManager.rebasePendingPopoutsAfterDiscard(parentItem, this);
     }
     parentItem.removePopInParentId(parentId);
