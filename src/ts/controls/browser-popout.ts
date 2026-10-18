@@ -700,8 +700,11 @@ export class BrowserPopout extends EventEmitter {
 
     try {
       groundItem.removeChild(rootItemToWrap, true);
-      groundItem.addChild(wrapperItem);
       wrapperItem.addChild(rootItemToWrap, 0, true);
+      // The ground insertion emits stateChanged. Both children must already
+      // be present, and a nested save must not serialize the return twice.
+      this._returnedToParent = true;
+      groundItem.addChild(wrapperItem);
     } catch (error) {
       this.rollbackWrappedPopInInsertion(
         groundItem,
@@ -711,16 +714,22 @@ export class BrowserPopout extends EventEmitter {
       );
     }
     return () => {
-      if (wrapperItem.contentItems.includes(rootItemToWrap)) {
-        wrapperItem.removeChild(rootItemToWrap, true);
+      this._returnedToParent = false;
+      try {
+        if (wrapperItem.contentItems.includes(rootItemToWrap)) {
+          wrapperItem.removeChild(rootItemToWrap, true);
+        }
+        if (groundItem.contentItems.includes(wrapperItem)) {
+          groundItem.removeChild(wrapperItem, true);
+        }
+        if (!groundItem.contentItems.includes(rootItemToWrap)) {
+          groundItem.restoreRootWithoutResize(rootItemToWrap);
+        }
+        wrapperItem.destroy();
+      } catch (error) {
+        this._returnedToParent = groundItem.contentItems.includes(wrapperItem);
+        throw error;
       }
-      if (groundItem.contentItems.includes(wrapperItem)) {
-        groundItem.removeChild(wrapperItem, true);
-      }
-      if (!groundItem.contentItems.includes(rootItemToWrap)) {
-        groundItem.restoreRootWithoutResize(rootItemToWrap);
-      }
-      wrapperItem.destroy();
     };
   }
 
@@ -731,6 +740,7 @@ export class BrowserPopout extends EventEmitter {
     error: unknown,
   ): never {
     const rollbackErrors: unknown[] = [];
+    this._returnedToParent = false;
     if (wrapperItem.contentItems.includes(rootItemToWrap)) {
       try {
         wrapperItem.removeChild(rootItemToWrap, true);
@@ -751,6 +761,7 @@ export class BrowserPopout extends EventEmitter {
       wrapperItem,
       rollbackErrors,
     );
+    this._returnedToParent = groundItem.contentItems.includes(wrapperItem);
     if (rollbackErrors.length > 0) {
       throw Object.assign(
         new Error('Pop-in insertion failed and root rollback was incomplete'),

@@ -1634,8 +1634,24 @@ describe('BrowserPopout functionality (item.popout())', function () {
       componentType: 'testComponent',
     });
 
+    let savedDuringInsertion: ReturnType<typeof layout.saveLayout> | undefined;
+    const groundItem = layout.groundItem!;
+    const addChild = groundItem.addChild.bind(groundItem);
+    vi.spyOn(groundItem, 'addChild').mockImplementation((item, index) => {
+      const result = addChild(item, index);
+      if (layout.findFirstComponentItemById('returned') !== undefined) {
+        savedDuringInsertion = layout.saveLayout();
+      }
+      return result;
+    });
+
     popout.popIn();
 
+    expect(savedDuringInsertion?.root).toMatchObject({
+      type: 'row',
+      content: [{ id: 'host' }, { id: 'returned' }],
+    });
+    expect(savedDuringInsertion?.openPopouts).toEqual([]);
     expect(layout.rootItem?.type).toBe('row');
     expect(layout.rootItem?.contentItems.map((item) => item.id)).toEqual([
       'host',
