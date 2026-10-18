@@ -9,6 +9,7 @@ import {
   createLayoutConfigFromResolved,
   minifyResolvedLayoutConfig,
 } from '../../src';
+import { RowOrColumn } from '../../src/ts/items/row-or-column';
 
 describe('BrowserPopout functionality (item.popout())', function () {
   let layout: StrelitLayout;
@@ -1634,6 +1635,17 @@ describe('BrowserPopout functionality (item.popout())', function () {
       componentType: 'testComponent',
     });
 
+    let savedWhileWrapping: ReturnType<typeof layout.saveLayout> | undefined;
+    const addToRow = RowOrColumn.prototype.addChild;
+    vi.spyOn(RowOrColumn.prototype, 'addChild').mockImplementation(
+      function (this: RowOrColumn, item, index, suspendResize) {
+        const result = addToRow.call(this, item, index, suspendResize);
+        if (item.id === 'host') {
+          savedWhileWrapping = layout.saveLayout();
+        }
+        return result;
+      },
+    );
     let savedDuringInsertion: ReturnType<typeof layout.saveLayout> | undefined;
     const groundItem = layout.groundItem!;
     const addChild = groundItem.addChild.bind(groundItem);
@@ -1647,6 +1659,8 @@ describe('BrowserPopout functionality (item.popout())', function () {
 
     popout.popIn();
 
+    expect(savedWhileWrapping?.root).toMatchObject({ id: 'host' });
+    expect(savedWhileWrapping?.openPopouts).toHaveLength(1);
     expect(savedDuringInsertion?.root).toMatchObject({
       type: 'row',
       content: [{ id: 'host' }, { id: 'returned' }],

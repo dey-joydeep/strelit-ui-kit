@@ -699,8 +699,10 @@ export class BrowserPopout extends EventEmitter {
     }
 
     try {
-      groundItem.removeChild(rootItemToWrap, true);
       wrapperItem.addChild(rootItemToWrap, 0, true);
+      // Keep the old root savable while addChild emits stateChanged. It is
+      // detached from ground only after the wrapper owns it.
+      groundItem.removeChild(rootItemToWrap, true);
       // The ground insertion emits stateChanged. Both children must already
       // be present, and a nested save must not serialize the return twice.
       this._returnedToParent = true;
@@ -777,6 +779,16 @@ export class BrowserPopout extends EventEmitter {
     wrapperItem: ContentItem,
     rollbackErrors: unknown[],
   ): void {
+    if (
+      groundItem.contentItems.includes(rootItemToWrap) &&
+      rootItemToWrap.parent !== groundItem
+    ) {
+      try {
+        groundItem.removeChild(rootItemToWrap, true);
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
+    }
     if (
       !groundItem.contentItems.includes(rootItemToWrap) &&
       !wrapperItem.contentItems.includes(rootItemToWrap)
