@@ -7,6 +7,7 @@ import {
   eventEmitterAllEventName,
   resolveLayoutConfig,
   createLayoutConfigFromResolved,
+  minifyResolvedLayoutConfig,
 } from '../../src';
 
 describe('BrowserPopout functionality (item.popout())', function () {
@@ -73,6 +74,60 @@ describe('BrowserPopout functionality (item.popout())', function () {
     expect(layout.openPopouts[0]).toBe(popout);
 
     openSpy.mockRestore();
+  });
+
+  it('rejects a second content popout with a return ID already in use', function () {
+    const mockWindow = {
+      closed: false,
+      close: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      document: {
+        createElement: () => document.createElement('div'),
+        body: document.createElement('body'),
+        head: document.createElement('head'),
+        write: vi.fn(),
+        close: vi.fn(),
+      },
+      location: { href: '' },
+    } as unknown as Window;
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+    layout.loadLayout({
+      root: {
+        type: 'row',
+        content: [
+          { type: 'component', id: 'first', componentType: 'testComponent' },
+          { type: 'component', id: 'second', componentType: 'testComponent' },
+        ],
+      },
+    });
+    const first = layout.findFirstComponentItemById('first') as ComponentItem;
+    const second = layout.findFirstComponentItemById('second') as ComponentItem;
+    const windowRect = { left: 0, top: 0, width: 300, height: 200 };
+
+    const firstPopout = layout.createPopout(
+      first,
+      windowRect,
+      'shared-return-id',
+      0,
+    );
+    expect(() =>
+      layout.createPopout(second, windowRect, 'shared-return-id', 1),
+    ).toThrow('Pop-in parent ID is already in use: shared-return-id');
+    const configRoot = resolveLayoutConfig({
+      root: { type: 'component', componentType: 'testComponent' },
+    }).root;
+    expect(configRoot).toBeDefined();
+    expect(() =>
+      layout.createPopout(configRoot!, windowRect, 'shared-return-id', 1),
+    ).toThrow('Pop-in parent ID is already in use: shared-return-id');
+    expect(() =>
+      layout.createPopoutFromPopoutLayoutConfig(firstPopout.toConfig()),
+    ).toThrow('Pop-in parent ID is already in use: shared-return-id');
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(layout.openPopouts).toHaveLength(1);
+    expect(layout.rootItem?.popInParentIds).toEqual(['shared-return-id']);
+    expect(second.parent?.parent).toBe(layout.rootItem);
   });
 
   it('keeps a pending popout only in the root snapshot', function () {
@@ -627,6 +682,70 @@ describe('BrowserPopout functionality (item.popout())', function () {
     }
   });
 
+  it('saves a just-closed child after restoring its source before the close timer', function () {
+    vi.useFakeTimers();
+    try {
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        settings: { popInOnClose: true },
+        root: {
+          type: 'component',
+          id: 'quick-save',
+          componentType: 'testComponent',
+        },
+      });
+      const item = layout.findFirstComponentItemById(
+        'quick-save',
+      ) as ComponentItem;
+      item.popout();
+      mockWindow.__strelitInstance = {
+        closeWindow: vi.fn(),
+        isInitialised: true,
+        on: vi.fn(),
+        off: vi.fn(),
+        saveLayout: () =>
+          resolveLayoutConfig({
+            root: {
+              type: 'component',
+              id: 'quick-save',
+              componentType: 'testComponent',
+            },
+          }),
+        width: 320,
+        height: 200,
+      } as never;
+      vi.advanceTimersByTime(10);
+      expect(layout.rootItem).toBeUndefined();
+
+      (mockWindow as Window & { closed: boolean }).closed = true;
+      const saved = layout.saveLayout();
+      expect(saved.root).toMatchObject({
+        type: 'stack',
+        content: [{ id: 'quick-save' }],
+      });
+      expect(saved.openPopouts).toEqual([]);
+      expect(layout.findFirstComponentItemById('quick-save')).toBeDefined();
+      vi.advanceTimersByTime(60);
+      expect(layout.findFirstComponentItemById('quick-save')).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('restores a pending popout when its window closes before initialization', function () {
     let beforeUnload: (() => void) | undefined;
     const mockWindow = {
@@ -663,6 +782,60 @@ describe('BrowserPopout functionality (item.popout())', function () {
 
     expect(() => beforeUnload?.()).not.toThrow();
     expect(layout.findFirstComponentItemById('pending-close')).toBeDefined();
+  });
+
+  it('does not rebase another return when an uninitialised popout kept its source', function () {
+    vi.useFakeTimers();
+    try {
+      const windows = Array.from({ length: 2 }, () => ({
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      }));
+      vi.spyOn(window, 'open')
+        .mockReturnValueOnce(windows[0] as unknown as Window)
+        .mockReturnValueOnce(windows[1] as unknown as Window);
+      layout.loadLayout({
+        root: {
+          type: 'row',
+          content: ['A', 'B', 'C'].map((id, index) => ({
+            type: 'component',
+            id,
+            componentType: 'testComponent',
+            size: `${index === 2 ? 40 : 30}%`,
+          })),
+        },
+      });
+      const first = layout.findFirstComponentItemById('A') as ComponentItem;
+      const second = layout.findFirstComponentItemById('B') as ComponentItem;
+      const firstPopout = first.popout();
+      const secondPopout = second.popout();
+      const before = secondPopout.toConfig();
+
+      windows[0].closed = true;
+      const beforeUnload = windows[0].addEventListener.mock.calls.find(
+        ([name]) => name === 'beforeunload',
+      )?.[1] as (() => void) | undefined;
+      expect(beforeUnload).toBeDefined();
+      beforeUnload!();
+      vi.advanceTimersByTime(60);
+
+      expect(firstPopout.getWindow().closed).toBe(true);
+      expect(layout.findFirstComponentItemById('A')).toBe(first);
+      expect(secondPopout.toConfig().indexInParent).toBe(before.indexInParent);
+      expect(secondPopout.toConfig().root?.size).toBe(before.root?.size);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('keeps blocked popout attempts separate and leaves the item in the layout', function () {
@@ -714,6 +887,7 @@ describe('BrowserPopout functionality (item.popout())', function () {
       layout.findFirstComponentItemById('blockedPopoutComponent')?.id,
     ).toBe(item.id);
     expect(layout.openPopouts.length).toBe(0);
+    expect(layout.groundItem?.popInParentIds).toEqual([]);
     expect(removeItemSpy).toHaveBeenCalledWith(
       expect.stringMatching(/^strelit-window-config-/),
     );
@@ -1163,6 +1337,65 @@ describe('BrowserPopout functionality (item.popout())', function () {
     expect(layout.rootItem).toBe(workingRoot);
     expect(layout.openPopouts).toEqual([existingPopout]);
     expect(existingWindowClose).not.toHaveBeenCalled();
+  });
+
+  it('saves only the replacement when an old popup refuses to close', function () {
+    vi.useFakeTimers();
+    try {
+      const createWindow = (close = vi.fn()) =>
+        ({
+          closed: false,
+          close,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          document: {
+            createElement: () => document.createElement('div'),
+            body: document.createElement('body'),
+            head: document.createElement('head'),
+            write: vi.fn(),
+            close: vi.fn(),
+          },
+          location: { href: '' },
+        }) as unknown as Window;
+      const oldWindowClose = vi.fn();
+      const oldWindow = createWindow(oldWindowClose);
+      const newWindow = createWindow();
+      vi.spyOn(window, 'open')
+        .mockReturnValueOnce(oldWindow)
+        .mockReturnValueOnce(newWindow);
+      const createConfig = (id: string) => ({
+        root: {
+          type: 'component' as const,
+          id: `${id}-host`,
+          componentType: 'testComponent',
+        },
+        openPopouts: [
+          {
+            root: {
+              type: 'component' as const,
+              id,
+              componentType: 'testComponent',
+            },
+            parentId: 'shared-return-slot',
+          },
+        ],
+      });
+
+      layout.loadLayout(createConfig('old-child'));
+      const oldPopout = layout.openPopouts[0];
+      layout.loadLayout(createConfig('new-child'));
+      vi.advanceTimersByTime(50);
+      oldPopout.popIn();
+
+      expect(oldWindowClose).toHaveBeenCalledOnce();
+      expect(layout.findFirstComponentItemById('old-child')).toBeUndefined();
+      expect(layout.openPopouts).toHaveLength(2);
+      const saved = layout.saveLayout();
+      expect(saved.openPopouts).toHaveLength(1);
+      expect(saved.openPopouts[0].root?.id).toBe('new-child');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('does not throw when calling close() on a blocked popout', function () {
@@ -1958,7 +2191,7 @@ describe('BrowserPopout functionality (item.popout())', function () {
         layout.findFirstComponentItemById('returned-after-rollback-retry'),
       ).toBeDefined();
 
-      vi.advanceTimersByTime(10);
+      vi.advanceTimersByTime(250);
       expect(
         layout.findFirstComponentItemById('returned-after-rollback-retry'),
       ).toBeUndefined();
@@ -2185,6 +2418,91 @@ describe('BrowserPopout functionality (item.popout())', function () {
     }
   });
 
+  it('restores an initialized child closed without beforeunload', function () {
+    vi.useFakeTimers();
+    try {
+      const childLayout = {
+        isInitialised: true,
+        on: vi.fn(),
+        saveLayout: () =>
+          resolveLayoutConfig({
+            root: {
+              type: 'component',
+              id: 'closed-without-unload',
+              componentType: 'testComponent',
+            },
+          }),
+        width: 320,
+        height: 200,
+      };
+      const mockWindow = {
+        closed: false,
+        close: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        __strelitInstance: childLayout,
+        document: {
+          createElement: () => document.createElement('div'),
+          body: document.createElement('body'),
+          head: document.createElement('head'),
+          write: vi.fn(),
+          close: vi.fn(),
+        },
+        location: { href: '' },
+      } as unknown as Window;
+      vi.spyOn(window, 'open').mockReturnValue(mockWindow);
+      layout.loadLayout({
+        settings: { popInOnClose: true },
+        root: {
+          type: 'component',
+          id: 'closed-without-unload',
+          componentType: 'testComponent',
+        },
+      });
+      const departing = layout.findFirstComponentItemById(
+        'closed-without-unload',
+      ) as ComponentItem;
+      const popout = departing.popout() as unknown as {
+        _checkReadyInterval: ReturnType<typeof setInterval> | undefined;
+        on(name: 'closed' | 'initialised', listener: () => void): void;
+      };
+      const closed = vi.fn();
+      popout.on('closed', closed);
+      popout.on('initialised', () => {
+        throw new Error('initialised observer failed');
+      });
+      expect(() => vi.advanceTimersByTime(10)).toThrow(
+        'initialised observer failed',
+      );
+      expect(
+        layout.findFirstComponentItemById('closed-without-unload'),
+      ).toBeUndefined();
+
+      let childInstanceReads = 0;
+      Object.defineProperty(mockWindow, '__strelitInstance', {
+        configurable: true,
+        get: () => {
+          childInstanceReads++;
+          return childLayout;
+        },
+      });
+      vi.advanceTimersByTime(500);
+      expect(childInstanceReads).toBeLessThanOrEqual(3);
+
+      (mockWindow as unknown as { closed: boolean }).closed = true;
+      vi.advanceTimersByTime(310);
+
+      expect(closed).toHaveBeenCalledOnce();
+      expect(layout.openPopouts).toHaveLength(0);
+      expect(
+        layout.findFirstComponentItemById('closed-without-unload'),
+      ).toBeDefined();
+      expect(popout._checkReadyInterval).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('continues close detection after a child-window reload', function () {
     vi.useFakeTimers();
     try {
@@ -2263,8 +2581,19 @@ describe('BrowserPopout functionality (item.popout())', function () {
       ).toBeUndefined();
       expect(localStorage.getItem(storageKey)).not.toBeNull();
 
+      let childInstanceReads = 0;
+      Object.defineProperty(mockWindow, '__strelitInstance', {
+        configurable: true,
+        get: () => {
+          childInstanceReads++;
+          return undefined;
+        },
+      });
+      vi.advanceTimersByTime(500);
+      expect(childInstanceReads).toBeLessThanOrEqual(3);
+
       (mockWindow as unknown as { closed: boolean }).closed = true;
-      vi.advanceTimersByTime(60);
+      vi.advanceTimersByTime(310);
       expect(closed).toHaveBeenCalledOnce();
       expect(layout.findFirstComponentItemById('reload-popout')).toBeDefined();
       expect(localStorage.getItem(storageKey)).toBeNull();
@@ -2331,7 +2660,7 @@ describe('BrowserPopout functionality (item.popout())', function () {
       (
         mockWindow as unknown as { __strelitInstance: unknown }
       ).__strelitInstance = secondChild;
-      vi.advanceTimersByTime(20);
+      vi.advanceTimersByTime(250);
 
       expect(firstChild.on).toHaveBeenCalledOnce();
       expect(firstChild.off).toHaveBeenCalledWith(
@@ -2346,6 +2675,196 @@ describe('BrowserPopout functionality (item.popout())', function () {
       expect(initialised).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
+    }
+  });
+});
+
+describe('popout subwindow container selection', () => {
+  const originalHref = window.location.href;
+  const storageKey = 'strelit-window-config-test-subwindow';
+
+  beforeEach(() => {
+    const resolvedConfig = resolveLayoutConfig({
+      root: {
+        type: 'stack',
+        content: [{ type: 'component', componentType: 'testComponent' }],
+      },
+    });
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify(minifyResolvedLayoutConfig(resolvedConfig)),
+    );
+    const subWindowUrl = new URL(originalHref);
+    subWindowUrl.searchParams.set('strelit-window', storageKey);
+    window.history.replaceState({}, '', subWindowUrl.toString());
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    localStorage.removeItem(storageKey);
+    window.history.replaceState({}, '', originalHref);
+  });
+
+  it('mounts deferred subwindow content in body after clearing a supplied container', async () => {
+    const { StrelitLayout: SubwindowLayout } =
+      await import('../../src/ts/strelit-layout');
+    const hostContainer = document.createElement('div');
+    document.body.appendChild(hostContainer);
+    const subLayout = new SubwindowLayout(hostContainer);
+
+    try {
+      subLayout.registerComponentFactoryFunction(
+        'testComponent',
+        (container) => {
+          container.element.textContent = 'subwindow content';
+        },
+      );
+      subLayout.registerComponentFactoryFunction('replacement', (container) => {
+        container.element.textContent = 'replacement content';
+      });
+
+      expect(subLayout.isSubWindow).toBe(true);
+      expect(() => subLayout.loadLayout({})).toThrow(
+        'Cannot load a layout before initialization',
+      );
+
+      await vi.waitFor(() => expect(subLayout.isInitialised).toBe(true));
+      expect(subLayout.container).toBe(document.body);
+      expect(hostContainer.isConnected).toBe(false);
+      expect(document.body.textContent).toContain('subwindow content');
+      expect(document.body.querySelector('.lm_header')).not.toBeNull();
+      expect(document.body.querySelector('.lm_popout')).toBeNull();
+      expect(document.body.querySelector('.lm_stack .lm_close')).toBeNull();
+
+      (document.body.querySelector('.lm_close_tab') as HTMLElement).click();
+      expect(document.body.querySelector('.lm_tab')).toBeNull();
+      expect(document.body.textContent).not.toContain('subwindow content');
+
+      subLayout.loadLayout({
+        root: {
+          type: 'stack',
+          content: [{ type: 'component', componentType: 'replacement' }],
+        },
+      });
+      expect(document.body.textContent).toContain('replacement content');
+      expect(document.body.textContent).not.toContain('subwindow content');
+
+      (document.body.querySelector('.lm_close_tab') as HTMLElement).click();
+      expect(subLayout.rootItem).toBeUndefined();
+      expect(document.body.textContent).not.toContain('replacement content');
+    } finally {
+      subLayout.destroy();
+    }
+  });
+
+  it('hides stack close controls in a multi-stack subwindow while keeping tab close controls', async () => {
+    const { StrelitLayout: SubwindowLayout } =
+      await import('../../src/ts/strelit-layout');
+    const hostContainer = document.createElement('div');
+    document.body.appendChild(hostContainer);
+    const subLayout = new SubwindowLayout(hostContainer);
+
+    try {
+      subLayout.registerComponentFactoryFunction('testComponent', () => {});
+      subLayout.registerComponentFactoryFunction('replacement', () => {});
+      await vi.waitFor(() => expect(subLayout.isInitialised).toBe(true));
+      const popIn = vi.fn();
+      subLayout.on('popIn', popIn);
+      subLayout.loadLayout({
+        root: {
+          type: 'row',
+          content: [
+            {
+              type: 'stack',
+              content: [{ type: 'component', componentType: 'testComponent' }],
+            },
+            {
+              type: 'stack',
+              content: [{ type: 'component', componentType: 'replacement' }],
+            },
+          ],
+        },
+      });
+
+      expect(document.body.querySelectorAll('.lm_stack')).toHaveLength(2);
+      expect(
+        document.body.querySelectorAll('.lm_stack .lm_close'),
+      ).toHaveLength(0);
+      expect(document.body.querySelectorAll('.lm_close_tab')).toHaveLength(2);
+      expect(popIn).not.toHaveBeenCalled();
+    } finally {
+      subLayout.destroy();
+    }
+  });
+
+  it('closes only the selected last tab when other subwindow stacks remain', async () => {
+    const { StrelitLayout: SubwindowLayout } =
+      await import('../../src/ts/strelit-layout');
+    const hostContainer = document.createElement('div');
+    document.body.appendChild(hostContainer);
+    const subLayout = new SubwindowLayout(hostContainer);
+
+    try {
+      subLayout.registerComponentFactoryFunction('testComponent', () => {});
+      subLayout.registerComponentFactoryFunction('replacement', () => {});
+      await vi.waitFor(() => expect(subLayout.isInitialised).toBe(true));
+      const popIn = vi.fn();
+      subLayout.on('popIn', popIn);
+      subLayout.loadLayout({
+        root: {
+          type: 'row',
+          content: [
+            {
+              type: 'stack',
+              content: [{ type: 'component', componentType: 'testComponent' }],
+            },
+            {
+              type: 'stack',
+              content: [{ type: 'component', componentType: 'replacement' }],
+            },
+          ],
+        },
+      });
+
+      expect(document.body.querySelectorAll('.lm_stack')).toHaveLength(2);
+      (document.body.querySelector('.lm_close_tab') as HTMLElement).click();
+      expect(popIn).not.toHaveBeenCalled();
+      expect(document.body.querySelectorAll('.lm_stack')).toHaveLength(1);
+
+      (document.body.querySelector('.lm_close_tab') as HTMLElement).click();
+      expect(popIn).toHaveBeenCalledOnce();
+      expect(document.body.querySelectorAll('.lm_stack')).toHaveLength(1);
+    } finally {
+      subLayout.destroy();
+    }
+  });
+
+  it('keeps the supplied container when bindings initialize a subwindow synchronously', async () => {
+    const { StrelitLayout: SubwindowLayout } =
+      await import('../../src/ts/strelit-layout');
+    const hostContainer = document.createElement('div');
+    document.body.appendChild(hostContainer);
+    const subLayout = new SubwindowLayout(
+      hostContainer,
+      (container) => {
+        container.element.textContent = 'bound subwindow content';
+        return { component: undefined, virtual: false };
+      },
+      () => {},
+    );
+
+    try {
+      expect(subLayout.isSubWindow).toBe(true);
+      expect(subLayout.isInitialised).toBe(true);
+      expect(subLayout.container).toBe(hostContainer);
+      expect(hostContainer.isConnected).toBe(true);
+      expect(hostContainer.textContent).toContain('bound subwindow content');
+      expect(hostContainer.querySelector('.lm_header')).not.toBeNull();
+      expect(hostContainer.querySelector('.lm_popout')).toBeNull();
+      expect(hostContainer.querySelector('.lm_stack .lm_close')).toBeNull();
+    } finally {
+      subLayout.destroy();
+      hostContainer.remove();
     }
   });
 });

@@ -323,7 +323,7 @@ export class Header extends EventEmitter {
     /**
      * Close button
      */
-    if (this._configClosable) {
+    if (this._configClosable && this._closeEnabled) {
       this._closeButton = new HeaderButton(
         this,
         this._closeLabel,

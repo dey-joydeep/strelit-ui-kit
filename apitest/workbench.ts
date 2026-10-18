@@ -2,6 +2,7 @@ import {
   ComponentItem,
   ContentItem,
   ItemType,
+  Side,
   type LayoutConfig,
   Stack,
   createLayoutConfigFromResolved,
@@ -22,6 +23,9 @@ function element<T extends HTMLElement>(selector: string): T {
 export class Workbench {
   private readonly configEditor = element<HTMLTextAreaElement>('#configEditor');
   private readonly layoutSelect = element<HTMLSelectElement>('#layoutSelect');
+  private readonly headerPositionSelect = element<HTMLSelectElement>(
+    '#headerPositionSelect',
+  );
   private readonly targetSelect =
     element<HTMLSelectElement>('#apiTargetSelect');
   private readonly actionSelect =
@@ -82,6 +86,9 @@ export class Workbench {
       this.refreshMethods();
     });
     this.layoutSelect.addEventListener('change', () => this.showPresetConfig());
+    this.headerPositionSelect.addEventListener('change', () =>
+      this.setHeaderPosition(),
+    );
     this.app.layout.on('stateChanged', () => this.scheduleRefresh());
     this.app.layout.on('windowOpened', () => this.scheduleRefresh());
     this.app.layout.on('windowClosed', () => this.scheduleRefresh());
@@ -154,6 +161,32 @@ export class Workbench {
       this.configEditor.value = JSON.stringify(config, null, 2);
       this.setStatus('Current layout copied to editor', false);
       this.log('Converted saveLayout() to editable LayoutConfig.');
+    } catch (error) {
+      this.reportError(error);
+    }
+  }
+
+  private setHeaderPosition(): void {
+    try {
+      const selected = this.headerPositionSelect.value;
+      let position: Side;
+      switch (selected) {
+        case Side.top:
+        case Side.bottom:
+        case Side.left:
+        case Side.right:
+          position = selected;
+          break;
+        default:
+          throw new Error(`Unknown header position: ${selected}`);
+      }
+      const stacks = this.app.layout
+        .getItemsByType(ItemType.stack)
+        .filter((item): item is Stack => item instanceof Stack);
+      for (const stack of stacks) stack.positionHeader(position);
+      this.setStatus(`Headers moved to ${position}`, false);
+      this.log(`Header position: ${position}`);
+      this.refresh();
     } catch (error) {
       this.reportError(error);
     }
@@ -416,7 +449,19 @@ export class Workbench {
         this.selectedTarget = undefined;
       }
       this.targetSelectionInitialized = true;
-      const stacks = this.app.layout.getItemsByType(ItemType.stack).length;
+      const stackItems = this.app.layout
+        .getItemsByType(ItemType.stack)
+        .filter((item): item is Stack => item instanceof Stack);
+      const stacks = stackItems.length;
+      this.headerPositionSelect.disabled = stacks === 0;
+      if (stacks > 0) {
+        const firstSide = stackItems[0].headerSide;
+        this.headerPositionSelect.value = stackItems.every(
+          (stack) => stack.headerSide === firstSide,
+        )
+          ? firstSide
+          : 'mixed';
+      }
       const popouts = this.app.layout.openPopouts.length;
       this.summary.textContent = `${components.length} components · ${stacks} stacks · ${popouts} pop-outs`;
       this.snapshot.textContent = JSON.stringify(

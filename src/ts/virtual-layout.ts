@@ -44,6 +44,7 @@ let virtualLayoutSubWindowChecked = false;
 /** @internal */
 export function createVirtualLayoutManagerConstructorParameters(
   containerElement: HTMLElement | undefined,
+  bindComponentEventHandlerPassed = false,
 ): LayoutManagerConstructorParameters {
   const windowConfigKey = virtualLayoutSubWindowChecked
     ? null
@@ -74,7 +75,10 @@ export function createVirtualLayoutManagerConstructorParameters(
   return {
     subWindowLayoutConfig: config,
     isSubWindow,
-    containerElement,
+    containerElement:
+      isSubWindow && !bindComponentEventHandlerPassed
+        ? undefined
+        : containerElement,
   };
 }
 
@@ -118,7 +122,12 @@ export class VirtualLayout extends LayoutManager {
     unbindComponentEventHandler?: VirtualLayoutUnbindComponentEventHandler,
     skipInit = false,
   ) {
-    super(createVirtualLayoutManagerConstructorParameters(container));
+    super(
+      createVirtualLayoutManagerConstructorParameters(
+        container,
+        bindComponentEventHandler !== undefined,
+      ),
+    );
 
     if (bindComponentEventHandler !== undefined) {
       this.bindComponentEvent = bindComponentEventHandler;

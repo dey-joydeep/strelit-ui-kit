@@ -312,7 +312,11 @@ export abstract class ContentItem extends EventEmitter {
       /**
        * If this was the last content item, remove this node as well
        */
-      if (!this.isGround && this._isClosable) {
+      if (
+        !this.isGround &&
+        this._isClosable &&
+        this._popInParentIds.length === 0
+      ) {
         if (this._parent === null) {
           throw new UnexpectedNullError('CIUC00874');
         } else {
@@ -664,6 +668,14 @@ export abstract class ContentItem extends EventEmitter {
   addPopInParentId(id: string): void {
     if (!this.popInParentIds.includes(id)) {
       this.popInParentIds.push(id);
+    }
+  }
+
+  /** @internal */
+  removePopInParentId(id: string): void {
+    const index = this.popInParentIds.indexOf(id);
+    if (index !== -1) {
+      this.popInParentIds.splice(index, 1);
     }
   }
 

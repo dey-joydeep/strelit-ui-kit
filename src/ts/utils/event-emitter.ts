@@ -333,12 +333,12 @@ export class EventEmitter {
     }
 
     const subscriptions = registered.slice();
-    for (let index = 0; index < subscriptions.length; index++) {
+    for (const subscription of subscriptions) {
       if (!this.isEventDispatchAllowed(eventName)) {
         break;
       }
       try {
-        subscriptions[index](...args);
+        subscription(...args);
       } catch (error) {
         captureDispatchFailure(failure, error);
       }
@@ -467,6 +467,11 @@ export class EventEmitter {
     callback: EventEmitterCallback<K>,
   ): void {
     this.addEventListener(eventName, callback);
+  }
+
+  /** @internal */
+  hasEventListener(eventName: keyof EventEmitterEventParamsMap): boolean {
+    return (this._subscriptionsMap.get(eventName)?.length ?? 0) > 0;
   }
 
   /** @internal */
