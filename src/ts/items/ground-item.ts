@@ -223,13 +223,15 @@ export class GroundItem extends ComponentParentableItem {
         itemConfig,
         this.layoutManager.layoutConfig.settings.reorderEnabled,
       );
-    let parent: ContentItem;
-    if (this.contentItems.length > 0) {
-      parent = this.contentItems[0];
-    } else {
-      // eslint-disable-next-line @typescript-eslint/no-this-alias
-      parent = this;
+    if (this.contentItems.length === 0) {
+      const contentItem = this.layoutManager.createAndInitContentItem(
+        resolvedItemConfig,
+        this,
+      );
+      this.addChild(contentItem, index);
+      return -1;
     }
+    const parent = this.contentItems[0];
     if (
       (parent.isComponent || parent.isStack) &&
       !isComponentItemConfig(itemConfig)
@@ -246,8 +248,7 @@ export class GroundItem extends ComponentParentableItem {
         resolvedItemConfig,
         parent,
       );
-      index = parent.addChild(contentItem, index);
-      return parent === this ? -1 : index;
+      return parent.addChild(contentItem, index);
     }
   }
 
@@ -511,7 +512,7 @@ export class GroundItem extends ComponentParentableItem {
       return;
     }
 
-    const type = area.side[0] == 'x' ? ItemType.row : ItemType.column;
+    const type = area.side.startsWith('x') ? ItemType.row : ItemType.column;
     const insertBefore = area.side[1] == '2';
     const rootItem = this.contentItems[0];
     if (!(rootItem instanceof RowOrColumn) || rootItem.type !== type) {

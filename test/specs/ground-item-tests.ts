@@ -35,6 +35,22 @@ describe('ground item', function () {
     TestTools.verifyPath('stack.0.component', layout);
   });
 
+  it('adds an item to an empty ground at the root position', function () {
+    const emptyLayout = TestTools.createLayout({});
+    try {
+      const ground = emptyLayout.groundItem as GroundItem;
+      const index = ground.addItem({
+        type: 'component',
+        componentType: TestTools.TEST_COMPONENT_NAME,
+      });
+
+      expect(index).toBe(-1);
+      TestTools.verifyPath('stack.0.component', emptyLayout);
+    } finally {
+      emptyLayout.destroy();
+    }
+  });
+
   it('only enables automatic container resizing for the body by default', function () {
     const customContainer = document.createElement('div');
     document.body.appendChild(customContainer);

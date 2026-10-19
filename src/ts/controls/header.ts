@@ -477,11 +477,7 @@ export class Header extends EventEmitter {
 
   /** @internal */
   applyFocusedValue(value: boolean): void {
-    if (value) {
-      this._element.classList.add(DomConstants.ClassName.Focused);
-    } else {
-      this._element.classList.remove(DomConstants.ClassName.Focused);
-    }
+    this._element.classList.toggle(DomConstants.ClassName.Focused, value);
   }
 
   /** @internal */
