@@ -41,6 +41,19 @@
               Load
             </button>
           </div>
+          <label for="headerPositionSelect">Header position</label>
+          <select id="headerPositionSelect" class="control">
+            <option value="top" selected>Top (controls right)</option>
+            <option value="bottom">Bottom (controls right)</option>
+            <option value="left">Left</option>
+            <option value="right">Right</option>
+            <option value="mixed" disabled>Mixed (from layout)</option>
+          </select>
+          <p class="field-help">
+            To see why a pop-out can maximize a stack, load
+            <strong>popoutMaximiseDemo</strong>. In its two-pane window, click a
+            square to expand a pane, then click it again to restore the split.
+          </p>
           <div id="saveAndReloadLayoutSection" class="control-row">
             <button id="saveLayoutButton" class="control" type="button">
               Save snapshot

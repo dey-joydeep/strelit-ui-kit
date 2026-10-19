@@ -227,11 +227,11 @@ export class Stack extends ComponentParentableItem {
     const headerSettings: HeaderSettings = {
       show: show !== false,
       side: show === false ? Side.top : show,
-      popoutEnabled: popout !== false,
+      popoutEnabled: popout !== false && !layoutManager.isSubWindow,
       popoutLabel: popout === false ? '' : popout,
       maximiseEnabled: this._maximisedEnabled,
       maximiseLabel: maximise === false ? '' : maximise,
-      closeEnabled: close !== false,
+      closeEnabled: close !== false && !layoutManager.isSubWindow,
       closeLabel: close === false ? '' : close,
       minimiseEnabled: true,
       minimiseLabel: minimise,
@@ -246,7 +246,7 @@ export class Stack extends ComponentParentableItem {
       config.isClosable && close !== false,
       {
         getActiveComponentItem: () => this.getActiveComponentItem(),
-        close: () => this.remove(),
+        close: () => this.handleHeaderCloseEvent(),
         popout: () => this.handlePopoutEvent(),
         maximiseToggle: () => this.toggleMaximise(),
         click: (ev) => this.handleHeaderClickEvent(ev),
@@ -1227,6 +1227,28 @@ export class Stack extends ComponentParentableItem {
   }
 
   /** @internal */
+  private handleHeaderCloseEvent(): void {
+    if (this.isReturnableSoleSubwindowStack()) {
+      this.layoutManager.emit('popIn');
+    } else {
+      this.remove();
+    }
+  }
+
+  private isReturnableSoleSubwindowStack(): boolean {
+    if (
+      !this.layoutManager.isSubWindow ||
+      !this.layoutManager.hasEventListener('popIn')
+    ) {
+      return false;
+    }
+    const rootStacks = this.layoutManager.rootItem?.getItemsByType(
+      ItemType.stack,
+    );
+    return rootStacks?.length === 1 && rootStacks[0] === this;
+  }
+
+  /** @internal */
   private handleHeaderClickEvent(ev: MouseEvent) {
     const eventName = eventEmitterHeaderClickEventName;
     const bubblingEvent = new ClickBubblingEvent(eventName, this, ev);
@@ -1242,6 +1264,13 @@ export class Stack extends ComponentParentableItem {
 
   /** @internal */
   private handleHeaderComponentRemoveEvent(item: ComponentItem) {
+    if (
+      this.contentItems.length === 1 &&
+      this.isReturnableSoleSubwindowStack()
+    ) {
+      this.layoutManager.emit('popIn');
+      return;
+    }
     this.removeChild(item, false);
   }
 

@@ -386,7 +386,12 @@ export class RowOrColumn extends ContentItem {
 
     super.removeChild(contentItem, true);
 
-    if (!keepChild && this.contentItems.length === 1 && this.isClosable) {
+    if (
+      !keepChild &&
+      this.contentItems.length === 1 &&
+      this.isClosable &&
+      this.popInParentIds.length === 0
+    ) {
       this.collapseToSingleChild();
     } else {
       this.updateSize(false);
@@ -396,8 +401,12 @@ export class RowOrColumn extends ContentItem {
 
   /** @internal */
   checkCollapse(): void {
-    if (this.contentItems.length === 1 && this.isClosable) {
-      this.collapseToSingleChild();
+    if (this.isClosable && this.popInParentIds.length === 0) {
+      if (this.contentItems.length === 0) {
+        this.remove();
+      } else if (this.contentItems.length === 1) {
+        this.collapseToSingleChild();
+      }
     }
   }
 

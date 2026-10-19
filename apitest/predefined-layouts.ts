@@ -70,6 +70,51 @@ const miniStackLayout: Layout = {
   config: miniStackConfig,
 };
 
+const popoutMaximiseDemo: Layout = {
+  name: 'popoutMaximiseDemo',
+  config: {
+    settings: { popoutWholeStack: true, popInOnClose: true },
+    root: {
+      type: ItemType.component,
+      title: 'Demo host',
+      componentType: ColorComponent.typeName,
+      componentState: 'white',
+    },
+    openPopouts: [
+      {
+        window: { width: 800, height: 500 },
+        root: {
+          type: ItemType.row,
+          content: [
+            {
+              type: ItemType.stack,
+              content: [
+                {
+                  type: ItemType.component,
+                  title: 'Editor',
+                  componentType: ColorComponent.typeName,
+                  componentState: 'blue',
+                },
+              ],
+            },
+            {
+              type: ItemType.stack,
+              content: [
+                {
+                  type: ItemType.component,
+                  title: 'Preview',
+                  componentType: ColorComponent.typeName,
+                  componentState: 'green',
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ],
+  },
+};
+
 const rowWithEmptyStackConfig: LayoutConfig = {
   root: {
     type: ItemType.row,
@@ -131,7 +176,7 @@ const standardConfig: LayoutConfig = {
         content: [
           {
             title: 'Fnts 100',
-            header: { show: 'bottom' },
+            header: { show: 'top' },
             type: 'component',
             componentType: ColorComponent.typeName,
           },
@@ -141,7 +186,7 @@ const standardConfig: LayoutConfig = {
               {
                 type: 'component',
                 title: 'Overview',
-                header: { show: 'right' },
+                header: { show: 'top' },
                 isClosable: false,
                 componentType: ColorComponent.typeName,
                 size: '30%',
@@ -152,7 +197,7 @@ const standardConfig: LayoutConfig = {
               {
                 title: 'Details',
                 header: {
-                  show: 'left',
+                  show: 'top',
                   popout: false,
                 },
                 type: 'component',
@@ -1002,6 +1047,7 @@ export const prefinedLayouts: PredefinedLayouts = {
   colorComponentCompatible: [
     miniRowLayout,
     miniStackLayout,
+    popoutMaximiseDemo,
     rowWithEmptyStackLayout,
     component,
     standardLayout,
@@ -1014,6 +1060,7 @@ export const prefinedLayouts: PredefinedLayouts = {
   allComponents: [
     miniRowLayout,
     miniStackLayout,
+    popoutMaximiseDemo,
     component,
     responsiveLayout,
     standardLayout,

@@ -34,6 +34,8 @@ export class BrowserPopout extends EventEmitter {
     constructor(_nonConstructible: never, ..._args: never[]);
     // @internal
     constructor(config: ResolvedPopoutLayoutConfig, initialWindowSize: Rect, layoutManager: LayoutManager);
+    // @internal (undocumented)
+    abandonReturnMarker(): void;
     close(): void;
     // @internal (undocumented)
     get closedWithFailedPopIn(): boolean;
@@ -41,7 +43,23 @@ export class BrowserPopout extends EventEmitter {
     destroy(): void;
     getStrelitInstance(): LayoutManager;
     getWindow(): Window;
+    // @internal (undocumented)
+    get hasReturnedToParent(): boolean;
+    // @internal (undocumented)
+    get isRestoringToParent(): boolean;
+    // @internal (undocumented)
+    get pendingReturnIndex(): number | undefined;
+    // @internal (undocumented)
+    get pendingReturnPercent(): number | undefined;
     popIn(): void;
+    // @internal (undocumented)
+    rebaseReturnAfterDiscard(discardedIndex: number, discardedPercent: number | undefined): void;
+    // @internal (undocumented)
+    reconcileClosedWindowNow(): void;
+    // @internal (undocumented)
+    get returnMarkerAbandoned(): boolean;
+    // @internal (undocumented)
+    get returnParentId(): string | null | undefined;
     toConfig(): ResolvedPopoutLayoutConfig;
 }
 
@@ -279,6 +297,8 @@ export abstract class ContentItem extends EventEmitter {
     popout(): BrowserPopout;
     remove(): void;
     removeChild(contentItem: ContentItem, keepChild?: boolean): void;
+    // @internal (undocumented)
+    removePopInParentId(id: string): void;
     // @internal
     replaceChild(oldChild: ContentItem, newChild: ContentItem, destroyOldChild?: boolean): void;
     // @internal (undocumented)
@@ -439,6 +459,8 @@ export class EventEmitter {
     emitUnknown(eventName: string, ...args: EventEmitterUnknownParams): void;
     // @internal (undocumented)
     emitUnknownBubblingEvent(eventName: string): void;
+    // @internal (undocumented)
+    hasEventListener(eventName: keyof EventEmitterEventParamsMap): boolean;
     off<K extends keyof EventEmitterEventParamsMap>(eventName: K, callback: EventEmitterCallback<K>): void;
     on<K extends keyof EventEmitterEventParamsMap>(eventName: K, callback: EventEmitterCallback<K>): void;
     removeEventListener<K extends keyof EventEmitterEventParamsMap>(eventName: K, callback: EventEmitterCallback<K>): void;
@@ -876,8 +898,12 @@ export abstract class LayoutManager extends EventEmitter {
     // @internal (undocumented)
     getArea(x: number, y: number): ContentItemArea | null;
     getComponentItemsByType(componentType: ComponentType): ComponentItem[];
+    // @internal (undocumented)
+    getCurrentReturnIndex(parentItem: ContentItem, originalIndex: number, excluding: BrowserPopout): number;
     getItemsById(id: string): ContentItem[];
     getItemsByType(type: ItemType): ContentItem[];
+    // @internal (undocumented)
+    getReservedPopoutPercent(parentItem: ContentItem, excluding?: BrowserPopout): number;
     // Warning: (ae-forgotten-export) The symbol "GroundItem" needs to be exported by the entry point index.d.ts
     //
     // @internal (undocumented)
@@ -898,6 +924,8 @@ export abstract class LayoutManager extends EventEmitter {
     newItem(itemConfig: RowOrColumnItemConfig | StackItemConfig | ComponentItemConfig): ContentItem;
     newItemAtLocation(itemConfig: RowOrColumnItemConfig | StackItemConfig | ComponentItemConfig, locationSelectors?: readonly LayoutManagerLocationSelector[]): ContentItem | undefined;
     get openPopouts(): BrowserPopout[];
+    // @internal (undocumented)
+    rebasePendingPopoutsAfterDiscard(parentItem: ContentItem, discarded: BrowserPopout): void;
     removeDragSource(dragSource: DragSource): void;
     resizeDebounceExtendedWhenPossible: boolean;
     resizeDebounceInterval: number;

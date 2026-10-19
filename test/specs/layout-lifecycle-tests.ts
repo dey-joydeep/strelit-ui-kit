@@ -378,6 +378,7 @@ describe('layout lifecycle', () => {
     layout.registerComponentFactoryFunction('panel', () => undefined);
     layout.loadComponentAsRoot({ type: 'component', componentType: 'panel' });
     const incomingPopout = {
+      abandonReturnMarker: vi.fn(),
       close: vi.fn().mockImplementationOnce(() => {
         throw new Error('incoming popout close failed');
       }),
@@ -584,6 +585,7 @@ describe('layout lifecycle', () => {
     });
     let closeAttempts = 0;
     const failedPopout = {
+      abandonReturnMarker: vi.fn(),
       close: vi.fn(() => {
         if (++closeAttempts === 1) {
           throw new Error('old popout close failed');
@@ -629,6 +631,7 @@ describe('layout lifecycle', () => {
     });
     let closed = false;
     const popout = {
+      abandonReturnMarker: vi.fn(),
       close: vi.fn(),
       getWindow: () => ({ closed }),
     };

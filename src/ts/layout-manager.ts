@@ -67,6 +67,7 @@ import {
   Rect,
   ResponsiveMode,
   SerializableValue,
+  SizeUnit,
 } from './utils/types';
 import {
   deepCloneValue,
@@ -356,6 +357,11 @@ export abstract class LayoutManager extends EventEmitter {
   private _groundItem: GroundItem | undefined = undefined;
   /** @internal */
   private _openPopouts: BrowserPopout[] = [];
+  private readonly _popoutSourceItems = new WeakMap<
+    BrowserPopout,
+    ContentItem
+  >();
+  private _replacingPopouts: Set<BrowserPopout> | undefined;
   /** @internal */
   private _dropTargetIndicator: DropTargetIndicator | null = null;
   /** @internal */
@@ -754,6 +760,7 @@ export abstract class LayoutManager extends EventEmitter {
       const previousWindowBeforeUnloadListening =
         this._windowBeforeUnloadListening;
       this.layoutConfig = resolveLayoutConfig(layoutConfig);
+      this._replacingPopouts = new Set(previousOpenPopouts);
       let incomingOpenPopouts: BrowserPopout[] = [];
       try {
         this.createSubWindows();
@@ -773,6 +780,8 @@ export abstract class LayoutManager extends EventEmitter {
           previousWindowBeforeUnloadListening,
         );
         throw error;
+      } finally {
+        this._replacingPopouts = undefined;
       }
 
       this.releasePreviousLayoutPopouts(
@@ -799,6 +808,7 @@ export abstract class LayoutManager extends EventEmitter {
       }
     };
     for (const popout of previousOpenPopouts) {
+      popout.abandonReturnMarker();
       this.closePreviousLayoutPopout(
         popout,
         failedPreviousPopouts,
@@ -873,6 +883,7 @@ export abstract class LayoutManager extends EventEmitter {
     const failedIncomingPopouts: BrowserPopout[] = [];
     for (const popout of incomingOpenPopouts) {
       try {
+        popout.abandonReturnMarker();
         popout.close();
       } catch {
         // Popout cleanup must not interrupt root and configuration rollback.
@@ -935,6 +946,9 @@ export abstract class LayoutManager extends EventEmitter {
       if (this._groundItem === undefined) {
         throw new UnexpectedUndefinedError('LMTC18244');
       }
+      for (const popout of this._openPopouts.slice()) {
+        popout.reconcileClosedWindowNow();
+      }
       const groundContent = this._groundItem.calculateConfigContent();
 
       let rootItemConfig: ResolvedRootItemConfig | undefined;
@@ -972,6 +986,9 @@ export abstract class LayoutManager extends EventEmitter {
   ): ResolvedPopoutLayoutConfig[] {
     const openPopouts: ResolvedPopoutLayoutConfig[] = [];
     for (const element of this._openPopouts) {
+      if (element.returnMarkerAbandoned || element.hasReturnedToParent) {
+        continue;
+      }
       let initialised = false;
       try {
         initialised = element.getStrelitInstance().isInitialised;
@@ -984,7 +1001,7 @@ export abstract class LayoutManager extends EventEmitter {
         typeof parentId === 'string' &&
         (groundItem.popInParentIds.includes(parentId) ||
           groundItem.getItemsByPopInParentId(parentId).length > 0);
-      if (initialised || !sourceAttached) {
+      if (initialised || !sourceAttached || element.isRestoringToParent) {
         openPopouts.push(popoutConfig);
       }
     }
@@ -1236,7 +1253,9 @@ export abstract class LayoutManager extends EventEmitter {
       }
       case ItemType.stack: {
         if (!isComponentItemConfig(itemConfig)) {
-          throw Error(i18nStrings[I18nStringId.ItemConfigIsNotTypeComponent]);
+          throw new Error(
+            i18nStrings[I18nStringId.ItemConfigIsNotTypeComponent],
+          );
         }
         const stack = parentItem as Stack;
         return { parentItem, index: stack.addItem(itemConfig, index) };
@@ -1497,20 +1516,68 @@ export abstract class LayoutManager extends EventEmitter {
     indexInParent: number | null | undefined,
   ): BrowserPopout {
     this.checkNoInternalComponentDrag();
-    /**
-     * If the item is the only component within a stack or for some
-     * other reason the only child of its parent the parent will be destroyed
-     * when the child is removed.
-     *
-     * In order to support this we move up the tree until we find something
-     * that will remain after the item is being popped out
-     */
+    const { parent, child } = this.findStablePopoutParent(item);
+    const groundItem = this.groundItem;
+    if (
+      parentId !== null &&
+      groundItem !== undefined &&
+      (groundItem.popInParentIds.includes(parentId) ||
+        groundItem.getItemsByPopInParentId(parentId).length > 0)
+    ) {
+      throw new Error(`Pop-in parent ID is already in use: ${parentId}`);
+    }
+    indexInParent ??= this.getOriginalPopoutIndex(
+      parent,
+      parent.contentItems.indexOf(child),
+    );
+    window = this.resolvePopoutWindow(item, window);
+    const popoutItemConfig = this.getPopoutItemConfig(child, parent);
+    const markerToAdd = parentId ?? undefined;
+    if (markerToAdd !== undefined) {
+      parent.addPopInParentId(markerToAdd);
+    }
+    let browserPopout: BrowserPopout;
+    try {
+      browserPopout = this.createPopoutFromItemConfig(
+        popoutItemConfig,
+        window,
+        parentId,
+        indexInParent,
+        () => {
+          if (child.parent === parent) {
+            child.remove();
+          }
+        },
+      );
+      this._popoutSourceItems.set(browserPopout, child);
+    } catch (error) {
+      if (markerToAdd !== undefined) {
+        parent.removePopInParentId(markerToAdd);
+      }
+      throw error;
+    }
+    try {
+      browserPopout.getWindow();
+    } catch {
+      if (markerToAdd !== undefined) {
+        parent.removePopInParentId(markerToAdd);
+      }
+    }
+    return browserPopout;
+  }
+
+  private findStablePopoutParent(item: ContentItem): {
+    parent: ContentItem;
+    child: ContentItem;
+  } {
+    // Preserve the nearest ancestor that survives removal of its only child.
     let parent = item.parent;
     let child = item;
     while (
       parent !== null &&
       parent.contentItems.length === 1 &&
-      !parent.isGround
+      !parent.isGround &&
+      parent.popInParentIds.length === 0
     ) {
       child = parent;
       parent = parent.parent;
@@ -1518,52 +1585,50 @@ export abstract class LayoutManager extends EventEmitter {
 
     if (parent === null) {
       throw new UnexpectedNullError('LMCPFCI00834');
-    } else {
-      indexInParent ??= parent.contentItems.indexOf(child);
-
-      if (parentId !== null) {
-        parent.addPopInParentId(parentId);
-      }
-
-      if (window === undefined) {
-        const windowLeft = globalThis.screenX || globalThis.screenLeft;
-        const windowTop = globalThis.screenY || globalThis.screenTop;
-        const rect = item.element.getBoundingClientRect();
-        const { width, height } = getElementWidthAndHeight(item.element);
-
-        window = {
-          left: windowLeft + rect.left,
-          top: windowTop + rect.top,
-          width,
-          height,
-        };
-      }
-
-      const itemConfig = child.toConfig();
-      if (!isResolvedRootItemConfig(itemConfig)) {
-        throw new Error(
-          `${i18nStrings[I18nStringId.PopoutCannotBeCreatedWithGroundItemConfig]}`,
-        );
-      } else {
-        const browserPopout = this.createPopoutFromItemConfig(
-          itemConfig,
-          window,
-          parentId,
-          indexInParent,
-          () => {
-            if (child.parent === parent) {
-              child.remove();
-            }
-          },
-        );
-        try {
-          browserPopout.getWindow();
-        } catch {
-          return browserPopout;
-        }
-        return browserPopout;
-      }
     }
+    return { parent, child };
+  }
+
+  private resolvePopoutWindow(
+    item: ContentItem,
+    window: ResolvedPopoutLayoutConfigWindow | undefined,
+  ): ResolvedPopoutLayoutConfigWindow {
+    if (window !== undefined) {
+      return window;
+    }
+    const windowLeft = globalThis.screenX || globalThis.screenLeft;
+    const windowTop = globalThis.screenY || globalThis.screenTop;
+    const rect = item.element.getBoundingClientRect();
+    const { width, height } = getElementWidthAndHeight(item.element);
+    return {
+      left: windowLeft + rect.left,
+      top: windowTop + rect.top,
+      width,
+      height,
+    };
+  }
+
+  private getPopoutItemConfig(
+    child: ContentItem,
+    parent: ContentItem,
+  ): ResolvedRootItemConfig {
+    const itemConfig = child.toConfig();
+    if (!isResolvedRootItemConfig(itemConfig)) {
+      throw new Error(
+        `${i18nStrings[I18nStringId.PopoutCannotBeCreatedWithGroundItemConfig]}`,
+      );
+    }
+    if (
+      parent instanceof RowOrColumn &&
+      itemConfig.sizeUnit === SizeUnit.Percent
+    ) {
+      const reservedSize = this.getReservedPopoutPercent(parent);
+      return {
+        ...itemConfig,
+        size: (itemConfig.size * (100 - reservedSize)) / 100,
+      };
+    }
+    return itemConfig;
   }
 
   /** @internal */
@@ -1653,6 +1718,16 @@ export abstract class LayoutManager extends EventEmitter {
     config: ResolvedPopoutLayoutConfig,
     beforeWindowOpened?: () => void,
   ): BrowserPopout {
+    if (
+      typeof config.parentId === 'string' &&
+      this._openPopouts.some(
+        (popout) =>
+          !this._replacingPopouts?.has(popout) &&
+          popout.returnParentId === config.parentId,
+      )
+    ) {
+      throw new Error(`Pop-in parent ID is already in use: ${config.parentId}`);
+    }
     const configWindow = config.window;
     const initialWindow: Rect = {
       left:
@@ -1701,6 +1776,114 @@ export abstract class LayoutManager extends EventEmitter {
     }
 
     return browserPopout;
+  }
+
+  /** @internal */
+  getReservedPopoutPercent(
+    parentItem: ContentItem,
+    excluding?: BrowserPopout,
+  ): number {
+    let reserved = 0;
+    for (const popout of this.getPendingPopoutsFor(parentItem, excluding)) {
+      reserved += popout.pendingReturnPercent ?? 0;
+    }
+    return Math.min(100, reserved);
+  }
+
+  /** @internal */
+  rebasePendingPopoutsAfterDiscard(
+    parentItem: ContentItem,
+    discarded: BrowserPopout,
+  ): void {
+    const sourceItem = this._popoutSourceItems.get(discarded);
+    if (
+      sourceItem !== undefined &&
+      parentItem.contentItems.includes(sourceItem)
+    ) {
+      return;
+    }
+    const discardedIndex = discarded.pendingReturnIndex;
+    if (discardedIndex === undefined) {
+      return;
+    }
+    for (const popout of this._openPopouts) {
+      const parentId = popout.returnParentId;
+      if (
+        popout !== discarded &&
+        parentId !== null &&
+        parentId !== undefined &&
+        parentItem.popInParentIds.includes(parentId)
+      ) {
+        popout.rebaseReturnAfterDiscard(
+          discardedIndex,
+          discarded.pendingReturnPercent,
+        );
+      }
+    }
+  }
+
+  /** @internal */
+  getCurrentReturnIndex(
+    parentItem: ContentItem,
+    originalIndex: number,
+    excluding: BrowserPopout,
+  ): number {
+    const missingBefore = this.getPendingPopoutsFor(
+      parentItem,
+      excluding,
+    ).filter(
+      (popout) => (popout.pendingReturnIndex ?? Infinity) < originalIndex,
+    ).length;
+    return Math.max(0, originalIndex - missingBefore);
+  }
+
+  private getOriginalPopoutIndex(
+    parentItem: ContentItem,
+    currentIndex: number,
+  ): number {
+    let originalIndex = currentIndex;
+    const pendingIndices = this.getPendingPopoutsFor(parentItem)
+      .map((popout) => popout.pendingReturnIndex)
+      .filter((index): index is number => index !== undefined)
+      .sort((left, right) => left - right);
+    for (const pendingIndex of pendingIndices) {
+      if (pendingIndex <= originalIndex) {
+        originalIndex++;
+      }
+    }
+    return originalIndex;
+  }
+
+  private getPendingPopoutsFor(
+    parentItem: ContentItem,
+    excluding?: BrowserPopout,
+  ): BrowserPopout[] {
+    const pending: BrowserPopout[] = [];
+    for (const popout of this._openPopouts) {
+      const parentId = popout.returnParentId;
+      if (
+        popout === excluding ||
+        parentId === null ||
+        parentId === undefined ||
+        !parentItem.popInParentIds.includes(parentId)
+      ) {
+        continue;
+      }
+      const sourceItem = this._popoutSourceItems.get(popout);
+      if (
+        sourceItem !== undefined &&
+        parentItem.contentItems.includes(sourceItem)
+      ) {
+        continue;
+      }
+      if (
+        popout.pendingReturnIndex !== undefined ||
+        popout.pendingReturnPercent !== undefined
+      ) {
+        pending.push(popout);
+      }
+    }
+    return pending;
   }
 
   /**
@@ -2223,7 +2406,10 @@ export abstract class LayoutManager extends EventEmitter {
       try {
         if (!element.getWindow().closed) {
           openPopouts.push(element);
-        } else if (element.closedWithFailedPopIn) {
+        } else if (
+          element.closedWithFailedPopIn ||
+          element.isRestoringToParent
+        ) {
           openPopouts.push(element);
         } else {
           this.emit('windowClosed', element);
