@@ -575,6 +575,77 @@ describe('Runtime layout tree manipulation', function () {
     expect(layout.maximisedStack).toBeUndefined();
   });
 
+  it('minimises the current stack before maximising a different stack', function () {
+    layout.loadLayout({
+      root: {
+        type: 'row',
+        content: [
+          { type: 'stack', id: 'first', content: [] },
+          { type: 'stack', id: 'second', content: [] },
+        ],
+      },
+    });
+    const [first, second] = layout.rootItem!.contentItems as Stack[];
+    const events: string[] = [];
+    first.on('maximised', () => events.push('first maximised'));
+    first.on('minimised', () => events.push('first minimised'));
+    second.on('maximised', () => events.push('second maximised'));
+
+    layout.setMaximisedStack(first);
+    layout.setMaximisedStack(first);
+    layout.setMaximisedStack(second);
+    layout.setMaximisedStack(undefined);
+
+    expect(events).toEqual([
+      'first maximised',
+      'first minimised',
+      'second maximised',
+    ]);
+    expect(layout.maximisedStack).toBeUndefined();
+  });
+
+  it('finds nested stacks in tree order before descending into later siblings', function () {
+    layout.loadLayout({
+      root: {
+        type: 'row',
+        content: [
+          {
+            type: 'column',
+            content: [{ type: 'stack', id: 'nested', content: [] }],
+          },
+          { type: 'stack', id: 'later', content: [] },
+        ],
+      },
+    });
+
+    const stacks = (
+      layout as unknown as { getAllStacks(): Stack[] }
+    ).getAllStacks();
+
+    expect(stacks.map((stack) => stack.id)).toEqual(['nested', 'later']);
+  });
+
+  it.each([-1, 2])(
+    'rejects FirstStack insertion index %i without changing the stack',
+    (index) => {
+      layout.loadLayout({
+        root: {
+          type: 'stack',
+          content: [{ type: 'component', componentType: 'testComponent' }],
+        },
+      });
+      const stack = layout.rootItem as Stack;
+
+      const location = layout.addItemAtLocation(
+        { type: 'component', componentType: 'testComponent' },
+        [{ typeId: LayoutManagerLocationSelectorTypeId.FirstStack, index }],
+      );
+
+      expect(location).toBeUndefined();
+      expect(stack.contentItems).toHaveLength(1);
+    },
+  );
+
   it('does not throw when dropping a row/column onto a stack', function () {
     const config: LayoutConfig = {
       root: {
