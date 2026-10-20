@@ -110,8 +110,8 @@ export class GroundItem extends ComponentParentableItem {
 
     this.updateNodeSize();
 
-    for (let i = 0; i < this.contentItems.length; i++) {
-      this._childElementContainer.appendChild(this.contentItems[i].element);
+    for (const contentItem of this.contentItems) {
+      this._childElementContainer.appendChild(contentItem.element);
     }
 
     super.init();
@@ -658,8 +658,7 @@ export class GroundItem extends ComponentParentableItem {
     content: readonly ContentItem[],
     result: ContentItem[],
   ): void {
-    for (let i = 0; i < content.length; i++) {
-      const contentItem = content[i];
+    for (const contentItem of content) {
       result.push(contentItem);
       this.deepGetAllContentItems(contentItem.contentItems, result);
     }
@@ -670,8 +669,7 @@ export class GroundItem extends ComponentParentableItem {
     result: ContentItem[],
     checkAcceptFtn: (this: void, item: ContentItem) => boolean,
   ): void {
-    for (let i = 0; i < content.length; i++) {
-      const contentItem = content[i];
+    for (const contentItem of content) {
       if (checkAcceptFtn(contentItem)) {
         result.push(contentItem);
       }

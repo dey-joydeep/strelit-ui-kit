@@ -183,4 +183,43 @@ describe('EventHub ownership', () => {
     expect(() => rootHub.emitUserBroadcast('message')).not.toThrow();
     expect(siblingListener).toHaveBeenCalledWith('message');
   });
+
+  it('uses the current popout list after a child replaces it during broadcast', () => {
+    const createChild = () => {
+      const layout = {
+        isSubWindow: true,
+        openPopouts: [],
+      } as unknown as LayoutManager;
+      const hub = new EventHub(layout);
+      hubs.push(hub);
+      Object.defineProperty(layout, 'eventHub', { value: hub });
+      return { layout, hub };
+    };
+    const first = createChild();
+    const removed = createChild();
+    const replacement = createChild();
+    const firstPopout = { getStrelitInstance: () => first.layout };
+    const removedPopout = { getStrelitInstance: () => removed.layout };
+    const replacementPopout = { getStrelitInstance: () => replacement.layout };
+    const rootState = {
+      isSubWindow: false,
+      openPopouts: [firstPopout, removedPopout],
+    };
+    const rootHub = new EventHub(rootState as unknown as LayoutManager);
+    hubs.push(rootHub);
+
+    const removedListener = vi.fn();
+    const replacementListener = vi.fn();
+    first.hub.on('userBroadcast', () => {
+      rootState.openPopouts = [firstPopout, replacementPopout];
+    });
+    removed.hub.on('userBroadcast', removedListener);
+    replacement.hub.on('userBroadcast', replacementListener);
+
+    rootHub.emitUserBroadcast('message');
+
+    expect(removedListener).not.toHaveBeenCalled();
+    expect(replacementListener).toHaveBeenCalledOnce();
+    expect(replacementListener).toHaveBeenCalledWith('message');
+  });
 });

@@ -305,8 +305,7 @@ export class VirtualLayout extends LayoutManager {
     appendNodeLists[2] = document.querySelectorAll('template');
     appendNodeLists[3] = document.querySelectorAll('.strelit_keep');
 
-    for (let listIdx = 0; listIdx < appendNodeLists.length; listIdx++) {
-      const appendNodeList = appendNodeLists[listIdx];
+    for (const appendNodeList of appendNodeLists) {
       for (let nodeIdx = 0; nodeIdx < appendNodeList.length; nodeIdx++) {
         const node = appendNodeList[nodeIdx];
         headElement.appendChild(node);

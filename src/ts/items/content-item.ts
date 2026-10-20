@@ -101,8 +101,7 @@ function areComponentTypeObjectsEqual(
   if (leftKeys.length !== rightKeys.length) {
     return false;
   }
-  for (let i = 0; i < leftKeys.length; i++) {
-    const key = leftKeys[i];
+  for (const key of leftKeys) {
     if (!Object.prototype.hasOwnProperty.call(right, key)) {
       return false;
     }
@@ -807,8 +806,8 @@ export abstract class ContentItem extends EventEmitter {
     }
 
     const contentItems = this._contentItems;
-    for (let i = 0; i < contentItems.length; i++) {
-      contentItems[i].addItemsByFilterToArray(result, predicate);
+    for (const contentItem of contentItems) {
+      contentItem.addItemsByFilterToArray(result, predicate);
     }
   }
 }

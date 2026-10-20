@@ -325,8 +325,7 @@ export class RowOrColumn extends ContentItem {
       return index;
     }
 
-    for (let i = 0; i < this.contentItems.length; i++) {
-      const indexedContentItem = this.contentItems[i];
+    for (const indexedContentItem of this.contentItems) {
       if (indexedContentItem === contentItem) {
         contentItem.size = newItemSize;
       } else {
@@ -461,8 +460,8 @@ export class RowOrColumn extends ContentItem {
 
     this.updateNodeSize();
 
-    for (let i = 0; i < this.contentItems.length; i++) {
-      this._childElementContainer.appendChild(this.contentItems[i].element);
+    for (const contentItem of this.contentItems) {
+      this._childElementContainer.appendChild(contentItem.element);
     }
 
     super.init();
@@ -572,8 +571,7 @@ export class RowOrColumn extends ContentItem {
     let totalAssigned = 0;
     const itemSizes = [];
 
-    for (let i = 0; i < this.contentItems.length; i++) {
-      const contentItem = this.contentItems[i];
+    for (const contentItem of this.contentItems) {
       let itemSize: number;
       if (contentItem.sizeUnit === SizeUnit.Percent) {
         itemSize = Math.floor(totalSize * (contentItem.size / 100));
@@ -620,8 +618,7 @@ export class RowOrColumn extends ContentItem {
     const itemsWithFractionalSize: ContentItem[] = [];
     let totalFractionalSize = 0;
 
-    for (let i = 0; i < this.contentItems.length; i++) {
-      const contentItem = this.contentItems[i];
+    for (const contentItem of this.contentItems) {
       const sizeUnit = contentItem.sizeUnit;
       switch (sizeUnit) {
         case SizeUnit.Percent: {
