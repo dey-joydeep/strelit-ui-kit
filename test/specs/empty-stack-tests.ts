@@ -66,7 +66,7 @@ describe('layout with empty stack', function () {
     const stack = layout.rootItem?.contentItems[2];
     expect(stack?.isStack).toBe(true);
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    expect(stack!.contentItems.length).toBe(0);
+    expect(stack!.contentItems).toHaveLength(0);
 
     const addedItem = layout.newItemAtLocation(
       {

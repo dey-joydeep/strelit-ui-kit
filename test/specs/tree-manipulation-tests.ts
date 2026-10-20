@@ -48,10 +48,10 @@ describe('Runtime layout tree manipulation', function () {
     expect(layout.rootItem).toBeDefined();
     const stack = layout.rootItem!;
     expect(stack.isStack).toBe(true);
-    expect(stack.contentItems.length).toBe(1);
+    expect(stack.contentItems).toHaveLength(1);
 
     layout.newComponent('testComponent', undefined, 'Added Component');
-    expect(stack.contentItems.length).toBe(2);
+    expect(stack.contentItems).toHaveLength(2);
   });
 
   it('forwards destroyOldChild flag when replacing or collapsing nested row/column wrappers', function () {

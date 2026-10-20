@@ -63,7 +63,7 @@ describe('BrowserPopout functionality (item.popout())', function () {
 
     layout.loadLayout(config);
 
-    expect(layout.openPopouts.length).toBe(0);
+    expect(layout.openPopouts).toHaveLength(0);
 
     const compA = layout.findFirstComponentItemById('compA') as ComponentItem;
     expect(compA).toBeDefined();
@@ -71,7 +71,7 @@ describe('BrowserPopout functionality (item.popout())', function () {
     const popout = compA.popout();
 
     expect(openSpy).toHaveBeenCalled();
-    expect(layout.openPopouts.length).toBe(1);
+    expect(layout.openPopouts).toHaveLength(1);
     expect(layout.openPopouts[0]).toBe(popout);
 
     openSpy.mockRestore();
@@ -1066,7 +1066,7 @@ describe('BrowserPopout functionality (item.popout())', function () {
     expect(
       layout.findFirstComponentItemById('blockedPopoutComponent')?.id,
     ).toBe(item.id);
-    expect(layout.openPopouts.length).toBe(0);
+    expect(layout.openPopouts).toHaveLength(0);
     expect(layout.groundItem?.popInParentIds).toEqual([]);
     expect(removeItemSpy).toHaveBeenCalledWith(
       expect.stringMatching(/^strelit-window-config-/),

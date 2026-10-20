@@ -49,7 +49,7 @@ describe('Content item titles and dynamic updates', function () {
     layout.loadLayout(config);
 
     const stack = layout.rootItem as Stack;
-    expect(stack.header.tabs.length).toBe(2);
+    expect(stack.header.tabs).toHaveLength(2);
 
     expect(stack.header.tabs[0].titleElement.innerText).toBe('First Title');
     expect(stack.header.tabs[1].titleElement.innerText).toBe('testComponent');
@@ -82,7 +82,7 @@ describe('Content item titles and dynamic updates', function () {
     expect(stack.header.tabs[0].titleElement.innerText).toBe(
       '<script>alert(1)</script>',
     );
-    expect(stack.header.tabs[0].titleElement.children.length).toBe(0);
+    expect(stack.header.tabs[0].titleElement.children).toHaveLength(0);
   });
 
   it('bubbles title-driven stateChanged events to layout listeners', async function () {
