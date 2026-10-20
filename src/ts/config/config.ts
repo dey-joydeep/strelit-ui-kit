@@ -1943,10 +1943,10 @@ export function createPopoutLayoutConfigWindowFromResolved(
   resolvedWindow: ResolvedPopoutLayoutConfigWindow,
 ): PopoutLayoutConfigWindow {
   const result: PopoutLayoutConfigWindow = {
-    width: resolvedWindow.width === null ? undefined : resolvedWindow.width,
-    height: resolvedWindow.height === null ? undefined : resolvedWindow.height,
-    left: resolvedWindow.left === null ? undefined : resolvedWindow.left,
-    top: resolvedWindow.top === null ? undefined : resolvedWindow.top,
+    width: resolvedWindow.width ?? undefined,
+    height: resolvedWindow.height ?? undefined,
+    left: resolvedWindow.left ?? undefined,
+    top: resolvedWindow.top ?? undefined,
   };
 
   return result;

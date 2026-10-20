@@ -423,10 +423,7 @@ export class BrowserPopout extends EventEmitter {
       return undefined;
     }
     let parentItem: ContentItem | undefined;
-    let index =
-      this._config.indexInParent === null
-        ? undefined
-        : this._config.indexInParent;
+    let index = this._config.indexInParent ?? undefined;
 
     if (this._config.parentId === undefined) {
       return undefined;

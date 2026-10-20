@@ -10,7 +10,7 @@ export function numberToPixels(value: number): string {
 /** @internal */
 export function pixelsToNumber(value: string): number {
   const numberStr = value.replace('px', '');
-  return parseFloat(numberStr);
+  return Number.parseFloat(numberStr);
 }
 
 /** @internal */

@@ -55,9 +55,11 @@ export const groundItemAreaOppositeSides: GroundItemAreaSides = {
 
 export function createGroundItemElement(document: Document): HTMLDivElement {
   const element = document.createElement('div');
-  element.classList.add(DomConstants.ClassName.LayoutRoot);
-  element.classList.add(DomConstants.ClassName.Item);
-  element.classList.add(DomConstants.ClassName.Root);
+  element.classList.add(
+    DomConstants.ClassName.LayoutRoot,
+    DomConstants.ClassName.Item,
+    DomConstants.ClassName.Root,
+  );
   return element;
 }
 

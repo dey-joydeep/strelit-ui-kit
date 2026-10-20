@@ -287,9 +287,7 @@ export class RowOrColumn extends ContentItem {
     // contentItem = this.layoutManager._$normalizeContentItem(contentItem, this);
 
     this.validateInsertionIndex(index);
-    if (index === undefined) {
-      index = this.contentItems.length;
-    }
+    index ??= this.contentItems.length;
 
     if (this.contentItems.length > 0) {
       const splitterElement = this.createSplitter(

@@ -2474,13 +2474,11 @@ export abstract class LayoutManager extends EventEmitter {
       this.checkClearResizeTimeout();
     }
 
-    if (this._resizeTimeoutId === undefined) {
-      this._resizeTimeoutId = setTimeout(() => {
-        this._resizeTimeoutId = undefined;
-        this.beginSizeInvalidation();
-        this.endSizeInvalidation();
-      }, this.resizeDebounceInterval);
-    }
+    this._resizeTimeoutId ??= setTimeout(() => {
+      this._resizeTimeoutId = undefined;
+      this.beginSizeInvalidation();
+      this.endSizeInvalidation();
+    }, this.resizeDebounceInterval);
   }
 
   private checkClearResizeTimeout() {
