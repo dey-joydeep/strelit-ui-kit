@@ -762,7 +762,7 @@ export abstract class ContentItem extends EventEmitter {
     name: string,
     event: EventEmitterBubblingEvent,
   ) {
-    if (this._throttledEvents.indexOf(name) === -1) {
+    if (!this._throttledEvents.includes(name)) {
       this.layoutManager.emitUnknown(name, event);
     } else if (this._pendingEventPropagations[name] !== true) {
       this._pendingEventPropagations[name] = true;
