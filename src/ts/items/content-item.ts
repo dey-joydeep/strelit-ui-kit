@@ -550,8 +550,8 @@ export abstract class ContentItem extends EventEmitter {
     try {
       setElementDisplayVisibility(this._element, true);
 
-      for (const contentItem of this._contentItems) {
-        contentItem.show();
+      for (let i = 0; i < this._contentItems.length; i++) {
+        this._contentItems[i].show();
       }
     } finally {
       this.layoutManager.endSizeInvalidation();
@@ -676,8 +676,8 @@ export abstract class ContentItem extends EventEmitter {
 
   /** @internal */
   protected initContentItems(): void {
-    for (const contentItem of this._contentItems) {
-      contentItem.init();
+    for (let i = 0; i < this._contentItems.length; i++) {
+      this._contentItems[i].init();
     }
   }
 
@@ -694,8 +694,8 @@ export abstract class ContentItem extends EventEmitter {
 
   /** @internal */
   protected updateContentItemsSize(force: boolean): void {
-    for (const contentItem of this._contentItems) {
-      contentItem.updateSize(force);
+    for (let i = 0; i < this._contentItems.length; i++) {
+      this._contentItems[i].updateSize(force);
     }
   }
 

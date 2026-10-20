@@ -205,10 +205,10 @@ export class EventHub extends EventEmitter {
     if (this._layoutManager !== originLayoutManager) {
       this.emitUnknown(eventName, ...args);
     }
-    for (const popout of this._layoutManager.openPopouts) {
+    for (let i = 0; i < this._layoutManager.openPopouts.length; i++) {
       let childLayout: LayoutManager | undefined;
       try {
-        childLayout = popout.getStrelitInstance();
+        childLayout = this._layoutManager.openPopouts[i].getStrelitInstance();
       } catch (error) {
         if (
           !(error instanceof UnexpectedNullError) &&

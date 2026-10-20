@@ -71,6 +71,30 @@ describe('layout lifecycle', () => {
     expect(layout.container.childElementCount).toBe(containerChildCount);
   });
 
+  it('stops initializing siblings after their parent is destroyed during initialization', () => {
+    const layout = new StrelitLayout();
+    layouts.push(layout);
+    layout.registerComponentFactoryFunction('panel', () => undefined);
+    layout.loadLayout({
+      root: {
+        type: 'row',
+        content: [
+          { type: 'component', id: 'first', componentType: 'panel' },
+          { type: 'component', id: 'second', componentType: 'panel' },
+        ],
+      },
+    });
+    const row = layout.rootItem as RowOrColumn;
+    const [first, second] = row.contentItems;
+    const secondInit = vi.spyOn(second, 'init');
+    vi.spyOn(first, 'init').mockImplementation(() => row.destroy());
+
+    (row as unknown as { initContentItems(): void }).initContentItems();
+
+    expect(row.contentItems).toHaveLength(0);
+    expect(secondInit).not.toHaveBeenCalled();
+  });
+
   it('does not initialize after being destroyed before initialization', () => {
     const removeEventListener = vi.spyOn(globalThis, 'removeEventListener');
     const layout = new VirtualLayout(undefined, undefined, undefined, true);
