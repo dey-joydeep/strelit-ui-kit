@@ -50,7 +50,7 @@ describe('Tabs configuration and behavior', function () {
 
     const stack = layout.rootItem as Stack;
     expect(stack).toBeDefined();
-    expect(stack.header.tabs.length).toBe(2);
+    expect(stack.header.tabs).toHaveLength(2);
 
     expect(stack.header.tabs[0].reorderEnabled).toBe(true);
     expect(stack.header.tabs[1].reorderEnabled).toBe(false);
@@ -154,7 +154,7 @@ describe('Tabs configuration and behavior', function () {
     layout.loadLayout(config);
     const stack = layout.rootItem as Stack;
     const tabs = stack.header.tabs;
-    expect(tabs.length).toBe(2);
+    expect(tabs).toHaveLength(2);
     for (const tab of tabs) {
       const zIndex = tab.element.style.zIndex;
       if (zIndex && zIndex !== 'auto') {

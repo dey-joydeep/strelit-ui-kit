@@ -33,7 +33,7 @@ describe('Creates the right structure based on the provided config', function ()
     expect(layout.rootItem).toBeDefined();
     const rootItem = layout.rootItem!;
     expect(rootItem.isStack).toBe(true);
-    expect(rootItem.contentItems.length).toBe(1);
+    expect(rootItem.contentItems).toHaveLength(1);
     expect(rootItem.contentItems[0].isComponent).toBe(true);
   });
 
@@ -55,7 +55,7 @@ describe('Creates the right structure based on the provided config', function ()
     expect(layout.rootItem).toBeDefined();
     const rootItem = layout.rootItem!;
     expect(rootItem.isStack).toBe(true);
-    expect(rootItem.contentItems.length).toBe(1);
+    expect(rootItem.contentItems).toHaveLength(1);
     expect(rootItem.contentItems[0].isComponent).toBe(true);
   });
 
@@ -81,7 +81,7 @@ describe('Creates the right structure based on the provided config', function ()
     expect(layout.rootItem).toBeDefined();
     const rootItem = layout.rootItem!;
     expect(rootItem.isRow).toBe(true);
-    expect(rootItem.contentItems.length).toBe(2);
+    expect(rootItem.contentItems).toHaveLength(2);
     expect(rootItem.contentItems[0].isStack).toBe(true);
     expect(rootItem.contentItems[1].isStack).toBe(true);
     expect(rootItem.contentItems[0].contentItems[0].isComponent).toBe(true);
@@ -111,7 +111,7 @@ describe('Creates the right structure based on the provided config', function ()
     expect(layout.rootItem).toBeDefined();
     const rootItem = layout.rootItem!;
     expect(rootItem.isColumn).toBe(true);
-    expect(rootItem.contentItems.length).toBe(1);
+    expect(rootItem.contentItems).toHaveLength(1);
     expect(rootItem.contentItems[0].isStack).toBe(true);
     expect(rootItem.contentItems[0].contentItems[0].isComponent).toBe(true);
   });

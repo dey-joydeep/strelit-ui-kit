@@ -75,24 +75,24 @@ describe('query helpers', function () {
   });
 
   it('returns items by id and type from the layout manager', function () {
-    expect(layout.getItemsById('stack-1').length).toBe(1);
-    expect(layout.getItemsById('missing').length).toBe(0);
+    expect(layout.getItemsById('stack-1')).toHaveLength(1);
+    expect(layout.getItemsById('missing')).toHaveLength(0);
 
-    expect(layout.getItemsByType(ItemType.row).length).toBe(1);
-    expect(layout.getItemsByType(ItemType.column).length).toBe(1);
-    expect(layout.getItemsByType(ItemType.stack).length).toBe(2);
-    expect(layout.getItemsByType(ItemType.component).length).toBe(3);
+    expect(layout.getItemsByType(ItemType.row)).toHaveLength(1);
+    expect(layout.getItemsByType(ItemType.column)).toHaveLength(1);
+    expect(layout.getItemsByType(ItemType.stack)).toHaveLength(2);
+    expect(layout.getItemsByType(ItemType.component)).toHaveLength(3);
   });
 
   it('returns component items by component type from the layout manager', function () {
     const testComponents = layout.getComponentItemsByType('testComponent');
-    expect(testComponents.length).toBe(2);
+    expect(testComponents).toHaveLength(2);
     expect(
       testComponents.every((item) => item.componentType === 'testComponent'),
     ).toBe(true);
 
     const otherComponents = layout.getComponentItemsByType('otherComponent');
-    expect(otherComponents.length).toBe(1);
+    expect(otherComponents).toHaveLength(1);
     expect(otherComponents[0].id).toBe('component-2');
   });
 
@@ -101,11 +101,11 @@ describe('query helpers', function () {
     expect(rootItem).toBeDefined();
     const rootContentItem = rootItem as ContentItem;
 
-    expect(rootContentItem.getItemsByType(ItemType.component).length).toBe(3);
-    expect(rootContentItem.getItemsById('column-1').length).toBe(1);
+    expect(rootContentItem.getItemsByType(ItemType.component)).toHaveLength(3);
+    expect(rootContentItem.getItemsById('column-1')).toHaveLength(1);
     expect(
-      rootContentItem.getComponentItemsByType('testComponent').length,
-    ).toBe(2);
+      rootContentItem.getComponentItemsByType('testComponent'),
+    ).toHaveLength(2);
   });
 
   it('finds the first component item by id', function () {
@@ -152,7 +152,7 @@ describe('query helpers', function () {
         family: 'chart',
         variant: 'ohlc',
       });
-      expect(matches.length).toBe(1);
+      expect(matches).toHaveLength(1);
       expect(matches[0].id).toBe('structured-component');
     } finally {
       structuredLayout.destroy();
@@ -164,11 +164,11 @@ describe('query helpers', function () {
     expect(column).toBeDefined();
 
     const innerStacks = column.getItemsByType('stack');
-    expect(innerStacks.length).toBe(1);
+    expect(innerStacks).toHaveLength(1);
     expect(innerStacks[0].id).toBe('stack-2');
 
     const innerComponents = column.getItemsById('component-3');
-    expect(innerComponents.length).toBe(1);
+    expect(innerComponents).toHaveLength(1);
     expect(innerComponents[0].id).toBe('component-3');
   });
 });

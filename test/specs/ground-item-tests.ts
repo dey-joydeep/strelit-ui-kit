@@ -31,7 +31,7 @@ describe('ground item', function () {
     layout = TestTools.createLayout(rootLayout);
 
     const layoutElements = document.querySelectorAll('.lm_strelit');
-    expect(layoutElements.length).toBe(1);
+    expect(layoutElements).toHaveLength(1);
     TestTools.verifyPath('stack.0.component', layout);
   });
 
