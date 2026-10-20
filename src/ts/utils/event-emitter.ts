@@ -307,9 +307,12 @@ export interface EventEmitterEventParamsMap {
  */
 export class EventEmitter {
   /** @internal */
-  private _allEventSubscriptions: EventEmitterUnknownCallback[] = [];
+  private readonly _allEventSubscriptions: EventEmitterUnknownCallback[] = [];
   /** @internal */
-  private _subscriptionsMap = new Map<string, EventEmitterUnknownCallback[]>();
+  private readonly _subscriptionsMap = new Map<
+    string,
+    EventEmitterUnknownCallback[]
+  >();
 
   /** @internal */
   private isEventDispatchAllowed(eventName: string): boolean {

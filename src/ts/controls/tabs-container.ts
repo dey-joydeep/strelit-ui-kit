@@ -58,11 +58,11 @@ export class TabsContainer {
   }
 
   constructor(
-    private _layoutManager: LayoutManager,
-    private _componentRemoveEvent: TabsContainerComponentItemRemoveEvent,
-    private _componentFocusEvent: TabsContainerComponentItemFocusEvent,
-    private _componentDragStartEvent: TabsContainerComponentItemDragStartEvent,
-    private _dropdownActiveChangedEvent: TabsContainerDropdownActiveChangedEvent,
+    private readonly _layoutManager: LayoutManager,
+    private readonly _componentRemoveEvent: TabsContainerComponentItemRemoveEvent,
+    private readonly _componentFocusEvent: TabsContainerComponentItemFocusEvent,
+    private readonly _componentDragStartEvent: TabsContainerComponentItemDragStartEvent,
+    private readonly _dropdownActiveChangedEvent: TabsContainerDropdownActiveChangedEvent,
   ) {
     this._element = document.createElement('section');
     this._element.classList.add(DomConstants.ClassName.Tabs);

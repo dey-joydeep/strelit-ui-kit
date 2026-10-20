@@ -206,9 +206,9 @@ export class BrowserPopout extends EventEmitter {
     /** @internal */
     private _config: ResolvedPopoutLayoutConfig,
     /** @internal */
-    private _initialWindowSize: Rect,
+    private readonly _initialWindowSize: Rect,
     /** @internal */
-    private _layoutManager: LayoutManager,
+    private readonly _layoutManager: LayoutManager,
   ) {
     super();
 

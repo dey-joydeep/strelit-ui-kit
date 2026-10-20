@@ -144,7 +144,7 @@ export class Header extends EventEmitter {
   /** @internal */
   private readonly _maximiseButton: HeaderButton | undefined;
   /** @internal */
-  private _getActiveComponentItemEvent: HeaderGetActiveComponentItemEvent;
+  private readonly _getActiveComponentItemEvent: HeaderGetActiveComponentItemEvent;
   /** @internal */
   private _popoutEvent: HeaderPopoutEvent | undefined;
   /** @internal */
@@ -218,9 +218,9 @@ export class Header extends EventEmitter {
   /** @internal */
   constructor(
     /** @internal */
-    private _layoutManager: LayoutManager,
+    private readonly _layoutManager: LayoutManager,
     /** @internal */
-    private _parent: Stack,
+    private readonly _parent: Stack,
     settings: HeaderSettings,
     /** @internal */
     private readonly _configClosable: boolean,

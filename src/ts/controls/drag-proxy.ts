@@ -33,7 +33,7 @@ export class DragProxy extends EventEmitter {
   private _sided!: boolean;
   private _element!: HTMLElement;
   private _proxyContainerElement!: HTMLElement;
-  private _componentItemFocused: boolean;
+  private readonly _componentItemFocused: boolean;
   private readonly _originalIndex: number;
   private readonly _originalParentWasClosable: boolean;
   private _previousLayoutManagerEventDispatchGuard:
