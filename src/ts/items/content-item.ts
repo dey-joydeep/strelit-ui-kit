@@ -726,37 +726,6 @@ export abstract class ContentItem extends EventEmitter {
     return result;
   }
 
-  /**
-   * Called for every event on the item tree. Decides whether the event is a bubbling
-   * event and propagates it to its parent
-   *
-   * @param name - The name of the event
-   * @param event -
-   * @internal
-   */
-  private propagateEvent(name: string, args: unknown[]) {
-    if (args.length === 1) {
-      const event = args[0];
-      if (
-        event instanceof EventEmitterBubblingEvent &&
-        !event.isPropagationStopped &&
-        this._isInitialised
-      ) {
-        /**
-         * In some cases (e.g. if an element is created from a DragSource) it
-         * doesn't have a parent and is not a child of GroundItem. If that's the case
-         * propagate the bubbling event from the top level of the substree directly
-         * to the layoutManager
-         */
-        if (!this.isGround && this._parent) {
-          this._parent.emitUnknown(name, event);
-        } else {
-          this.scheduleEventPropagationToLayoutManager(name, event);
-        }
-      }
-    }
-  }
-
   /** Performs the try bubble event operation. */
   override tryBubbleEvent(name: string, args: unknown[]): void {
     if (args.length === 1) {

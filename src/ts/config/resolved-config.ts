@@ -561,17 +561,7 @@ export function createResolvedRootItemConfigCopy(
 export function isResolvedRootItemConfig(
   itemConfig: ResolvedItemConfig,
 ): itemConfig is ResolvedRootItemConfig {
-  switch (itemConfig.type) {
-    case ItemType.row:
-    case ItemType.column:
-    case ItemType.stack:
-    case ItemType.component:
-      return true;
-    case ItemType.ground:
-      return false;
-    default:
-      throw new UnreachableCaseError('CROCOSPCICIC13687', itemConfig.type);
-  }
+  return isResolvedRowOrColumnItemConfigChild(itemConfig);
 }
 /**
  * Defines the resolved ground item config contract.
