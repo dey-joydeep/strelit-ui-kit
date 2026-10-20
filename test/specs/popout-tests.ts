@@ -3032,6 +3032,33 @@ describe('popout subwindow container selection', () => {
     window.history.replaceState({}, '', originalHref);
   });
 
+  it('reads body height immediately after clearing subwindow HTML', async () => {
+    const { VirtualLayout } = await import('../../src/ts/virtual-layout');
+    const staleContainer = document.createElement('div');
+    document.body.appendChild(staleContainer);
+    const subLayout = new VirtualLayout(
+      staleContainer,
+      undefined,
+      undefined,
+      true,
+    );
+    const reads: boolean[] = [];
+    const offsetHeightSpy = vi
+      .spyOn(document.body, 'offsetHeight', 'get')
+      .mockImplementation(() => {
+        reads.push(!staleContainer.isConnected);
+        return 0;
+      });
+
+    try {
+      subLayout.clearHtmlAndAdjustStylesForSubWindow();
+      expect(reads).toEqual([true]);
+    } finally {
+      offsetHeightSpy.mockRestore();
+      subLayout.destroy();
+    }
+  });
+
   it('mounts deferred subwindow content in body after clearing a supplied container', async () => {
     const { StrelitLayout: SubwindowLayout } =
       await import('../../src/ts/strelit-layout');
