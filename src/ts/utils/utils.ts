@@ -87,15 +87,11 @@ export function getElementWidthAndHeight(element: HTMLElement): WidthAndHeight {
 }
 
 /** @internal */
-export function setElementDisplayVisibility(
+export function setElementDisplay(
   element: HTMLElement,
-  visible: boolean,
+  display: '' | 'none',
 ): void {
-  if (visible) {
-    element.style.display = '';
-  } else {
-    element.style.display = 'none';
-  }
+  element.style.display = display;
 }
 
 /** @internal */

@@ -6,7 +6,7 @@ import { DomConstants } from '../utils/dom-constants';
 import { DragListener } from '../utils/drag-listener';
 import { EventEmitter } from '../utils/event-emitter';
 import { Side } from '../utils/types';
-import { numberToPixels, setElementDisplayVisibility } from '../utils/utils';
+import { numberToPixels, setElementDisplay } from '../utils/utils';
 import { HeaderButton } from './header-button';
 import { Tab } from './tab';
 import { TabsContainer } from './tabs-container';
@@ -464,10 +464,10 @@ export class Header extends EventEmitter {
     }
 
     if (this._closeButton !== null) {
-      setElementDisplayVisibility(this._closeButton.element, isClosable);
+      setElementDisplay(this._closeButton.element, isClosable ? '' : 'none');
     }
     if (this._popoutButton !== null) {
-      setElementDisplayVisibility(this._popoutButton.element, isClosable);
+      setElementDisplay(this._popoutButton.element, isClosable ? '' : 'none');
     }
 
     this._canRemoveComponent = isClosable || this._tabsContainer.tabCount > 1;
@@ -570,9 +570,9 @@ export class Header extends EventEmitter {
     if (this._tabDropdownButton !== undefined) {
       const wasVisible =
         this._tabDropdownButton.element.style.display !== 'none';
-      setElementDisplayVisibility(
+      setElementDisplay(
         this._tabDropdownButton.element,
-        this._tabsContainer.dropdownActive,
+        this._tabsContainer.dropdownActive ? '' : 'none',
       );
       const isVisible =
         this._tabDropdownButton.element.style.display !== 'none';

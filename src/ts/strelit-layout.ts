@@ -15,7 +15,7 @@ import {
   deepCloneValue,
   ensureElementPositionAbsolute,
   numberToPixels,
-  setElementDisplayVisibility,
+  setElementDisplay,
   setElementHeight,
   setElementWidth,
 } from './utils/utils';
@@ -558,7 +558,7 @@ export class StrelitLayout extends VirtualLayout {
             container.title,
         );
       } else {
-        setElementDisplayVisibility(rootElement, visible);
+        setElementDisplay(rootElement, visible ? '' : 'none');
       }
     }
   }

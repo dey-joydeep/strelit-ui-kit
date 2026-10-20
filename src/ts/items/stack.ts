@@ -41,7 +41,7 @@ import {
 import {
   getElementWidthAndHeight,
   numberToPixels,
-  setElementDisplayVisibility,
+  setElementDisplay,
 } from '../utils/utils';
 import { ComponentItem } from './component-item';
 import { ComponentParentableItem } from './component-parentable-item';
@@ -1162,7 +1162,7 @@ export class Stack extends ComponentParentableItem {
 
   /** @internal */
   private setupHeaderPosition() {
-    setElementDisplayVisibility(this._header.element, this._header.show);
+    setElementDisplay(this._header.element, this._header.show ? '' : 'none');
     this.element.classList.remove(
       DomConstants.ClassName.Left,
       DomConstants.ClassName.Right,
