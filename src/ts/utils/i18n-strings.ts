@@ -96,7 +96,8 @@ export const i18nStringCount = Object.keys(i18nStringInfosObject).length;
  * Provides the i18n strings.
  * @public
  */
-export const i18nStrings = Array<string>(i18nStringCount);
+export const i18nStrings: string[] = [];
+i18nStrings.length = i18nStringCount;
 
 /**
  * Performs the check i18n strings initialise operation.

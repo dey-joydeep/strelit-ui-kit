@@ -346,7 +346,8 @@ function resolveItemConfigContentWithBudget(
         'Layout configuration exceeds resource limits',
       );
     }
-    const result = Array<ResolvedItemConfig>(count);
+    const result: ResolvedItemConfig[] = [];
+    result.length = count;
     for (let i = 0; i < count; i++) {
       result[i] = resolveItemConfigWithBudget(
         content[i],
@@ -725,7 +726,8 @@ function resolveStackItemConfigContentWithBudget(
         'Layout configuration exceeds resource limits',
       );
     }
-    const result = Array<ResolvedComponentItemConfig>(count);
+    const result: ResolvedComponentItemConfig[] = [];
+    result.length = count;
     for (let i = 0; i < count; i++) {
       const childItemConfig = content[i];
       const itemConfig = resolveItemConfigWithBudget(
@@ -755,7 +757,8 @@ export function createStackItemConfigContentFromResolved(
   resolvedContent: ResolvedComponentItemConfig[],
 ): ComponentItemConfig[] {
   const count = resolvedContent.length;
-  const result = Array<ComponentItemConfig>(count);
+  const result: ComponentItemConfig[] = [];
+  result.length = count;
   for (let i = 0; i < count; i++) {
     const resolvedContentConfig = resolvedContent[i];
     result[i] = createComponentItemConfigFromResolved(resolvedContentConfig);
@@ -1098,7 +1101,8 @@ function resolveRowOrColumnItemConfigContentWithBudget(
         'Layout configuration exceeds resource limits',
       );
     }
-    const result = Array<ResolvedRowOrColumnItemConfigChildItemConfig>(count);
+    const result: ResolvedRowOrColumnItemConfigChildItemConfig[] = [];
+    result.length = count;
     for (let i = 0; i < count; i++) {
       const childItemConfig = content[i];
       const resolvedChildItemConfig = resolveItemConfigWithBudget(
@@ -1128,7 +1132,8 @@ export function createRowOrColumnItemConfigContentFromResolved(
   resolvedContent: readonly ResolvedRowOrColumnItemConfigChildItemConfig[],
 ): RowOrColumnItemConfigChildItemConfig[] {
   const count = resolvedContent.length;
-  const result = Array<RowOrColumnItemConfigChildItemConfig>(count);
+  const result: RowOrColumnItemConfigChildItemConfig[] = [];
+  result.length = count;
   for (let i = 0; i < count; i++) {
     const resolvedContentConfig = resolvedContent[i];
     const type = resolvedContentConfig.type;
@@ -1834,7 +1839,8 @@ function resolveOpenPopoutLayoutConfigsWithBudget(
         'Layout configuration exceeds resource limits',
       );
     }
-    const result = Array<ResolvedPopoutLayoutConfig>(count);
+    const result: ResolvedPopoutLayoutConfig[] = [];
+    result.length = count;
     for (let i = 0; i < count; i++) {
       result[i] = resolveLayoutConfigWithBudget(
         popoutConfigs[i],
@@ -2036,7 +2042,8 @@ export function createPopoutLayoutConfigArrayFromResolved(
   resolvedArray: ResolvedPopoutLayoutConfig[],
 ): PopoutLayoutConfig[] {
   const resolvedOpenPopoutCount = resolvedArray.length;
-  const result = Array<PopoutLayoutConfig>(resolvedOpenPopoutCount);
+  const result: PopoutLayoutConfig[] = [];
+  result.length = resolvedOpenPopoutCount;
   for (let i = 0; i < resolvedOpenPopoutCount; i++) {
     const resolvedOpenPopout = resolvedArray[i];
     result[i] = createPopoutLayoutConfigFromResolved(resolvedOpenPopout);

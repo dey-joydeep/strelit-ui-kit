@@ -518,7 +518,8 @@ export abstract class ContentItem extends EventEmitter {
   calculateConfigContent(): ResolvedItemConfig[] {
     const contentItems = this._contentItems;
     const count = contentItems.length;
-    const result = Array<ResolvedItemConfig>(count);
+    const result: ResolvedItemConfig[] = [];
+    result.length = count;
     for (let i = 0; i < count; i++) {
       const item = contentItems[i];
       result[i] = item.toConfig();

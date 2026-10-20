@@ -420,7 +420,8 @@ export class GroundItem extends ComponentParentableItem {
   override calculateConfigContent(): ResolvedRootItemConfig[] {
     const contentItems = this.contentItems;
     const count = contentItems.length;
-    const result = Array<ResolvedRootItemConfig>(count);
+    const result: ResolvedRootItemConfig[] = [];
+    result.length = count;
     for (let i = 0; i < count; i++) {
       const item = contentItems[i];
       const itemConfig = item.toConfig();
@@ -478,7 +479,8 @@ export class GroundItem extends ComponentParentableItem {
     const areaSize = 50;
 
     const oppositeSides = groundItemAreaOppositeSides;
-    const result = Array<GroundItemArea>(Object.keys(oppositeSides).length);
+    const result: GroundItemArea[] = [];
+    result.length = Object.keys(oppositeSides).length;
     let idx = 0;
 
     for (const key in oppositeSides) {

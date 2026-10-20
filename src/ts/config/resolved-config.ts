@@ -282,7 +282,8 @@ export function createResolvedStackItemConfigContentCopy(
   original: ResolvedComponentItemConfig[],
 ): ResolvedComponentItemConfig[] {
   const count = original.length;
-  const result = Array<ResolvedComponentItemConfig>(count);
+  const result: ResolvedComponentItemConfig[] = [];
+  result.length = count;
   for (let i = 0; i < count; i++) {
     result[i] = createResolvedItemConfigCopy(
       original[i],
@@ -506,7 +507,8 @@ export function createResolvedRowOrColumnItemConfigContentCopy(
   original: readonly ResolvedRowOrColumnItemConfigChildItemConfig[],
 ): ResolvedRowOrColumnItemConfigChildItemConfig[] {
   const count = original.length;
-  const result = Array<ResolvedRowOrColumnItemConfigChildItemConfig>(count);
+  const result: ResolvedRowOrColumnItemConfigChildItemConfig[] = [];
+  result.length = count;
   for (let i = 0; i < count; i++) {
     result[i] = createResolvedItemConfigCopy(
       original[i],
@@ -898,7 +900,8 @@ export function createResolvedOpenPopoutsCopy(
   original: ResolvedPopoutLayoutConfig[],
 ): ResolvedPopoutLayoutConfig[] {
   const count = original.length;
-  const result = Array<ResolvedPopoutLayoutConfig>(count);
+  const result: ResolvedPopoutLayoutConfig[] = [];
+  result.length = count;
   for (let i = 0; i < count; i++) {
     result[i] = createResolvedPopoutLayoutConfigCopy(original[i]);
   }

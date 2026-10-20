@@ -299,7 +299,8 @@ export class VirtualLayout extends LayoutManager {
   clearHtmlAndAdjustStylesForSubWindow(): void {
     const headElement = document.head;
 
-    const appendNodeLists = Array<NodeListOf<Element>>(4);
+    const appendNodeLists: NodeListOf<Element>[] = [];
+    appendNodeLists.length = 4;
     appendNodeLists[0] = document.querySelectorAll('body link');
     appendNodeLists[1] = document.querySelectorAll('body style');
     appendNodeLists[2] = document.querySelectorAll('template');

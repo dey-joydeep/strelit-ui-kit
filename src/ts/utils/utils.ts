@@ -147,7 +147,8 @@ export function deepCloneValue(
     if (entries.length !== source.length) {
       throw new ConfigurationError('Value is not serializable');
     }
-    const clone = Array<unknown>(source.length);
+    const clone: unknown[] = [];
+    clone.length = source.length;
     return {
       clone,
       frame: { source, target: clone, entries, depth, index: 0 },
