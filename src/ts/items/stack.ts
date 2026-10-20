@@ -1046,7 +1046,8 @@ export class Stack extends ComponentParentableItem {
 
   private getVisibleTabElements(visibleTabsLength: number): HTMLElement[] {
     const childNodes = this._header.tabsContainerElement.childNodes;
-    const visibleTabElements = Array<HTMLElement>(visibleTabsLength);
+    const visibleTabElements: HTMLElement[] = [];
+    visibleTabElements.length = visibleTabsLength;
     let tabIndex = 0;
     let tabCount = 0;
     while (tabCount < visibleTabsLength) {
