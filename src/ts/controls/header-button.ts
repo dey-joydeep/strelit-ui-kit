@@ -30,7 +30,7 @@ export class HeaderButton {
 
   destroy(): void {
     this._element.removeEventListener('click', this._clickEventListener);
-    this._element.parentNode?.removeChild(this._element);
+    this._element.remove();
   }
 
   private onClick(ev: MouseEvent) {
