@@ -285,11 +285,9 @@ export function getUniqueId(): string {
 export function getErrorMessage(e: unknown): string {
   if (e instanceof Error) {
     return e.message;
+  } else if (typeof e === 'string') {
+    return e;
   } else {
-    if (typeof e === 'string') {
-      return e;
-    } else {
-      return 'Unknown Error';
-    }
+    return 'Unknown Error';
   }
 }
