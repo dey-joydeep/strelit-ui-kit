@@ -101,8 +101,7 @@ function areComponentTypeObjectsEqual(
   if (leftKeys.length !== rightKeys.length) {
     return false;
   }
-  for (let i = 0; i < leftKeys.length; i++) {
-    const key = leftKeys[i];
+  for (const key of leftKeys) {
     if (!Object.prototype.hasOwnProperty.call(right, key)) {
       return false;
     }
@@ -551,8 +550,8 @@ export abstract class ContentItem extends EventEmitter {
     try {
       setElementDisplayVisibility(this._element, true);
 
-      for (let i = 0; i < this._contentItems.length; i++) {
-        this._contentItems[i].show();
+      for (const contentItem of this._contentItems) {
+        contentItem.show();
       }
     } finally {
       this.layoutManager.endSizeInvalidation();
@@ -677,8 +676,8 @@ export abstract class ContentItem extends EventEmitter {
 
   /** @internal */
   protected initContentItems(): void {
-    for (let i = 0; i < this._contentItems.length; i++) {
-      this._contentItems[i].init();
+    for (const contentItem of this._contentItems) {
+      contentItem.init();
     }
   }
 
@@ -695,8 +694,8 @@ export abstract class ContentItem extends EventEmitter {
 
   /** @internal */
   protected updateContentItemsSize(force: boolean): void {
-    for (let i = 0; i < this._contentItems.length; i++) {
-      this._contentItems[i].updateSize(force);
+    for (const contentItem of this._contentItems) {
+      contentItem.updateSize(force);
     }
   }
 
@@ -807,8 +806,8 @@ export abstract class ContentItem extends EventEmitter {
     }
 
     const contentItems = this._contentItems;
-    for (let i = 0; i < contentItems.length; i++) {
-      contentItems[i].addItemsByFilterToArray(result, predicate);
+    for (const contentItem of contentItems) {
+      contentItem.addItemsByFilterToArray(result, predicate);
     }
   }
 }

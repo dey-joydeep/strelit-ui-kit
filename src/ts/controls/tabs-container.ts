@@ -73,8 +73,8 @@ export class TabsContainer {
   }
 
   destroy(): void {
-    for (let i = 0; i < this._tabs.length; i++) {
-      this._tabs[i].destroy();
+    for (const tab of this._tabs) {
+      tab.destroy();
     }
   }
 
@@ -85,8 +85,8 @@ export class TabsContainer {
   createTab(componentItem: ComponentItem, index: number): Tab | undefined {
     //If there's already a tab relating to the
     //content item, don't do anything
-    for (let i = 0; i < this._tabs.length; i++) {
-      if (this._tabs[i].componentItem === componentItem) {
+    for (const tab of this._tabs) {
+      if (tab.componentItem === componentItem) {
         return undefined;
       }
     }

@@ -2231,9 +2231,7 @@ export abstract class LayoutManager extends EventEmitter {
     let matchingArea = null;
     let smallestSurface = Infinity;
 
-    for (let i = 0; i < this._itemAreas.length; i++) {
-      const area = this._itemAreas[i];
-
+    for (const area of this._itemAreas) {
       if (
         x >= area.x1 &&
         x < area.x2 && // x2 is not included in area
@@ -2677,8 +2675,8 @@ export abstract class LayoutManager extends EventEmitter {
       }
     } else {
       const items = [...node.contentItems];
-      for (let i = 0; i < items.length; i++) {
-        this.addChildContentItemsToContainer(container, items[i]);
+      for (const item of items) {
+        this.addChildContentItemsToContainer(container, item);
       }
     }
   }
@@ -2783,8 +2781,7 @@ export abstract class LayoutManager extends EventEmitter {
    */
   private findAllStacksRecursive(stacks: Stack[], node: ContentItem) {
     const contentItems = node.contentItems;
-    for (let i = 0; i < contentItems.length; i++) {
-      const item = contentItems[i];
+    for (const item of contentItems) {
       if (item instanceof Stack) {
         stacks.push(item);
       } else {
