@@ -2132,14 +2132,12 @@ export abstract class LayoutManager extends EventEmitter {
       if (this._maximisedStack !== undefined) {
         this.processMinimiseMaximisedStack();
       }
-    } else {
-      if (stack !== this._maximisedStack) {
-        if (this._maximisedStack !== undefined) {
-          this.processMinimiseMaximisedStack();
-        }
-
-        this.processMaximiseStack(stack);
+    } else if (stack !== this._maximisedStack) {
+      if (this._maximisedStack !== undefined) {
+        this.processMinimiseMaximisedStack();
       }
+
+      this.processMaximiseStack(stack);
     }
   }
 
@@ -2782,10 +2780,8 @@ export abstract class LayoutManager extends EventEmitter {
     for (const item of contentItems) {
       if (item instanceof Stack) {
         stacks.push(item);
-      } else {
-        if (!item.isComponent) {
-          this.findAllStacksRecursive(stacks, item);
-        }
+      } else if (!item.isComponent) {
+        this.findAllStacksRecursive(stacks, item);
       }
     }
   }
@@ -2953,12 +2949,10 @@ export abstract class LayoutManager extends EventEmitter {
     const parentContentItemCount = parentContentItems.length;
     if (selectorIndex === undefined) {
       return { parentItem, index: parentContentItemCount };
+    } else if (selectorIndex < 0 || selectorIndex > parentContentItemCount) {
+      return undefined;
     } else {
-      if (selectorIndex < 0 || selectorIndex > parentContentItemCount) {
-        return undefined;
-      } else {
-        return { parentItem, index: selectorIndex };
-      }
+      return { parentItem, index: selectorIndex };
     }
   }
 }
