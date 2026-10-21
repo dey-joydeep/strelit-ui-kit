@@ -93,7 +93,7 @@ export class VirtualLayout extends LayoutManager {
   unbindComponentEvent: VirtualLayoutUnbindComponentEventHandler | undefined;
 
   /** @internal */
-  private _bindComponentEventHandlerPassedInConstructor = false;
+  private readonly _bindComponentEventHandlerPassedInConstructor: boolean = false;
   /** @internal */
   private _creationTimeoutPassed = false; // remove when constructor is determinate
   /** @internal */
@@ -322,8 +322,7 @@ export class VirtualLayout extends LayoutManager {
      * This seems a bit pointless, but actually causes a reflow/re-evaluation getting around
      * slickgrid's "Cannot find stylesheet." bug in chrome
      */
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const x = document.body.offsetHeight;
+    Reflect.get(bodyElement, 'offsetHeight');
   }
   /**
    * Will add button if not popinOnClose specified in settings
