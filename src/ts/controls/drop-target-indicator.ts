@@ -1,6 +1,6 @@
 import { DomConstants } from '../utils/dom-constants';
 import { AreaLinkedRect } from '../utils/types';
-import { numberToPixels, setElementDisplayVisibility } from '../utils/utils';
+import { numberToPixels, setElementDisplay } from '../utils/utils';
 
 /** @internal */
 export class DropTargetIndicator {
@@ -30,6 +30,6 @@ export class DropTargetIndicator {
   }
 
   hide(): void {
-    setElementDisplayVisibility(this._element, false);
+    setElementDisplay(this._element, 'none');
   }
 }

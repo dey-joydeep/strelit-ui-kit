@@ -14,11 +14,7 @@ import {
   SerializableObject,
   SizeUnit,
 } from '../utils/types';
-import {
-  deepCloneValue,
-  getUniqueId,
-  setElementDisplayVisibility,
-} from '../utils/utils';
+import { deepCloneValue, getUniqueId, setElementDisplay } from '../utils/utils';
 import { ComponentItem } from './component-item';
 import { ComponentParentableItem } from './component-parentable-item';
 import { Stack } from './stack';
@@ -549,7 +545,7 @@ export abstract class ContentItem extends EventEmitter {
   show(): void {
     this.layoutManager.beginSizeInvalidation();
     try {
-      setElementDisplayVisibility(this._element, true);
+      setElementDisplay(this._element, '');
 
       for (let i = 0; i < this._contentItems.length; i++) {
         this._contentItems[i].show();
@@ -686,7 +682,7 @@ export abstract class ContentItem extends EventEmitter {
   protected hide(): void {
     this.layoutManager.beginSizeInvalidation();
     try {
-      setElementDisplayVisibility(this._element, false);
+      setElementDisplay(this._element, 'none');
       // this.layoutManager.updateSizeFromContainer();
     } finally {
       this.layoutManager.endSizeInvalidation();

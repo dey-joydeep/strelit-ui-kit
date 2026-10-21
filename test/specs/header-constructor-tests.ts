@@ -55,10 +55,14 @@ describe('header construction', () => {
       header = new Header(layout, stack, settings, true, events);
       events.close = replacementClose;
       const closeButton =
-        header.controlsContainerElement.querySelector('.lm_close');
+        header.controlsContainerElement.querySelector<HTMLElement>('.lm_close');
       if (closeButton === null) {
         throw new Error('Expected a close button');
       }
+      header.setRowColumnClosable(false);
+      expect(closeButton.style.display).toBe('none');
+      header.setRowColumnClosable(true);
+      expect(closeButton.style.display).toBe('');
       closeButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
       expect(initialClose).toHaveBeenCalledOnce();
