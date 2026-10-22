@@ -47,7 +47,7 @@ body:
     id: version
     attributes:
       label: Version or commit
-      placeholder: e.g. 0.1.0 or 105b7db
+      placeholder: e.g. 1.0.0 or a commit SHA
   - type: textarea
     id: environment
     attributes:

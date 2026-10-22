@@ -45,6 +45,7 @@ const validStatuses = new Set([
 const validReviewScopes = new Set(['domain', 'whole-pr']);
 const validReviewPasses = new Set(['fresh-discovery', 'finding-closure']);
 const validRecoveryIntents = new Set(['continue', 'status', 'summary']);
+const gitOutputMaxBuffer = 64 * 1024 * 1024;
 const mutatingCommands = new Set([
   'init',
   'reset-pr',
@@ -204,6 +205,7 @@ function gitOutput(args, cwd) {
     cwd,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
+    maxBuffer: gitOutputMaxBuffer,
   }).trim();
 }
 
@@ -212,6 +214,7 @@ function gitPaths(args, cwd) {
     cwd,
     encoding: 'buffer',
     stdio: ['ignore', 'pipe', 'pipe'],
+    maxBuffer: gitOutputMaxBuffer,
   });
   return normalizePaths(output.toString('utf8').split('\0').filter(Boolean));
 }

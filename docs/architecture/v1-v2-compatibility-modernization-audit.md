@@ -2,6 +2,10 @@
 
 Date: 2026-07-17
 
+This is a dated modernization audit. References to the then-current branch and
+baseline checkouts below describe its evidence at the time; they are not setup
+requirements or a statement about the current release branch.
+
 ## Executive Conclusion
 
 Strelit should preserve the useful behavior of Golden Layout v2.6.0 without
@@ -35,13 +39,14 @@ return.
 
 This audit used the following sources:
 
-- Golden Layout v2.6.0 release source at immutable commit `f442a2d` in
-  `../golden-layout`. The sibling working tree is dirty and was not treated as
-  authoritative.
-- Golden Layout v1.5.9 bundled source in `../golden-layout-v1.5.9`.
+- Golden Layout v2.6.0 release source at immutable commit `f442a2d`. A local
+  sibling checkout was used during the original audit; its working tree was not
+  treated as authoritative.
+- Golden Layout v1.5.9 bundled source, obtained for the original audit from a
+  local checkout.
 - The Golden Layout
   [Version 2 migration document](https://github.com/golden-layout/golden-layout/blob/master/docs/version-2/index.md).
-- The current `feature/strelit-modernization` branch, including its uncommitted
+- The then-current `feature/strelit-modernization` branch and its uncommitted
   working-tree changes.
 - The v2.6.0 and current API Extractor reports, package metadata, source code,
   styles, demos, and tests.

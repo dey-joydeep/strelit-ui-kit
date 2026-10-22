@@ -1,4 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import {
   existsSync,
   linkSync,
@@ -1932,6 +1933,25 @@ describe('agent work ledger', () => {
       if (process.platform !== 'win32') {
         expect(changed).toContain('line\nbreak.txt');
       }
+    });
+  });
+
+  it('fingerprints a deleted tracked binary larger than the default child-process buffer', () => {
+    withTemporaryRepository((repository) => {
+      const binaryPath = join(repository, 'large-image.png');
+      writeFileSync(binaryPath, randomBytes(1_400_000));
+      execFileSync('git', ['add', 'large-image.png'], { cwd: repository });
+      execFileSync('git', ['commit', '-m', 'Add image fixture.'], {
+        cwd: repository,
+      });
+
+      const before = ledgerModule.currentSourceState(repository);
+      rmSync(binaryPath);
+      const after = ledgerModule.currentSourceState(repository);
+
+      expect(after.workingPaths).toContain('large-image.png');
+      expect(after.fingerprint).toMatch(/^[a-f0-9]{64}$/);
+      expect(after.fingerprint).not.toBe(before.fingerprint);
     });
   });
 
