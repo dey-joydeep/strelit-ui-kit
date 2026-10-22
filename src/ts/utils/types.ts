@@ -69,8 +69,11 @@ export type LogicalZIndex = (typeof LogicalZIndex)[keyof typeof LogicalZIndex];
  * @public
  */
 export const LogicalZIndexToDefaultMap: {
+  /** The default base z-index. */
   readonly base: typeof StyleConstants.defaultComponentBaseZIndex;
+  /** The default drag z-index. */
   readonly drag: typeof StyleConstants.defaultComponentDragZIndex;
+  /** The default maximised stack z-index. */
   readonly stackMaximised: typeof StyleConstants.defaultComponentStackMaximisedZIndex;
 } = {
   /** The public api. */
