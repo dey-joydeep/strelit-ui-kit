@@ -1,4 +1,11 @@
 import { afterEach, beforeEach, vi } from 'vitest';
+import type { LayoutManager } from '../src/ts/layout-manager';
+
+declare global {
+  interface Window {
+    __strelitInstance?: LayoutManager;
+  }
+}
 
 if (
   typeof document !== 'undefined' &&

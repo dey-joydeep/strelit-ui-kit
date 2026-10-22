@@ -77,13 +77,6 @@ import {
   setElementWidth,
 } from './utils/utils';
 
-/** @internal */
-declare global {
-  interface Window {
-    __strelitInstance?: LayoutManager;
-  }
-}
-
 /**
  * Represents layout manager before virtual recting event.
  * @public

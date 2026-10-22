@@ -89,3 +89,7 @@ During the active Bridge phase:
 - Treat audit entries as dispositions: preserve, replace, migrate, diagnose,
   or intentionally remove
 - Review this phase at the trigger date without presuming renewal or redesign
+
+## 1.0.0 Major-Release Review
+
+The 1.0.0 release review reaffirms **Bridge**. The stable Strelit contract is recorded in [the 1.0 support document](./stable-contract-1.0.md). Golden Layout compatibility remains a migration-tool and audit responsibility; no runtime parity promise or phase transition is implied by the stable version number. Saved Strelit configuration, public API, packaging, and documented consumer behavior remain protected under the Bridge obligations above. The compatibility audit stays in high-risk verification.

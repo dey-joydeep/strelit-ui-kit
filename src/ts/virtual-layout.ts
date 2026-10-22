@@ -20,6 +20,7 @@ import {
 } from './layout-manager';
 import { DomConstants } from './utils/dom-constants';
 import { I18nStringId, i18nStrings } from './utils/i18n-strings';
+import type { StrelitWindow } from './utils/strelit-window';
 
 /**
  * Represents virtual layout bind component event handler.
@@ -164,8 +165,9 @@ export class VirtualLayout extends LayoutManager {
   /** Performs the destroy operation. */
   override destroy(): void {
     this.clearDeferredInit();
-    if (window.__strelitInstance === this) {
-      window.__strelitInstance = undefined;
+    const strelitWindow = window as StrelitWindow;
+    if (strelitWindow.__strelitInstance === this) {
+      strelitWindow.__strelitInstance = undefined;
     }
     if (this._popInButtonElement !== undefined) {
       if (this._popInButtonClickListener !== undefined) {
@@ -251,7 +253,7 @@ export class VirtualLayout extends LayoutManager {
       }
 
       // Expose this instance on the window object to allow the opening window to interact with it
-      window.__strelitInstance = this;
+      (window as StrelitWindow).__strelitInstance = this;
     }
 
     super.init();

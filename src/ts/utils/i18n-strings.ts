@@ -90,7 +90,9 @@ let i18nStringsInitialised = false;
  * Provides the i18n string count.
  * @public
  */
-export const i18nStringCount = Object.keys(i18nStringInfosObject).length;
+export const i18nStringCount: number = Object.keys(
+  i18nStringInfosObject,
+).length;
 
 /**
  * Provides the i18n strings.

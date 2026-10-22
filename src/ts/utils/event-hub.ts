@@ -23,14 +23,6 @@ type EventHubPropagationEventDetail = EventHubChildEventDetail & {
 /** @internal */
 export type EventHubChildEventInit = CustomEventInit<EventHubChildEventDetail>;
 
-// Add our ChildEvent to WindowEventMap for type safety
-/** Adds Strelit's cross-window event to the browser event map. @public */
-declare global {
-  interface WindowEventMap {
-    [eventHubChildEventName]: CustomEvent<EventHubChildEventDetail>;
-  }
-}
-
 /**
  * An EventEmitter singleton that propagates events
  * across multiple windows. This is a little bit trickier since
@@ -70,7 +62,7 @@ export class EventHub extends EventEmitter {
     super();
     globalThis.addEventListener(
       eventHubChildEventName,
-      this._childEventListener,
+      this._childEventListener as EventListener,
       { passive: true },
     );
   }
@@ -111,7 +103,7 @@ export class EventHub extends EventEmitter {
   destroy(): void {
     globalThis.removeEventListener(
       eventHubChildEventName,
-      this._childEventListener,
+      this._childEventListener as EventListener,
     );
   }
 

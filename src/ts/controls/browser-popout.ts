@@ -17,6 +17,7 @@ import { GroundItem } from '../items/ground-item';
 import { RowOrColumn } from '../items/row-or-column';
 import { LayoutManager } from '../layout-manager';
 import { EventEmitter } from '../utils/event-emitter';
+import type { StrelitWindow } from '../utils/strelit-window';
 import { ItemType, Rect, SizeUnit } from '../utils/types';
 import { getErrorMessage, getUniqueId } from '../utils/utils';
 
@@ -326,7 +327,8 @@ export class BrowserPopout extends EventEmitter {
     if (this._popoutWindow === null) {
       throw new UnexpectedNullError('BPGGI24693');
     }
-    const strelitInstance = this._popoutWindow.__strelitInstance;
+    const strelitInstance = (this._popoutWindow as StrelitWindow)
+      .__strelitInstance;
     if (strelitInstance === undefined) {
       throw new UnexpectedUndefinedError('BPGGI24694');
     }
@@ -928,7 +930,7 @@ export class BrowserPopout extends EventEmitter {
   private checkReadyChildInstance(popoutWindow: Window): void {
     let strelitInstance: LayoutManager | undefined;
     try {
-      strelitInstance = popoutWindow.__strelitInstance;
+      strelitInstance = (popoutWindow as StrelitWindow).__strelitInstance;
     } catch {
       // A navigated child can become cross-origin. Keep polling closure.
       return;
@@ -1237,7 +1239,7 @@ export class BrowserPopout extends EventEmitter {
 
   private tryGetStrelitInstance(): LayoutManager | undefined {
     try {
-      return this._popoutWindow?.__strelitInstance ?? undefined;
+      return (this._popoutWindow as StrelitWindow | null)?.__strelitInstance;
     } catch (error) {
       if (isCrossOriginAccessError(error)) {
         return undefined;

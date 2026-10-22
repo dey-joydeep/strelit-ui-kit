@@ -18,14 +18,13 @@ Strelit UI Kit is a TypeScript docking and workspace layout library derived from
 
 This repository uses Strelit's own version line. It is not a continuation of an upstream "version 2" product name.
 
-- `0.x` is used while public API, configuration, and styling contracts are still being intentionally modernized.
-- `1.0.0` should be used for the first stable Strelit release with an explicitly supported public contract.
+- `1.0.0` is designated as the first stable Strelit release, with its supported API, configuration, styling, and packaging boundary recorded in [the 1.0 contract](https://github.com/dey-joydeep/strelit-ui-kit/blob/main/docs/architecture/stable-contract-1.0.md). Publication is pending.
 - After `1.0.0`, semantic versioning applies normally:
   - major for breaking API, config, or styling changes
   - minor for backward-compatible features
   - patch for backward-compatible fixes
 
-See [VERSIONING.md](./VERSIONING.md) for the repo policy.
+See [VERSIONING.md](https://github.com/dey-joydeep/strelit-ui-kit/blob/main/VERSIONING.md) for the repo policy.
 
 ## Development
 
@@ -51,7 +50,7 @@ npm run apitest:serve
 npm run migrate:golden-layout -- --target ../my-app --dry-run
 ```
 
-`npm run apitest:serve` opens the local [Layout Workbench](./apitest/README.md)
+`npm run apitest:serve` opens the local [Layout Workbench](https://github.com/dey-joydeep/strelit-ui-kit/blob/main/apitest/README.md)
 at `http://localhost:3000/`. It starts with a populated layout and provides
 configuration editing, guided runtime actions, live saved state, and an API
 method explorer for manual browser verification.
@@ -78,6 +77,17 @@ both config-oriented and JSDOM-backed layout benchmarks.
 - rolled-up declarations in `dist/types`
 - CSS/LESS/SCSS assets in `dist`
 
+## JSR core and browser styles
+
+The planned `@strelit/core` JSR package distributes the TypeScript API without CSS. Browser applications using it must also load the matching `strelit-ui-kit@1.0.0` npm release's base stylesheet and one theme. For a bundler, install `strelit-ui-kit` for its style assets and import:
+
+```typescript
+import 'strelit-ui-kit/dist/css/strelit-base.css';
+import 'strelit-ui-kit/dist/css/themes/strelit-dark-theme.css';
+```
+
+Both registry releases are pending. Keep the JavaScript and style asset versions aligned when they become available.
+
 ## Notes
 
 - Strelit exposes its own API and configuration contract; Golden Layout compatibility is handled by the migration tool rather than the runtime.
@@ -87,5 +97,5 @@ both config-oriented and JSDOM-backed layout benchmarks.
 
 If you are moving an existing Golden Layout based application onto Strelit UI Kit:
 
-- read [docs/migration/index.md](./docs/migration/index.md)
+- read [docs/migration/index.md](https://github.com/dey-joydeep/strelit-ui-kit/blob/main/docs/migration/index.md)
 - run `npm run migrate:golden-layout -- --target <path> --dry-run`

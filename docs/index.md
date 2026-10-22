@@ -25,7 +25,7 @@ Strelit UI Kit is a TypeScript docking and workspace layout library derived from
 
 ## Library (using npm)
 
-The package metadata and public distribution strategy are still being finalized. For now, use the source repository directly and build locally.
+The first npm release is pending. Until it is published, use the source repository directly and build locally. The planned 1.0 support boundary is described in [the stable contract](./architecture/stable-contract-1.0.md).
 
 ## Source
 
@@ -75,9 +75,7 @@ The following information sources are available which can be used to learn how t
   [AI change quality rubric](./contributing/ai-change-quality-rubric.md)
 - **[Product evolution policy](./architecture/product-evolution-policy.md)**,
   defining the active compatibility phase and intentional transition process
-- **CodePen examples**
-  - [**Adding items to a predefined layout**](https://codepen.io/pbklink/pen/dyWJNNm)\
-    A basic example showing how Strelit Layout is set up and how to add a new item to a layout.
+- **[Layout Workbench](../apitest/README.md)**, the repository's Strelit API demo with configuration editing and runtime actions
 
 # Description
 
