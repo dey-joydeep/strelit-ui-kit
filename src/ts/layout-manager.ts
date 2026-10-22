@@ -1884,7 +1884,7 @@ export abstract class LayoutManager extends EventEmitter {
    * Applications can call this method when a page is unloaded to remove its open popouts
    */
 
-  closeAllOpenPopouts() {
+  closeAllOpenPopouts(): void {
     const openPopouts = [...this._openPopouts];
     const failedPopouts: BrowserPopout[] = [];
 

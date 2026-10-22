@@ -1027,9 +1027,9 @@ export type LogicalZIndex = (typeof LogicalZIndex)[keyof typeof LogicalZIndex];
 
 // @public
 export const LogicalZIndexToDefaultMap: {
-    readonly base: "auto";
-    readonly drag: "32";
-    readonly stackMaximised: "41";
+    readonly base: typeof StyleConstants.defaultComponentBaseZIndex;
+    readonly drag: typeof StyleConstants.defaultComponentDragZIndex;
+    readonly stackMaximised: typeof StyleConstants.defaultComponentStackMaximisedZIndex;
 };
 
 // @public
