@@ -348,7 +348,7 @@ test('closing a pop-out window returns its stack when popInOnClose is enabled', 
   await expect.poll(() => child.isClosed()).toBe(true);
   await expect(page.locator('.lm_tab[title="Fnts 100"]')).toBeVisible();
   await expect(page.locator('#layoutSummary')).toContainText('0 pop-outs');
-  expect(await layoutStructure()).toEqual(originalStructure);
+  await expect.poll(layoutStructure).toEqual(originalStructure);
   await expect(
     page.locator('#layoutContainer .lm_popout').first(),
   ).toBeVisible();
@@ -431,18 +431,20 @@ test('closing the right-hand pop-out restores its original row position', async 
     'data-popout-parent-document',
     'original',
   );
-  expect(await layoutStructure()).toEqual(originalStructure);
+  await expect.poll(layoutStructure).toEqual(originalStructure);
   const restoredBounds = await rightStack.boundingBox();
   expect(restoredBounds).not.toBeNull();
   expect(Math.abs(restoredBounds!.x - originalBounds.x)).toBeLessThan(5);
   expect(Math.abs(restoredBounds!.width - originalBounds.width)).toBeLessThan(
     5,
   );
-  expect(
-    await page.evaluate(
-      () => window.strelitApiTestApp.layout.rootItem?.popInParentIds,
-    ),
-  ).toEqual([]);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => window.strelitApiTestApp.layout.rootItem?.popInParentIds,
+      ),
+    )
+    .toEqual([]);
 });
 
 test('closing the last tab in a pop-out returns its pane', async ({ page }) => {
@@ -639,12 +641,14 @@ test('closing without pop-in releases the vacant return row', async ({
   await child.close({ runBeforeUnload: false });
   await expect.poll(() => child.isClosed()).toBe(true);
   await expect(page.locator('#layoutSummary')).toContainText('0 pop-outs');
-  expect(
-    await page.evaluate(() => ({
-      type: window.strelitApiTestApp.layout.rootItem?.type,
-      parentIds: window.strelitApiTestApp.layout.rootItem?.popInParentIds,
-    })),
-  ).toEqual({ type: 'column', parentIds: [] });
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        type: window.strelitApiTestApp.layout.rootItem?.type,
+        parentIds: window.strelitApiTestApp.layout.rootItem?.popInParentIds,
+      })),
+    )
+    .toEqual({ type: 'column', parentIds: [] });
   await expect(page.locator('.lm_tab[title="comp 2"]')).toHaveCount(0);
 });
 
@@ -706,16 +710,19 @@ for (const scenario of [
       await expect.poll(() => child.isClosed()).toBe(true);
     }
     await expect(page.locator('#layoutSummary')).toContainText('0 pop-outs');
-    expect(
-      await page.evaluate(() => ({
-        type: window.strelitApiTestApp.layout.rootItem?.type,
-        titles: window.strelitApiTestApp.layout.rootItem?.contentItems.map(
-          (item) => item.contentItems[0]?.title,
-        ),
-        parentIds: window.strelitApiTestApp.layout.rootItem?.popInParentIds,
-      })),
-    ).toEqual({ type: 'row', titles: names, parentIds: [] });
+    await expect
+      .poll(() =>
+        page.evaluate(() => ({
+          type: window.strelitApiTestApp.layout.rootItem?.type,
+          titles: window.strelitApiTestApp.layout.rootItem?.contentItems.map(
+            (item) => item.contentItems[0]?.title,
+          ),
+          parentIds: window.strelitApiTestApp.layout.rootItem?.popInParentIds,
+        })),
+      )
+      .toEqual({ type: 'row', titles: names, parentIds: [] });
     for (const [index, name] of names.entries()) {
+      await expect(stack(name)).toBeVisible();
       const restoredBounds = await stack(name).boundingBox();
       expect(restoredBounds).not.toBeNull();
       expect(
@@ -767,9 +774,9 @@ test('closing two pop-outs without pop-in removes their empty return row', async
   }
   await expect(page.locator('#layoutSummary')).toContainText('0 pop-outs');
   await expect(page.locator('#layoutContainer .lm_tab')).toHaveCount(0);
-  expect(
-    await page.evaluate(() => window.strelitApiTestApp.layout.rootItem),
-  ).toBeUndefined();
+  await expect
+    .poll(() => page.evaluate(() => window.strelitApiTestApp.layout.rootItem))
+    .toBeUndefined();
 });
 
 test('discarding one pop-out keeps the next return in its original order', async ({
@@ -813,6 +820,15 @@ test('discarding one pop-out keeps the next return in its original order', async
   await children.get('B')!.locator('.lm_popin').click();
   await expect.poll(() => children.get('B')!.isClosed()).toBe(true);
   await expect(page.locator('#layoutSummary')).toContainText('0 pop-outs');
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.strelitApiTestApp.layout.rootItem?.contentItems.map(
+          (item) => item.contentItems[0]?.title,
+        ),
+      ),
+    )
+    .toEqual(['B', 'C']);
   const restored = await page.evaluate(() => ({
     titles: window.strelitApiTestApp.layout.rootItem?.contentItems.map(
       (item) => item.contentItems[0]?.title,
@@ -910,6 +926,15 @@ test('a discarded pane stays excluded after saving and reloading another pop-out
   await replacement.locator('.lm_popin').click();
   await expect.poll(() => replacement.isClosed()).toBe(true);
   await expect(page.locator('#layoutSummary')).toContainText('0 pop-outs');
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.strelitApiTestApp.layout.rootItem?.contentItems.map(
+          (item) => item.contentItems[0]?.title,
+        ),
+      ),
+    )
+    .toEqual(['B', 'C']);
   const restored = await page.evaluate(() => ({
     titles: window.strelitApiTestApp.layout.rootItem?.contentItems.map(
       (item) => item.contentItems[0]?.title,
