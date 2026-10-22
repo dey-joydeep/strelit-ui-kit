@@ -707,7 +707,28 @@ export interface ResolvedLayoutConfigHeader {
  * Provides the resolved layout config settings defaults.
  * @public
  */
-export const resolvedLayoutConfigSettingsDefaults = {
+export const resolvedLayoutConfigSettingsDefaults: {
+  /** The constrain drag to container. */
+  readonly constrainDragToContainer: true;
+  /** The reorder enabled. */
+  readonly reorderEnabled: true;
+  /** The popout whole stack. */
+  readonly popoutWholeStack: false;
+  /** The blocked popouts throw error. */
+  readonly blockedPopoutsThrowError: true;
+  /** The close popouts on unload. */
+  readonly closePopoutsOnUnload: true;
+  /** The responsive mode. */
+  readonly responsiveMode: typeof ResponsiveMode.none;
+  /** The tab overlap allowance. */
+  readonly tabOverlapAllowance: 0;
+  /** The reorder on tab menu click. */
+  readonly reorderOnTabMenuClick: true;
+  /** The tab control offset. */
+  readonly tabControlOffset: 10;
+  /** The pop in on close. */
+  readonly popInOnClose: false;
+} = {
   /** The constrain drag to container. */
   constrainDragToContainer: true,
   /** The reorder enabled. */
@@ -755,7 +776,26 @@ export function createResolvedLayoutConfigSettingsCopy(
  * Provides the resolved layout config dimensions defaults.
  * @public
  */
-export const resolvedLayoutConfigDimensionsDefaults = {
+export const resolvedLayoutConfigDimensionsDefaults: {
+  /** The border width. */
+  readonly borderWidth: 5;
+  /** The border grab width. */
+  readonly borderGrabWidth: 5;
+  /** The default min item height. */
+  readonly defaultMinItemHeight: 0;
+  /** The default min item height unit. */
+  readonly defaultMinItemHeightUnit: typeof SizeUnit.Pixel;
+  /** The default min item width. */
+  readonly defaultMinItemWidth: 10;
+  /** The default min item width unit. */
+  readonly defaultMinItemWidthUnit: typeof SizeUnit.Pixel;
+  /** The header height. */
+  readonly headerHeight: 20;
+  /** The drag proxy width. */
+  readonly dragProxyWidth: 300;
+  /** The drag proxy height. */
+  readonly dragProxyHeight: 200;
+} = {
   /** The border width. */
   borderWidth: 5,
   /** The border grab width. */
@@ -800,7 +840,22 @@ export function createResolvedLayoutConfigDimensionsCopy(
  * Provides the resolved layout config header defaults.
  * @public
  */
-export const resolvedLayoutConfigHeaderDefaults = {
+export const resolvedLayoutConfigHeaderDefaults: {
+  /** The show. */
+  readonly show: typeof Side.top;
+  /** The popout. */
+  readonly popout: 'open in new window';
+  /** The dock. */
+  readonly dock: 'dock';
+  /** The maximise. */
+  readonly maximise: 'maximise';
+  /** The minimise. */
+  readonly minimise: 'minimise';
+  /** The close. */
+  readonly close: 'close';
+  /** The tab dropdown. */
+  readonly tabDropdown: 'additional tabs';
+} = {
   /** The show. */
   show: Side.top,
   /** The popout. */
@@ -1373,7 +1428,16 @@ export interface ResolvedPopoutLayoutConfigWindow {
  * Provides the resolved popout layout config window defaults.
  * @public
  */
-export const resolvedPopoutLayoutConfigWindowDefaults = {
+export const resolvedPopoutLayoutConfigWindowDefaults: {
+  /** The width. */
+  readonly width: null;
+  /** The height. */
+  readonly height: null;
+  /** The left. */
+  readonly left: null;
+  /** The top. */
+  readonly top: null;
+} = {
   /** The width. */
   width: null,
   /** The height. */

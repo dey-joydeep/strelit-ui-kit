@@ -2107,7 +2107,7 @@ export function parseSize(
 }
 
 /** @internal */
-export function formatSize(size: number, sizeUnit: SizeUnit) {
+export function formatSize(size: number, sizeUnit: SizeUnit): string {
   return size.toString(10) + formatSizeUnit(sizeUnit);
 }
 
@@ -2115,7 +2115,7 @@ export function formatSize(size: number, sizeUnit: SizeUnit) {
 export function formatUndefinableSize(
   size: number | undefined,
   sizeUnit: SizeUnit,
-) {
+): string | undefined {
   if (size === undefined) {
     return undefined;
   } else {

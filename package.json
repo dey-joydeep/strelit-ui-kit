@@ -1,6 +1,6 @@
 {
   "name": "strelit-ui-kit",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Strelit UI layout workspace toolkit",
   "keywords": [
     "docking",
@@ -11,6 +11,14 @@
   ],
   "license": "MIT",
   "author": "CTHub",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dey-joydeep/strelit-ui-kit.git"
+  },
+  "homepage": "https://strelit.dev/",
+  "bugs": {
+    "url": "https://github.com/dey-joydeep/strelit-ui-kit/issues"
+  },
   "main": "dist/cjs/index.js",
   "module": "dist/esm/index.mjs",
   "typings": "dist/types/index.d.ts",
@@ -51,11 +59,12 @@
     "clean": "rimraf dist lib temp apitest/dist",
     "typecheck:cjs": "tsc -p tsconfig.cjs.json --noEmit",
     "typecheck:module:api": "tsc -p tsconfig.module.api.json --noEmit",
+    "typecheck:jsr": "tsc -p tsconfig.module.full.json --noEmit --declaration --isolatedDeclarations",
     "typecheck:apitest": "tsc -p apitest/tsconfig.json --noEmit",
     "typecheck:tests": "tsc -p tsconfig.tests.json --noEmit",
     "typecheck:bundle:prepare": "npm run build:types && api-extractor run --verbose",
     "typecheck:bundle": "tsc -p tsconfig.bundle.json",
-    "typecheck": "npm run typecheck:cjs && npm run typecheck:module:api && npm run typecheck:apitest && npm run typecheck:tests",
+    "typecheck": "npm run typecheck:cjs && npm run typecheck:module:api && npm run typecheck:jsr && npm run typecheck:apitest && npm run typecheck:tests",
     "build:cjs": "tsup src/index.ts --format cjs --outDir dist/cjs --target es2020 --sourcemap --external tslib --clean false --splitting false",
     "build:module": "tsup src/index.ts --format esm --outDir dist/esm --target es2020 --sourcemap --external tslib --clean false --splitting false",
     "build:module:api": "tsc -p tsconfig.module.api.json",

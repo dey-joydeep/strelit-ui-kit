@@ -77,13 +77,6 @@ import {
   setElementWidth,
 } from './utils/utils';
 
-/** @internal */
-declare global {
-  interface Window {
-    __strelitInstance?: LayoutManager;
-  }
-}
-
 /**
  * Represents layout manager before virtual recting event.
  * @public
@@ -1891,7 +1884,7 @@ export abstract class LayoutManager extends EventEmitter {
    * Applications can call this method when a page is unloaded to remove its open popouts
    */
 
-  closeAllOpenPopouts() {
+  closeAllOpenPopouts(): void {
     const openPopouts = [...this._openPopouts];
     const failedPopouts: BrowserPopout[] = [];
 

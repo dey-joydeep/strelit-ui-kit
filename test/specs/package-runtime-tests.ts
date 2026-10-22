@@ -50,6 +50,29 @@ const verifyOrdered =
   require('../../scripts/verify-ordered.js') as VerifyOrderedModule;
 
 describe('package runtime verification', () => {
+  it('keeps npm, JSR, and Sonar release versions aligned', () => {
+    const npmPackage = JSON.parse(
+      readFileSync(resolve('package.json'), 'utf8'),
+    ) as {
+      version: string;
+    };
+    const jsrPackage = JSON.parse(
+      readFileSync(resolve('jsr.json'), 'utf8'),
+    ) as {
+      version: string;
+    };
+    const sonarConfig = readFileSync(
+      resolve('sonar-project.properties'),
+      'utf8',
+    );
+    const sonarVersion = sonarConfig.match(
+      /^sonar\.projectVersion=(.+)$/mu,
+    )?.[1];
+
+    expect(jsrPackage.version).toBe(npmPackage.version);
+    expect(sonarVersion).toBe(npmPackage.version);
+  });
+
   it('diagnoses a missing packed browser bundle without launching Chrome', async () => {
     const packageRoot = mkdtempSync(join(tmpdir(), 'strelit-browser-bundle-'));
 

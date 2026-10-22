@@ -1027,9 +1027,9 @@ export type LogicalZIndex = (typeof LogicalZIndex)[keyof typeof LogicalZIndex];
 
 // @public
 export const LogicalZIndexToDefaultMap: {
-    readonly base: "auto";
-    readonly drag: "32";
-    readonly stackMaximised: "41";
+    readonly base: typeof StyleConstants.defaultComponentBaseZIndex;
+    readonly drag: typeof StyleConstants.defaultComponentDragZIndex;
+    readonly stackMaximised: typeof StyleConstants.defaultComponentStackMaximisedZIndex;
 };
 
 // @public
@@ -1178,9 +1178,9 @@ export const resolvedLayoutConfigDimensionsDefaults: {
     readonly borderWidth: 5;
     readonly borderGrabWidth: 5;
     readonly defaultMinItemHeight: 0;
-    readonly defaultMinItemHeightUnit: "px";
+    readonly defaultMinItemHeightUnit: typeof SizeUnit.Pixel;
     readonly defaultMinItemWidth: 10;
-    readonly defaultMinItemWidthUnit: "px";
+    readonly defaultMinItemWidthUnit: typeof SizeUnit.Pixel;
     readonly headerHeight: 20;
     readonly dragProxyWidth: 300;
     readonly dragProxyHeight: 200;
@@ -1199,13 +1199,13 @@ export interface ResolvedLayoutConfigHeader {
 
 // @public
 export const resolvedLayoutConfigHeaderDefaults: {
-    readonly show: "top";
-    readonly popout: "open in new window";
-    readonly dock: "dock";
-    readonly maximise: "maximise";
-    readonly minimise: "minimise";
-    readonly close: "close";
-    readonly tabDropdown: "additional tabs";
+    readonly show: typeof Side.top;
+    readonly popout: 'open in new window';
+    readonly dock: 'dock';
+    readonly maximise: 'maximise';
+    readonly minimise: 'minimise';
+    readonly close: 'close';
+    readonly tabDropdown: 'additional tabs';
 };
 
 // @public
@@ -1229,7 +1229,7 @@ export const resolvedLayoutConfigSettingsDefaults: {
     readonly popoutWholeStack: false;
     readonly blockedPopoutsThrowError: true;
     readonly closePopoutsOnUnload: true;
-    readonly responsiveMode: "none";
+    readonly responsiveMode: typeof ResponsiveMode.none;
     readonly tabOverlapAllowance: 0;
     readonly reorderOnTabMenuClick: true;
     readonly tabControlOffset: 10;

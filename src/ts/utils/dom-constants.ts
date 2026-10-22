@@ -43,6 +43,6 @@ const classNameValues = {
 export type DomClassName =
   (typeof classNameValues)[keyof typeof classNameValues];
 
-export const DomConstants = {
+export const DomConstants: { readonly ClassName: typeof classNameValues } = {
   ClassName: classNameValues,
 } as const;

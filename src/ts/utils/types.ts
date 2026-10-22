@@ -68,15 +68,21 @@ export type LogicalZIndex = (typeof LogicalZIndex)[keyof typeof LogicalZIndex];
  * Provides the logical zindex to default map.
  * @public
  */
-export const LogicalZIndexToDefaultMap = {
+export const LogicalZIndexToDefaultMap: {
+  /** The default base z-index. */
+  readonly base: typeof StyleConstants.defaultComponentBaseZIndex;
+  /** The default drag z-index. */
+  readonly drag: typeof StyleConstants.defaultComponentDragZIndex;
+  /** The default maximised stack z-index. */
+  readonly stackMaximised: typeof StyleConstants.defaultComponentStackMaximisedZIndex;
+} = {
   /** The public api. */
-  [LogicalZIndex.base]: StyleConstants.defaultComponentBaseZIndex,
+  base: StyleConstants.defaultComponentBaseZIndex,
   /** The public api. */
-  [LogicalZIndex.drag]: StyleConstants.defaultComponentDragZIndex,
+  drag: StyleConstants.defaultComponentDragZIndex,
   /** The public api. */
-  [LogicalZIndex.stackMaximised]:
-    StyleConstants.defaultComponentStackMaximisedZIndex,
-} as const;
+  stackMaximised: StyleConstants.defaultComponentStackMaximisedZIndex,
+} satisfies Readonly<Record<LogicalZIndex, string>>;
 
 /** @internal */
 export interface Rect {
