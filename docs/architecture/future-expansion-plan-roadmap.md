@@ -1,5 +1,10 @@
 # Strelit Platform — Future Expansion & Strategic Technical Roadmap
 
+This is an exploratory plan for products beyond the 1.0.0 Strelit UI Kit
+library. It is not a release schedule or a description of packages available
+today. The supported library contract is documented in
+[the 1.0 support document](./stable-contract-1.0.md).
+
 ## Executive Summary
 
 This document consolidates the complete strategic, architectural, and engineering roadmap for the **Strelit Platform** under **CTHub**.
@@ -168,7 +173,7 @@ _Can run immediately inside `packages/core` without breaking API compatibility._
   2. **CSS Containment & Layout Optimization**: Add `contain: strict / layout style` to `.strelit-item-container` and `content-visibility: auto` to background tabs.
   3. **Batched Geometry Updates**: Coalesce synchronous style mutations inside a single `requestAnimationFrame` scheduler during live splitter drags.
 - **Estimated Effort**: 1 Sprint (2–3 weeks)
-- **Target Release**: Strelit Layout `v0.2.0`
+- **Target Release**: Unscheduled
 
 ---
 
@@ -181,7 +186,7 @@ _Can run in parallel above `StrelitLayout` as a standalone productivity orchestr
   2. **Spatial Focus & Keyboard Dispatcher**: Global shortcut routing (`Ctrl+B` sidebar toggle, `Alt+1..9` tab switching).
   3. **Tab History & Restore Closed Panel (`Cmd+Shift+T`)**: Snapshot closed pane configurations into a persistent undo stack.
 - **Estimated Effort**: 1–2 Sprints (3–4 weeks)
-- **Target Release**: Strelit Workspace `v0.1.0`
+- **Target Release**: Unscheduled
 
 ---
 
@@ -194,7 +199,7 @@ _Builds on Groups A & B to provide the complete desktop-in-browser scaffold._
   2. **App Shell Primitives**: Reusable `<StrelitHeader>`, `<StrelitActivityRail>` (sidebar icon rail), and `<StrelitStatusBar>` (footer diagnostics bar).
   3. **Density & Theme System**: Cascading CSS variables (`--strelit-*`) supporting Compact, Comfortable, and Spacious UI densities.
 - **Estimated Effort**: 2 Sprints (4 weeks)
-- **Target Release**: Strelit Workspace `v0.2.0`
+- **Target Release**: Unscheduled
 
 ---
 
@@ -207,28 +212,31 @@ _Can run independently or in parallel to deliver specialized panel widgets (`pac
   2. **Tree View & File Explorer**: Virtualized hierarchical tree view with keyboard navigation.
   3. **Property Inspector Grid**: Two-column key/value editor supporting custom cell editors.
 - **Estimated Effort**: 2–3 Sprints (5–6 weeks)
-- **Target Release**: Strelit UI `v0.1.0`
+- **Target Release**: Unscheduled
 
 ---
 
-## 5. Zero-Cost Universal Distribution Strategy
+## 5. Planned Distribution Channels
 
-To achieve maximum global developer reach as a free open-source platform without incurring hosting or server maintenance costs, the **Strelit Platform** utilizes a three-pillar zero-cost distribution strategy:
+The 1.0.0 library release is being prepared for npm and JSR. CDN URLs backed
+by npm should be published as examples only after the exact versioned assets
+are available and tested. Service terms, limits, and availability must be
+checked at release time.
 
 ```mermaid
 graph TD
-    A[Strelit UI Repository on GitHub] -->|1. Publish Free| B[npm Public Registry]
-    A -->|2. Publish Free| C[JSR Registry]
-    B -->|Automatic Edge Mirroring| D[JSDelivr & unpkg Global CDNs]
+    A[Strelit UI Kit source on GitHub] -->|Publish| B[npm package]
+    A -->|Publish TypeScript core| C[JSR package]
+    B -->|After registry availability is verified| D[Versioned CDN assets]
 ```
 
-### 5.1 The Holy Trinity of Free Open-Source Distribution
+### 5.1 Channel Roles
 
-| Channel                      | Target Developer Audience                                                  | Cost & Maintenance                               | Key Architectural Benefit                                                                                                                                            |
-| :--------------------------- | :------------------------------------------------------------------------- | :----------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1. npm (`npmjs.com`)**     | Node.js, React, Vue, Angular, Vite, Next.js, pnpm, Yarn, Bun               | **100% Free**                                    | Universal default package registry covering 95%+ of frontend application developers.                                                                                 |
-| **2. JSDelivr & unpkg CDNs** | Browser-only embeds, CodePen / CodeSandbox demos, no-build HTML prototypes | **100% Free** (Automated Cloudflare Edge mirror) | Zero manual upload required. Any version published to npm is instantly mirrored across 100+ global edge servers (`https://cdn.jsdelivr.net/npm/strelit-ui-kit@...`). |
-| **3. JSR (`jsr.io`)**        | Modern TypeScript, Deno, Bun, Cloudflare Workers                           | **100% Free** (Linux Foundation / Deno backed)   | Automatically generates and hosts searchable, interactive public API documentation directly from TypeScript source (`.d.ts` and TSDoc).                              |
+| Channel              | Planned artifact                                | Browser styling                     |
+| :------------------- | :---------------------------------------------- | :---------------------------------- |
+| npm `strelit-ui-kit` | ESM, CommonJS, IIFE, declarations, and styles   | Base CSS plus one theme             |
+| JSR `@strelit/core`  | TypeScript source API                           | Load matching npm styles separately |
+| npm-backed CDN       | Versioned npm IIFE and styles after publication | Base CSS plus one theme             |
 
 ### 5.2 Usage Patterns by Channel
 
@@ -238,15 +246,20 @@ graph TD
 npm install strelit-ui-kit
 ```
 
-#### Via Direct Browser Script Tag (`JSDelivr CDN`):
+#### Via Direct Browser Script Tag (after CDN verification):
 
 ```html
 <link
   rel="stylesheet"
-  href="https://cdn.jsdelivr.net/npm/strelit-ui-kit@latest/dist/css/strelit-base.css"
+  href="https://cdn.jsdelivr.net/npm/strelit-ui-kit@1.0.0/dist/css/strelit-base.css"
 />
-<script type="module">
-  import { StrelitLayout } from 'https://cdn.jsdelivr.net/npm/strelit-ui-kit@latest/dist/esm/index.mjs';
+<link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/strelit-ui-kit@1.0.0/dist/css/themes/strelit-dark-theme.css"
+/>
+<script src="https://cdn.jsdelivr.net/npm/strelit-ui-kit@1.0.0/dist/iife/index.global.js"></script>
+<script>
+  const { StrelitLayout } = window.strelitUIKit;
 </script>
 ```
 

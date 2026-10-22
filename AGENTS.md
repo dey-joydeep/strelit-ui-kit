@@ -9,7 +9,7 @@ deeper `AGENTS.md` files, such as `scripts/AGENTS.md`, add scoped requirements.
 
 ## Startup Checklist
 
-1. Work from the repository root: `E:\workspace\project-golden-layout\strelit-ui-kit`
+1. Work from this repository's root (the directory containing `package.json` and this file)
 2. Check `git status --short` before editing or committing
 3. If `.tmp/agent-work/active.json` exists, run exactly one recovery command:
    use `agent:ledger -- enter` for a post-interruption control prompt, otherwise
