@@ -18,7 +18,7 @@ Strelit UI Kit is a TypeScript docking and workspace layout library derived from
 
 This repository uses Strelit's own version line. It is not a continuation of an upstream "version 2" product name.
 
-- `1.0.0` is designated as the first stable Strelit release, with its supported API, configuration, styling, and packaging boundary recorded in [the 1.0 contract](https://github.com/dey-joydeep/strelit-ui-kit/blob/main/docs/architecture/stable-contract-1.0.md). Publication is pending.
+- `1.0.0` defines the first stable Strelit release, with its supported API, configuration, styling, and packaging boundary recorded in [the 1.0 contract](https://github.com/dey-joydeep/strelit-ui-kit/blob/main/docs/architecture/stable-contract-1.0.md).
 - After `1.0.0`, semantic versioning applies normally:
   - major for breaking API, config, or styling changes
   - minor for backward-compatible features
@@ -28,7 +28,7 @@ See [VERSIONING.md](https://github.com/dey-joydeep/strelit-ui-kit/blob/main/VERS
 
 ## Development
 
-Node.js 24.x is required. The next release raises the previous Node.js 20.19
+Node.js 24.x is required. This release raises the previous Node.js 20.19
 minimum as the project's updated development and verification baseline; browser
 APIs and saved-layout formats are unchanged.
 
@@ -79,14 +79,14 @@ both config-oriented and JSDOM-backed layout benchmarks.
 
 ## JSR core and browser styles
 
-The planned `@strelit/core` JSR package distributes the TypeScript API without CSS. Browser applications using it must also load the matching `strelit-ui-kit@1.0.0` npm release's base stylesheet and one theme. For a bundler, install `strelit-ui-kit` for its style assets and import:
+The JSR distribution is configured as `@strelit/core` and contains the TypeScript API without CSS. Browser applications using it must also load the matching `strelit-ui-kit@1.0.0` npm release's base stylesheet and one theme. For a bundler, install `strelit-ui-kit` for its style assets and import:
 
 ```typescript
 import 'strelit-ui-kit/dist/css/strelit-base.css';
 import 'strelit-ui-kit/dist/css/themes/strelit-dark-theme.css';
 ```
 
-Both registry releases are pending. Keep the JavaScript and style asset versions aligned when they become available.
+Keep the JSR package and npm style asset versions aligned.
 
 ## Notes
 
